@@ -1,0 +1,19 @@
+Persome context daemon (mens-context)
+Copyright 2026 Persome
+
+This product is derived from OpenChronicle
+(https://github.com/Einsia/OpenChronicle), Copyright (c) 2026 Einsia,
+licensed under the MIT License. See THIRD_PARTY_NOTICES for the full
+license text. The tree was imported from an internal predecessor
+repository at commit fc880f43 and has since been substantially extended in this
+repository.
+
+On-device OCR uses PP-OCRv6 model weights from the PaddleOCR project
+(https://github.com/PaddlePaddle/PaddleOCR), licensed under the
+Apache License, Version 2.0.
+
+The macOS background-actuation click recipe in
+resources/mac-ax-actuator.swift is ported from cua-driver
+(https://github.com/trycua/cua), Copyright (c) 2025 Cua AI, Inc.,
+licensed under the MIT License. See THIRD_PARTY_NOTICES for the full
+license text.

@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in Persome runtime is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in what you can —
+        the environment fields matter a lot for a local-first macOS daemon.
+
+        **Privacy note:** Persome captures your screen context. Before pasting logs
+        or `persome doctor` output, double-check them for personal data (names,
+        emails, message contents) and redact anything you don't want public.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what actually happened?
+      placeholder: |
+        1. Ran `persome start`
+        2. Asked my agent to call the MCP `recall` tool
+        3. Expected results, got a 500 from http://127.0.0.1:8742/mcp
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "e.g. macOS 15.5 (Sequoia)"
+    validations:
+      required: true
+  - type: dropdown
+    id: chip
+    attributes:
+      label: Chip
+      options:
+        - Apple Silicon (arm64)
+        - Intel (x86_64)
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Output of `python3 --version` in the environment running Persome.
+      placeholder: "e.g. Python 3.11.9"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: "`persome doctor` output"
+      description: Paste the full output. Redact anything personal before submitting.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Daemon logs around the failure, if you have them. Redact personal data.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: How you installed Persome, which agent/MCP client you use, custom config, etc.
+    validations:
+      required: false

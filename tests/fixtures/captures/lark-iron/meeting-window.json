@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-06-11T22:00:53+08:00",
+  "schema_version": 2,
+  "trigger": {
+    "event_type": "UserMouseClick",
+    "bundle_id": "com.electron.lark.iron",
+    "window_title": "飞书会议"
+  },
+  "window_meta": {
+    "app_name": "Lark Helper (Iron)",
+    "title": "",
+    "bundle_id": "com.electron.lark.iron"
+  },
+  "ax_tree": {
+    "apps": [
+      {
+        "bundle_id": "com.electron.lark.iron",
+        "is_frontmost": true,
+        "name": "飞书会议",
+        "pid": 86267,
+        "windows": [
+          {
+            "elements": [
+              {
+                "domClassList": ["RootView"],
+                "role": "AXGroup"
+              }
+            ],
+            "focused": true,
+            "subrole": "AXStandardWindow",
+            "title": "飞书会议"
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-06-11T14:00:54Z"
+  },
+  "ax_metadata": {
+    "mode": "frontmost",
+    "depth": 100,
+    "platform": "macos",
+    "raw": false
+  },
+  "screenshot": null,
+  "focused_element": {
+    "role": "",
+    "title": "",
+    "value": "",
+    "is_editable": false,
+    "has_value": false,
+    "value_length": 0
+  },
+  "visible_text": "## 飞书会议 [active]\n_com.electron.lark.iron_\n### 飞书会议",
+  "url": null
+}

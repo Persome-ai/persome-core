@@ -1,0 +1,71 @@
+{
+  "_comment": "Cross-stack contract for the Calendar Agent work board (/runs family). SINGLE SOURCE OF TRUTH shared by backend test (tests/test_runs_contract.py) and frontend test (acme-app/test/feature/calendar/runs_contract_test.dart). Backend asserts its real responses carry exactly these keys; frontend asserts its models parse exactly these shapes. A field rename/drop on either side without updating this file (and the other side) fails a test — this is the automated guard that the cancelRun-class contract gap (200/409 + took) lacked.",
+
+  "run_card": {
+    "id": 12,
+    "source": "agent_run",
+    "kind": "dream",
+    "title": "每日整理",
+    "status": "running",
+    "trigger": "daily-tick",
+    "enqueued_at": "2026-06-07T09:00:00+08:00",
+    "started_at": "2026-06-07T09:00:05+08:00",
+    "ended_at": null,
+    "progress": 0.5,
+    "progress_label": "阶段 2/4",
+    "summary": ""
+  },
+
+  "runs_list": {
+    "range": "day",
+    "items": [
+      {
+        "id": 12,
+        "source": "agent_run",
+        "kind": "dream",
+        "title": "每日整理",
+        "status": "running",
+        "trigger": "daily-tick",
+        "enqueued_at": "2026-06-07T09:00:00+08:00",
+        "started_at": "2026-06-07T09:00:05+08:00",
+        "ended_at": null,
+        "progress": 0.5,
+        "progress_label": "阶段 2/4",
+        "summary": ""
+      }
+    ],
+    "count": 1
+  },
+
+  "run_detail": {
+    "id": 12,
+    "kind": "dream",
+    "title": "每日整理",
+    "status": "committed",
+    "trigger": "daily-tick",
+    "dispatch_source": "system",
+    "enqueued_at": "2026-06-07T09:00:00+08:00",
+    "started_at": "2026-06-07T09:00:05+08:00",
+    "ended_at": "2026-06-07T09:03:00+08:00",
+    "progress": 1.0,
+    "progress_label": "",
+    "summary": "Appended 3 entries",
+    "error": "",
+    "events": [
+      { "id": 1, "ts": "2026-06-07T09:00:05+08:00", "type": "progress", "payload": { "value": 0.5 } }
+    ]
+  },
+
+  "post_runs": { "run_id": 12, "status": "queued" },
+
+  "cancel_ok": { "run_id": 12, "status": "cancelled" },
+
+  "agent_run_frame": {
+    "stage": "agent_run",
+    "type": "progress",
+    "run_id": 12,
+    "kind": "dream",
+    "value": 0.5,
+    "label": "阶段 2/4"
+  }
+}

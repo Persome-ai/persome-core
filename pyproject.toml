@@ -1,0 +1,138 @@
+[project]
+name = "persome-core"
+version = "0.2.2"
+description = "Local-first screen-context memory for any LLM agent. Captures AX Tree + screenshots, exposes the result via MCP."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Persome contributors" }]
+keywords = ["mcp", "memory", "context", "accessibility", "ax-tree", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "python-frontmatter>=1.1",
+    "mss>=9.0",
+    "Pillow>=10.0",
+    "mcp>=1.0",
+    "fastapi>=0.115",
+    # Directly required: the daemon serves the FastAPI/MCP ASGI app via uvicorn.
+    # Currently pulled in transitively by `mcp`, but we depend on it ourselves —
+    # declare it so a future `mcp` slim-down can't silently break the server.
+    "uvicorn>=0.30",
+    "httpx[socks]>=0.27",
+    "requests>=2.31",
+    "ddgs>=7.0",
+    "beautifulsoup4>=4.12",
+    "tomli>=2.0; python_version < '3.11'",
+    "anthropic>=0.50",
+    "jieba>=0.42",
+    # On-device OCR for AX-poor apps (WeChat/Feishu). PP-OCRv6 via paddleocr on the
+    # paddlepaddle CPU runtime; weights are vendored in ocr_models/ and loaded from a
+    # local dir (no network). Pinned to the versions validated in the tier benchmark.
+    # NB: paddlepaddle ships wheels only for CPython 3.11/3.12 AND arm64 macOS only —
+    # no x86_64 macOS wheel exists for v3.3.1+; x86_64 PyInstaller bundles skip OCR.
+    "paddleocr==3.7.0; platform_machine == 'arm64'",
+    "paddlepaddle==3.3.1; platform_machine == 'arm64'",
+    # NOTE: the optional bge-small-zh slow-pre-gate semantic discriminator
+    # (intent.gate_model, gated on intent_recognizer.pregate_mode) is NOT bundled —
+    # the default pre-gate is "regex". To opt back in, `pip install onnxruntime
+    # tokenizers` and point `[intent_recognizer] pregate_bge_model_dir` at your own
+    # exported model dir; the code fail-opens to regex whenever it is absent.
+    # Semantic fact-space visualization (persome memory-viz / src/persome/viz/sem_layout.py):
+    # community detection (louvain_communities) over the fact k-NN graph. Declared
+    # explicitly — it is only transitively present via paddle on arm64, and the x86_64
+    # (OCR-less) slice has no paddle to pull it in.
+    "networkx>=3.0",
+    # Direct dependency: sem_layout (memory-viz) and the OCR in-process decode
+    # path both import numpy on every platform — do not rely on the transitive
+    # copy that only paddle/onnxruntime happen to pull in.
+    "numpy>=1.26",
+]
+
+[project.scripts]
+persome = "persome.cli:app"
+
+[project.urls]
+Homepage = "https://persome-ai.github.io/persome/"
+Repository = "https://github.com/Persome-ai/persome-core"
+Issues = "https://github.com/Persome-ai/persome-core/issues"
+Documentation = "https://github.com/Persome-ai/persome-core/tree/main/docs"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/persome"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"resources/mac-ax-helper.swift" = "persome/_bundled/mac-ax-helper.swift"
+"resources/build-mac-ax-helper.sh" = "persome/_bundled/build-mac-ax-helper.sh"
+"resources/mac-ax-watcher.swift" = "persome/_bundled/mac-ax-watcher.swift"
+"resources/build-mac-ax-watcher.sh" = "persome/_bundled/build-mac-ax-watcher.sh"
+"resources/mac-audio-capture.swift" = "persome/_bundled/mac-audio-capture.swift"
+"resources/mac-url-handlers.swift" = "persome/_bundled/mac-url-handlers.swift"
+"resources/mac-ax-actuator.swift" = "persome/_bundled/mac-ax-actuator.swift"
+"resources/build-mac-ax-actuator.sh" = "persome/_bundled/build-mac-ax-actuator.sh"
+"resources/mac-virtual-stage.swift" = "persome/_bundled/mac-virtual-stage.swift"
+"resources/build-mac-virtual-stage.sh" = "persome/_bundled/build-mac-virtual-stage.sh"
+
+[dependency-groups]
+dev = [
+    "mutmut>=3.5.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pytest-cov>=5.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["mutants", ".claude/worktrees"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Project root on sys.path so the `tests` package is importable from test
+# modules — including `tests.eval` / `tests.evals` (the eval harnesses; they
+# carry harvested real-usage data, so they are team-local and gitignored).
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+    "macos: tests that require macOS-specific capture / Swift helpers",
+    "integration: tests that touch real LLM providers",
+    "eval: regression evals (slow, non-deterministic)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+exclude = ["mutants/", "\\.claude/worktrees/"]
+
+[tool.coverage.run]
+source = ["src/persome"]
+omit = ["src/persome/_bundled/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
