@@ -9,7 +9,8 @@
 # How verified
 
 <!-- Commands you ran + results. At minimum the offline gate:
-PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration and not eval" -q
+PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration" -q
+uv run ruff check . && uv run ruff format --check .
 uv run python scripts/pii_scan.py
 -->
 

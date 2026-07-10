@@ -4,7 +4,7 @@
   with the ``fake_llm`` fixture: entries round-trip, heuristic fallback on
   malformed JSON, and cache-friendly call shape.
 * Parser-hit telemetry ticks (hit / miss / fallback) are exercised against
-  the real 飞书 fixture.
+  a synthetic Feishu AX tree.
 * :func:`persome.timeline.store._row_to_block` is checked against legacy
   rows that pre-date newer columns to confirm the migration + read path are
   forgiving.
@@ -16,8 +16,6 @@ import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-import pytest
 
 from persome import config as config_mod
 from persome import paths
@@ -46,7 +44,7 @@ def _write_capture(ts: datetime, *, value: str, role: str = "AXTextField") -> Pa
         "trigger": {"event_type": "focus"},
         "window_meta": {
             "app_name": "WeChat",
-            "title": "Chat with 张三",
+            "title": "Chat with Test Contact",
             "bundle_id": "com.tencent.xinWeChat",
         },
         "focused_element": {
@@ -82,9 +80,9 @@ _HAPPY_PAYLOAD = json.dumps(
     {
         "entries": [
             (
-                '[WeChat] Chat with 张三: user replied "好啊，明天下午5点聊一下",'
-                " accepting the proposed time. Involving: 张三."
-                " Helpful intent: meeting with 张三 at 明天下午5点."
+                '[WeChat] Chat with Test Contact: user replied "好啊，明天下午5点聊一下",'
+                " accepting the proposed time. Involving: Test Contact."
+                " Helpful intent: meeting with Test Contact at 明天下午5点."
             )
         ],
     },
@@ -102,9 +100,9 @@ def test_produce_block_round_trips_entries(ac_root: Path, fake_llm) -> None:
 
     assert block is not None
     assert block.entries == [
-        '[WeChat] Chat with 张三: user replied "好啊，明天下午5点聊一下",'
-        " accepting the proposed time. Involving: 张三."
-        " Helpful intent: meeting with 张三 at 明天下午5点."
+        '[WeChat] Chat with Test Contact: user replied "好啊，明天下午5点聊一下",'
+        " accepting the proposed time. Involving: Test Contact."
+        " Helpful intent: meeting with Test Contact at 明天下午5点."
     ]
 
 
@@ -164,22 +162,82 @@ def test_produce_block_records_calls_with_json_mode(ac_root: Path, fake_llm) -> 
 # produce_block_for_window — parser-hit telemetry (Phase 3)
 # ---------------------------------------------------------------------------
 
-_LARK_FIXTURE = (
-    Path(__file__).parent / "fixtures" / "captures" / "lark" / "feed-list-with-meeting.json"
-)
 
-
-def _load_lark_fixture() -> dict:
-    """Load the team-local real 飞书 capture; skip the caller when absent."""
-    if not _LARK_FIXTURE.exists():  # team-local, not distributed on GitHub
-        pytest.skip("team-local capture fixture not present: lark/feed-list-with-meeting.json")
-    return json.loads(_LARK_FIXTURE.read_text(encoding="utf-8"))
+def _lark_capture(ts: datetime | None = None) -> dict:
+    """Return a synthetic Feishu capture with a thread and feed preview."""
+    message_in = {
+        "role": "AXGroup",
+        "domClassList": ["message-item", "message-not-self"],
+        "children": [
+            {
+                "role": "AXGroup",
+                "domClassList": ["message-info-name"],
+                "children": [{"role": "AXStaticText", "value": "测试联系人"}],
+            },
+            {
+                "role": "AXGroup",
+                "domClassList": ["message-content"],
+                "children": [{"role": "AXStaticText", "value": "运行时状态已更新"}],
+            },
+        ],
+    }
+    message_out = {
+        "role": "AXGroup",
+        "domClassList": ["message-item", "message-self"],
+        "children": [
+            {
+                "role": "AXGroup",
+                "domClassList": ["message-content"],
+                "children": [{"role": "AXStaticText", "value": "收到"}],
+            }
+        ],
+    }
+    feed = {
+        "role": "AXGroup",
+        "domClassList": ["a11y_feed_card_item"],
+        "children": [
+            {"role": "AXStaticText", "value": "会议"},
+            {"role": "AXStaticText", "value": "20:00 - 20:30"},
+            {"role": "AXStaticText", "value": "今晚运行时对齐会议"},
+        ],
+    }
+    return {
+        "timestamp": (ts or datetime(2026, 6, 2, 12, 20, tzinfo=_TZ)).isoformat(),
+        "schema_version": 2,
+        "window_meta": {
+            "app_name": "飞书",
+            "title": "飞书",
+            "bundle_id": "com.electron.lark",
+        },
+        "ax_tree": {
+            "apps": [
+                {
+                    "bundle_id": "com.electron.lark",
+                    "is_frontmost": True,
+                    "windows": [
+                        {
+                            "focused": True,
+                            "elements": [
+                                {
+                                    "role": "AXGroup",
+                                    "domClassList": ["chatWindow_chatName"],
+                                    "children": [{"role": "AXStaticText", "value": "测试联系人"}],
+                                },
+                                message_in,
+                                message_out,
+                                feed,
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
 
 
 def _write_lark_capture(ts: datetime) -> Path:
-    """Plant the real 飞书 fixture capture (ax_tree + bundle) at ``ts``."""
-    data = _load_lark_fixture()
-    data["timestamp"] = ts.isoformat()
+    """Plant a synthetic Feishu capture at ``ts``."""
+    data = _lark_capture(ts)
     path = paths.capture_buffer_dir() / f"{_stem(ts)}.json"
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return path
@@ -211,7 +269,7 @@ def _latest_parser_tick() -> sqlite3.Row | None:
 
 
 def test_produce_block_records_parser_hit_for_feishu(ac_root: Path, fake_llm) -> None:
-    """A window with a 飞书 capture whose parser renders → one ``hit`` tick
+    """A window with a synthetic 飞书 capture whose parser renders → one ``hit`` tick
     attributed to bundle com.electron.lark."""
     start = datetime(2026, 6, 2, 12, 20, tzinfo=_TZ)
     _write_lark_capture(start + timedelta(seconds=20))
@@ -521,12 +579,12 @@ def test_produce_block_persists_attention_locus(ac_root: Path, fake_llm) -> None
     assert block is not None
     assert block.attention_rung == "editing"
     assert block.attention_confidence == 0.9
-    assert block.attention_surface == "Chat with 张三"
+    assert block.attention_surface == "Chat with Test Contact"
     with fts.cursor() as conn:
         got = timeline_store.query_recent(conn, limit=1)[0]
     assert got.attention_rung == "editing"
     assert got.attention_confidence == 0.9
-    assert got.attention_surface == "Chat with 张三"
+    assert got.attention_surface == "Chat with Test Contact"
 
 
 def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) -> None:
@@ -570,7 +628,7 @@ def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) ->
                 "2026-06-02T12:21:05+08:00",
                 "[]",
                 "[]",
-                "温子墨: 晚上8点约一个会议",
+                "Test Contact: 晚上8点约一个会议",
             ),
         )
 
@@ -584,26 +642,26 @@ def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) ->
         full = conn.execute("SELECT * FROM timeline_blocks WHERE id = 'tlb-pre-p2'").fetchone()
         block = timeline_store._row_to_block(full)
         assert block.id == "tlb-pre-p2"
-        assert block.focus_excerpt == "温子墨: 晚上8点约一个会议"
+        assert block.focus_excerpt == "Test Contact: 晚上8点约一个会议"
         assert block.focus_structured == ""
 
 
 def test_focus_structured_renders_feishu_fixture() -> None:
-    """Feeding the Phase-1 Feishu fixture's ax_tree + window_meta through
+    """Feeding a synthetic Feishu capture through
     the production parser entrance yields signal the normalizer would lose."""
-    parsed = [(Path("cap.json"), _load_lark_fixture())]
+    parsed = [(Path("cap.json"), _lark_capture())]
     out, bundle, outcome, reason = aggregator._focus_structured_with_outcome(parsed)
     assert out  # non-empty
     assert bundle == "com.electron.lark"
     assert outcome == "hit"
     assert reason is None
     assert "会议" in out
-    assert "沈砚舟" in out
+    assert "测试联系人" in out
     assert 'dir="sent"' in out  # XML message tag for an outgoing turn
     # The two-section XML layout: current thread vs other-conversation previews,
     # kept distinct so N unrelated previews don't read as one conversation. The
-    # current-conversation tag names which conversation is open (沈砚舟).
-    assert '<current_conversation name="沈砚舟">' in out
+    # current-conversation tag names which conversation is open.
+    assert '<current_conversation name="测试联系人">' in out
     assert "<other_conversations" in out
     assert "<preview" in out
 
@@ -651,13 +709,33 @@ def _propagate_timeline_logs(monkeypatch) -> None:
     monkeypatch.setattr(logging.getLogger("persome.timeline"), "propagate", True)
 
 
-_IRON_FIXTURE = (
-    Path(__file__).parent / "fixtures" / "captures" / "lark-iron" / "meeting-window.json"
-)
+def _iron_capture(ts: datetime | None = None) -> dict:
+    return {
+        "timestamp": (ts or datetime(2026, 6, 11, 22, 0, tzinfo=_TZ)).isoformat(),
+        "window_meta": {
+            "app_name": "飞书会议",
+            "title": "飞书会议",
+            "bundle_id": "com.electron.lark.iron",
+        },
+        "ax_tree": {
+            "apps": [
+                {
+                    "bundle_id": "com.electron.lark.iron",
+                    "is_frontmost": True,
+                    "windows": [
+                        {
+                            "focused": True,
+                            "elements": [{"role": "AXGroup", "title": "RootView", "children": []}],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
 
 
 def test_outcome_hit_has_no_miss_reason() -> None:
-    parsed = [(Path("cap.json"), _load_lark_fixture())]
+    parsed = [(Path("cap.json"), _lark_capture())]
     text, bundle, outcome, reason = aggregator._focus_structured_with_outcome(parsed)
     assert text
     assert (bundle, outcome, reason) == ("com.electron.lark", "hit", None)
@@ -675,10 +753,10 @@ def test_outcome_fallback_has_no_miss_reason() -> None:
 
 
 def test_miss_reason_decline_on_iron_meeting_window(monkeypatch, caplog) -> None:
-    """The real lark.iron shape (empty AX tree) → miss with reason=decline, and a
+    """The observed lark.iron shape (empty AX tree) → miss with reason=decline, and a
     structured ``parser_miss`` log line carrying bundle + reason + capture."""
     _propagate_timeline_logs(monkeypatch)
-    data = json.loads(_IRON_FIXTURE.read_text(encoding="utf-8"))
+    data = _iron_capture()
     with caplog.at_level("INFO", logger="persome.timeline"):
         text, bundle, outcome, reason = aggregator._focus_structured_with_outcome(
             [(Path("iron-cap.json"), data)]
@@ -711,7 +789,7 @@ def test_miss_reason_empty_render(monkeypatch, caplog) -> None:
     )
     with caplog.at_level("INFO", logger="persome.timeline"):
         text, bundle, outcome, reason = aggregator._focus_structured_with_outcome(
-            [(Path("cap.json"), _load_lark_fixture())]
+            [(Path("cap.json"), _lark_capture())]
         )
     assert (text, bundle, outcome, reason) == ("", "com.electron.lark", "miss", "empty_render")
     assert any(
@@ -732,7 +810,7 @@ def test_miss_reason_exception(monkeypatch, caplog) -> None:
     monkeypatch.setattr(feishu_mod.FeishuParser, "parse", _boom)
     with caplog.at_level("WARNING", logger="persome.timeline"):
         text, bundle, outcome, reason = aggregator._focus_structured_with_outcome(
-            [(Path("cap.json"), _load_lark_fixture())]
+            [(Path("cap.json"), _lark_capture())]
         )
     assert (text, bundle, outcome, reason) == ("", "com.electron.lark", "miss", "exception")
     assert any(
@@ -749,8 +827,7 @@ def test_produce_block_records_miss_for_iron_meeting_window(ac_root: Path, fake_
     previously an unowned ``fallback`` (the bundle had no registered parser)."""
     start = datetime(2026, 6, 11, 22, 0, tzinfo=_TZ)
     ts = start + timedelta(seconds=20)
-    data = json.loads(_IRON_FIXTURE.read_text(encoding="utf-8"))
-    data["timestamp"] = ts.isoformat()
+    data = _iron_capture(ts)
     (paths.capture_buffer_dir() / f"{_stem(ts)}.json").write_text(
         json.dumps(data, ensure_ascii=False), encoding="utf-8"
     )

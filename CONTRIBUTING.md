@@ -18,10 +18,10 @@ via `PERSOME_LLM_MOCK=1`.
 
 ```bash
 # Offline unit gate (what CI runs; ~2 min)
-PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration and not eval" -q
+PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration" -q
 
 # Single file / test
-PERSOME_LLM_MOCK=1 uv run pytest tests/test_recall.py -q
+PERSOME_LLM_MOCK=1 uv run pytest tests/test_model_snapshot.py -q
 ```
 
 Marker meanings:
@@ -31,17 +31,20 @@ Marker meanings:
 | (unmarked) | nothing (offline, mocked LLM) | yes |
 | `macos` | real macOS AX permission / Swift capture helpers | no |
 | `integration` | real LLM provider credentials | no |
-| `eval` | LLM-judged eval harness (not pass/fail) | no |
 
 ## Lint
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 ```
 
-Please don't run `ruff format` across files you didn't otherwise touch — the
-tree has a pre-existing formatting baseline and wholesale reformatting destroys
-`git blame`.
+To inspect coverage locally:
+
+```bash
+PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration" \
+  --cov=persome --cov-report=term-missing
+```
 
 ## PII gate (required)
 

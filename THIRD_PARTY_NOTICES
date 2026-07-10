@@ -32,7 +32,7 @@ three.js — https://github.com/mrdoob/three.js
 
 MIT License
 
-Copyright © 2010-2024 three.js authors
+Copyright © 2010-2023 three.js authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -51,3 +51,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+================================================================
+PaddleOCR PP-OCRv6 model weights — https://github.com/PaddlePaddle/PaddleOCR
+================================================================
+
+Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0. A copy of the license is
+included in the root LICENSE file distributed with Persome Runtime.

@@ -17,11 +17,14 @@ flowchart LR
     CAP --> TL["one-minute timeline normalizer"]
     TL --> BL[("timeline_blocks")]
     BL --> SES["three-rule session cutter"]
-    SES --> RED["incremental and terminal reducer"]
+    SES --> RED["five-minute active reducer"]
     RED --> EVT[("event daily memory")]
-    EVT --> FIN["shared terminal finalizer"]
+    RED --> ACTIVE["active-window modeling"]
+    ACTIVE --> DELTA["evidence-gated memory_delta"]
+    SES -->|session end| FIN["trailing-window finalizer"]
+    EVT --> FIN
     BL --> FIN
-    FIN --> DELTA["evidence-gated memory_delta"]
+    FIN --> DELTA
     DELTA --> APPLY["deterministic Point and Line apply"]
     FIN --> PAT["repeated behavior memory"]
     APPLY --> EVO[("evomem, Markdown, FTS")]
@@ -51,8 +54,9 @@ flowchart LR
 
 ### Incremental and terminal modeling
 
-Every successful active flush enters the windowed memory-delta path. Every
-reduced session then enters `writer.agent.finalize_session`, regardless of
+Every successful active flush enters `writer.agent.model_active_session` and
+the windowed memory-delta path. Every reduced session then enters
+`writer.agent.finalize_session`, regardless of
 whether the terminal reducer wrote a new entry. This matters when prior flushes
 already covered the whole session or when the reducer exhausted its LLM retries
 and wrote a heuristic fallback.
@@ -141,10 +145,10 @@ readers and writers coexist under WAL mode.
   memory and model, not a second store.
 - **Viewer:** `http://127.0.0.1:8742/model` while the daemon HTTP server is
   active. It reads `/model/graph` and packaged local Three.js assets.
-- **Snapshot:** schema-versioned JSON for paper evaluation and external products.
+- **Snapshot:** schema-versioned JSON for external clients and products.
 
 The Runtime contains no click/type actuation, notification lifecycle, meeting
-audio, or benchmark scorer.
+audio, or evaluation runner.
 
 ## Failure semantics
 

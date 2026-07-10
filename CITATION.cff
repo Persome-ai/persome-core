@@ -1,37 +1,21 @@
 cff-version: 1.2.0
-message: "If you use Persome Runtime in your research, please cite it as below."
+message: "If you use Persome Runtime, please cite this software."
 title: "Persome Runtime"
 type: software
+version: "0.2.2"
 license: Apache-2.0
 repository-code: "https://github.com/Persome-ai/persome-core"
-url: "https://persome-ai.github.io/persome/"
+url: "https://github.com/Persome-ai/persome-core"
 abstract: >-
-  Local-first screen-context memory daemon for macOS. Captures accessibility
-  (AX) tree events, distills them through a deterministic pipeline into
-  persistent Markdown memory plus SQLite (FTS5 + vector) indexes, and exposes
-  the result to any tool-capable agent via MCP.
+  Local-first screen-context memory daemon for macOS. It captures Accessibility
+  tree events, distills them into persistent Markdown memory and SQLite indexes,
+  builds an auditable personal model, and exposes that model through MCP, Chat,
+  and a local browser viewer.
 authors:
-  - family-names: "Li"
-    given-names: "Yingliang"
-    alias: "GouBuliya"
-    email: "a528895030@gmail.com"
-  - name: "the Mens Team"
+  - name: "Persome contributors"
 keywords:
   - memory
   - mcp
   - agent
   - accessibility
   - local-first
-preferred-citation:
-  type: article
-  title: "Persome: Predict Your Next State"
-  authors:
-    - family-names: "Li"
-      given-names: "Yingliang"
-      alias: "GouBuliya"
-      email: "a528895030@gmail.com"
-    - name: "the Mens Team"
-  url: "https://persome-ai.github.io/persome/"
-  doi: "10.6084/m9.figshare.32920460"
-  year: 2026
-  month: 7

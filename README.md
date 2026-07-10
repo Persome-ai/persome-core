@@ -14,13 +14,15 @@ AX-poor apps, optional on-device PP-OCRv6 can read a focused-window screenshot
 without network egress. OCR is bundled but disabled by default; AX capture is
 the default observation path.
 
-It distills captures into durable Markdown memory files plus SQLite with FTS5 and a vector index. The model has explicit layers: a Point is a sourced fact, a Line is an evolution or semantic relation, a Face is a behavioral pattern, a Volume is a cross-domain structure, and Root is the single apex that can be expanded back to its receipts.
-
-The [Personome paper](https://persome-ai.github.io/persome/) states the thesis: an LLM predicts the next token, and a Personome predicts a person's next action, with memory as the weights of your personal model.
+It distills captures into durable Markdown memory files plus SQLite with FTS5
+and an optional dense vector index. The personal model has explicit layers: a
+Point is a sourced fact, a Line is an evolution or semantic relation, a Face is
+a behavioral pattern, a Volume is a cross-domain structure, and Root is the
+single apex that can be expanded back to its receipts.
 
 ## Quickstart
 
-macOS 13+ only. Python 3.11 is managed with uv.
+macOS 13+ only. Python 3.11+ is managed with uv.
 
 ```bash
 git clone https://github.com/Persome-ai/persome-core
@@ -34,8 +36,9 @@ you launch persome from (Terminal, iTerm2, Warp, VS Code, …). Without this gra
 daemon runs but captures nothing.
 
 If you enable `[capture] enable_ocr_fallback = true` or retain screenshots,
-also grant **Screen Recording** to the same executable. Restart Persome after
-changing either macOS permission.
+also grant **Screen Recording** to the same executable. Accessibility is picked
+up automatically while the daemon waits; restart Persome after changing Screen
+Recording permission.
 
 Configure your LLM key (bring your own — nothing ships in the tree):
 
@@ -154,8 +157,8 @@ Swift watcher / trusted ingest
   -> capture buffer
   -> 1-minute timeline blocks
   -> session segmentation (three deterministic rules)
-  -> 5-minute reducer + incremental Point/Line modeling
-  -> terminal trailing-window finalizer
+  -> 5-minute active flush: reducer + incremental Point/Line modeling
+  -> session-end trailing-window finalizer
 
 +-----------------------+
 | Personal model        |
@@ -197,24 +200,9 @@ Swift watcher / trusted ingest
 See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) for the exact egress and trust
 boundary.
 
-## How it compares
-
-| System | What it stores | Relationship to persome |
-| --- | --- | --- |
-| mem0 / Zep / Letta | Conversational memory. | Orthogonal. They remember chats, while persome remembers screen behavior. |
-| screenpipe | Raw screen recordings + OCR. | persome uses structured AX capture distilled into behavioral memory with geometry and forgetting. |
-| Rewind / Limitless | Closed source. | persome-core is Apache-2.0. |
-
 ## Provenance
 
 persome-core is derived from Einsia/OpenChronicle (MIT). Its provenance and retained upstream license notices are preserved in [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
-
-## Paper
-
-[Personome](https://persome-ai.github.io/persome/): an LLM predicts the next token, and a Personome predicts a person's next action, with memory as the weights of your personal model. This repository implements state formation, personal weights, provenance, and model access. It does not claim to ship the paper's next-action predictor. Prediction datasets, metrics, and ablations belong in the separate `persome-bench` repository so evaluation can pin a released Runtime version without coupling benchmark code to private local storage.
-
-The exact claim-to-code boundary is in [PAPER.md](PAPER.md). Reproduce the
-fresh-root synthetic model with [REPRODUCING.md](REPRODUCING.md).
 
 ## Documentation
 
@@ -222,6 +210,7 @@ fresh-root synthetic model with [REPRODUCING.md](REPRODUCING.md).
 - [MODEL_FORMAT.md](MODEL_FORMAT.md) — versioned model snapshot.
 - [MCP.md](MCP.md) — public agent interface.
 - [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) — data, egress, and threat model.
+- [VALIDATION.md](VALIDATION.md) — offline gates and clean-package verification.
 - [docs/INDEX.md](docs/INDEX.md) — maintainer references.
 
 ## License

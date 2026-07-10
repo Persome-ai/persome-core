@@ -36,31 +36,8 @@ resources/mac-ax-actuator
 *.log
 scratch/
 
-# Mutation testing
-mutants/
-mutmut_config.py
 .env
+scripts/pii_names.local.txt
 
 # Claude Code worktrees (local dev isolation)
 .claude/worktrees/
-src/persome/meeting/hotwords.txt
-resources/mac-audio-capture
-
-# Eval artifacts (generated locally + in CI nightly eval)
-eval-report.md
-eval-intent-metrics.json
-
-resources/mac-virtual-stage
-
-# Eval harness + eval data (harvested real-usage captures, goldens, baselines,
-# scenarios) — team-local, never distributed on GitHub.
-# The required PII gate lives in scripts/pii_scan.py (tracked).
-tests/eval/
-tests/evals/
-
-# Harvested real-capture fixtures (real screen content; names anonymized but
-# message text is genuine) — team-local, never distributed on GitHub.
-# Their tests skip cleanly when these are absent (see tests/conftest.py).
-tests/fixtures/captures/lark/
-tests/fixtures/captures/browser/
-tests/fixtures/ocr/

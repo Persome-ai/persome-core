@@ -7,7 +7,7 @@
     },
     "window_meta": {
       "app_name": "Synthetic Editor",
-      "title": "Persome paper runtime",
+      "title": "Persome Runtime documentation",
       "bundle_id": "org.persome.synthetic.editor"
     },
     "ax_tree": {
@@ -19,7 +19,7 @@
           "is_frontmost": true,
           "windows": [
             {
-              "title": "Persome paper runtime",
+              "title": "Persome Runtime documentation",
               "focused": true,
               "elements": [
                 {
@@ -42,7 +42,7 @@
     },
     "window_meta": {
       "app_name": "Synthetic Editor",
-      "title": "Persome paper runtime",
+      "title": "Persome Runtime documentation",
       "bundle_id": "org.persome.synthetic.editor"
     },
     "ax_tree": {
@@ -54,7 +54,7 @@
           "is_frontmost": true,
           "windows": [
             {
-              "title": "Persome paper runtime",
+              "title": "Persome Runtime documentation",
               "focused": true,
               "elements": [
                 {

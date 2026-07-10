@@ -1,3 +1,3 @@
-"""Persome — local-first screen-context memory for LLM agents."""
+"""Persome Runtime: local screen-context memory and personal modeling."""
 
 __version__ = "0.2.2"

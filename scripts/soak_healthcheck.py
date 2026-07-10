@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Soak health-check for the evomem SSOT era.
+"""Long-running store health check for Persome Runtime.
 
 Answers one question: *after the daemon has run for a while (a day), is the
 memory system still internally consistent and usable?* It probes the things
-that can silently rot over time, post SSOT switch (entry_chain and the
-dual-read machinery were retired in PR-7 — chain truth lives in evo_nodes):
+that can silently drift over time:
 
   1. §3.3 integrity suite — the evo_nodes chain invariants (pointer symmetry,
      anti-fork, head consistency, acyclicity) plus the projection
@@ -22,8 +21,8 @@ Plus a smoke test through the same associative entrance used by MCP and Chat.
 Run against a live or sandbox data dir (real memory is at ~/.persome):
 
     # safe sandbox: copy real data, point the env at it, no daemon needed
-    cp -r ~/.persome /tmp/oc-soak
-    PERSOME_ROOT=/tmp/oc-soak uv run python scripts/soak_healthcheck.py
+    cp -r ~/.persome /tmp/persome-soak
+    PERSOME_ROOT=/tmp/persome-soak uv run python scripts/soak_healthcheck.py
 
     # or against live data — STOP the daemon first to avoid a write race:
     persome stop && uv run python scripts/soak_healthcheck.py

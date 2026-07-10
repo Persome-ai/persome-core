@@ -32,8 +32,54 @@ def _client(cfg=None):
     return TestClient(build_api_app(cfg))
 
 
-def _payload(load_capture_fixture, *, with_screenshot: bool = False) -> tuple[dict, dict]:
-    cap = load_capture_fixture("browser", "tabbit-github-issues")
+def _payload(*, with_screenshot: bool = False) -> tuple[dict, dict]:
+    cap = {
+        "timestamp": "2026-07-10T09:00:00+08:00",
+        "trigger": {"event_type": "AXFocusedWindowChanged"},
+        "window_meta": {
+            "app_name": "Synthetic Browser",
+            "title": "Runtime status",
+            "bundle_id": "com.google.Chrome",
+        },
+        "ax_tree": {
+            "apps": [
+                {
+                    "name": "Synthetic Browser",
+                    "bundle_id": "com.google.Chrome",
+                    "is_frontmost": True,
+                    "windows": [
+                        {
+                            "title": "Runtime status",
+                            "focused": True,
+                            "elements": [
+                                {
+                                    "role": "AXTextField",
+                                    "value": "https://example.com/runtime",
+                                },
+                                {
+                                    "role": "AXWebArea",
+                                    "title": "Runtime status",
+                                    "children": [
+                                        {
+                                            "role": "AXStaticText",
+                                            "value": "The local model is ready.",
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+        "ax_metadata": {"synthetic": True},
+        "screenshot": {
+            "image_base64": "aGVsbG8=",
+            "mime_type": "image/jpeg",
+            "width": 1,
+            "height": 1,
+        },
+    }
     payload = {
         "timestamp": cap["timestamp"],
         "trigger": cap.get("trigger") or {"event_type": "AXFocusedWindowChanged"},
@@ -46,10 +92,10 @@ def _payload(load_capture_fixture, *, with_screenshot: bool = False) -> tuple[di
     return cap, payload
 
 
-def test_ingest_writes_and_enriches_byte_compatibly(ac_root, load_capture_fixture) -> None:
+def test_ingest_writes_and_enriches_byte_compatibly(ac_root) -> None:
     from persome.capture import s1_parser
 
-    cap, payload = _payload(load_capture_fixture)
+    cap, payload = _payload()
     resp = _client().post("/captures/ingest", json=payload)
     assert resp.status_code == 200, resp.text
     data = resp.json()["data"]
@@ -72,10 +118,10 @@ def test_ingest_writes_and_enriches_byte_compatibly(ac_root, load_capture_fixtur
     assert out["capture_source"] == "ingest"
 
 
-def test_ingest_readable_via_recent(ac_root, load_capture_fixture) -> None:
+def test_ingest_readable_via_recent(ac_root) -> None:
     from persome.mcp.captures import read_recent_capture
 
-    _, payload = _payload(load_capture_fixture)
+    _, payload = _payload()
     client = _client()
     assert client.post("/captures/ingest", json=payload).status_code == 200
     rec = read_recent_capture()
@@ -83,7 +129,7 @@ def test_ingest_readable_via_recent(ac_root, load_capture_fixture) -> None:
     assert rec["app_name"] == payload["window_meta"]["app_name"]
 
 
-def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root, load_capture_fixture) -> None:
+def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root) -> None:
     from persome.capture import scheduler
 
     seen: list[dict] = []
@@ -94,7 +140,7 @@ def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root, load_captu
     )
     scheduler._set_active_runner(runner)
     try:
-        _, payload = _payload(load_capture_fixture)
+        _, payload = _payload()
         client = _client()
         first = client.post("/captures/ingest", json=payload).json()["data"]
         second = client.post("/captures/ingest", json=payload).json()["data"]
@@ -104,7 +150,7 @@ def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root, load_captu
         assert len(list(paths.capture_buffer_dir().glob("*.json"))) == 1
         # The session hook fires once; a duplicate does not refresh activity.
         assert len(seen) == 1
-        assert seen[0]["event_type"] == "ingest"
+        assert seen[0]["event_type"] == "AXFocusedWindowChanged"
     finally:
         scheduler._set_active_runner(None)
 
@@ -112,14 +158,14 @@ def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root, load_captu
 # ── Hardening (codex adversarial review findings) ────────────────────────────
 
 
-def test_ingest_rejects_path_traversal_timestamp(ac_root, load_capture_fixture) -> None:
+def test_ingest_rejects_path_traversal_timestamp(ac_root) -> None:
     """An untrusted timestamp must not escape the capture buffer or clobber files.
 
     The payload timestamp flows into the capture filename; a non-ISO8601 value (here a
     path-traversal string) is replaced with a safe server timestamp, so the file lands
     INSIDE the buffer with a separator-free stem.
     """
-    _, payload = _payload(load_capture_fixture)
+    _, payload = _payload()
     payload["timestamp"] = "../../../etc/evil"
     resp = _client().post("/captures/ingest", json=payload)
     assert resp.status_code == 200, resp.text
@@ -132,14 +178,14 @@ def test_ingest_rejects_path_traversal_timestamp(ac_root, load_capture_fixture) 
     datetime.fromisoformat(out["timestamp"])  # replaced with a valid ISO8601 stamp
 
 
-def test_ingest_honors_screenshot_optout(ac_root, load_capture_fixture) -> None:
+def test_ingest_honors_screenshot_optout(ac_root) -> None:
     """With [capture].include_screenshot=false the daemon must not persist a pushed image."""
     from persome.api import routes as routes_mod
 
     routes_mod.set_config(None)  # force _get_cfg() → load_config() (reads our config.toml)
     (ac_root / "config.toml").write_text("[capture]\ninclude_screenshot = false\n")
     try:
-        _, payload = _payload(load_capture_fixture, with_screenshot=True)
+        _, payload = _payload(with_screenshot=True)
         assert payload.get("screenshot")  # the fixture really carries a screenshot
         resp = _client().post("/captures/ingest", json=payload)
         assert resp.status_code == 200, resp.text
@@ -149,9 +195,7 @@ def test_ingest_honors_screenshot_optout(ac_root, load_capture_fixture) -> None:
         routes_mod.set_config(None)
 
 
-def test_commit_prebuilt_propagates_write_error_not_dedup(
-    ac_root, load_capture_fixture, monkeypatch
-) -> None:
+def test_commit_prebuilt_propagates_write_error_not_dedup(ac_root, monkeypatch) -> None:
     """A real write failure must PROPAGATE (→ HTTP 500), never be reported as a dedup."""
     from persome.capture import scheduler
 
@@ -161,7 +205,7 @@ def test_commit_prebuilt_propagates_write_error_not_dedup(
         raise OSError("disk full")
 
     monkeypatch.setattr(scheduler, "_write_capture", boom)
-    out = scheduler.build_ingest_capture(load_config().capture, _payload(load_capture_fixture)[1])
+    out = scheduler.build_ingest_capture(load_config().capture, _payload()[1])
     assert out is not None
     with pytest.raises(OSError):
         runner.commit_prebuilt(out)

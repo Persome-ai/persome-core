@@ -191,7 +191,7 @@ def build_api_app(cfg: Config | None = None) -> FastAPI:
     """Construct the FastAPI sub-application."""
     app = FastAPI(
         title="Persome API",
-        description="Local-first screen-context memory — REST API layer.",
+        description="Local-first screen-context memory and personal-model REST API.",
         version=__version__,
         docs_url="/docs",
         redoc_url="/redoc",

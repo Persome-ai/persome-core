@@ -54,7 +54,7 @@ def _seed_sources(conn) -> str:
     entry_id = entries_store.append_entry(
         conn,
         name="event-2026-07-10.md",
-        content="Reviewed the Persome runtime architecture with Alex.",
+        content="Reviewed the Persome runtime architecture with Test Contact.",
         tags=["work"],
     )
     start = datetime(2026, 7, 10, 9, 0, tzinfo=TZ)
@@ -64,7 +64,7 @@ def _seed_sources(conn) -> str:
         timeline_store.TimelineBlock(
             start_time=start,
             end_time=end,
-            entries=["[Editor] revised the paper runtime section with Alex"],
+            entries=["[Editor] revised the Runtime documentation with Test Contact"],
             apps_used=["Editor"],
             capture_count=1,
         ),
@@ -84,8 +84,8 @@ def _seed_sources(conn) -> str:
         """,
         (
             end.isoformat(),
-            "Reviewed the runtime with Alex.",
-            json.dumps({"with": ["Alex"]}),
+            "Reviewed the runtime with Test Contact.",
+            json.dumps({"with": ["Test Contact"]}),
             end.isoformat(),
         ),
     )
@@ -108,7 +108,7 @@ def test_activity_source_emits_only_canonical_auditable_ids(ac_root) -> None:
         events = ActivitySource(
             conn,
             participant_resolver=lambda names, summary: [
-                "person:alex" for _ in [0] if names or "Alex" in summary
+                "person:test-contact" for _ in [0] if names or "Test Contact" in summary
             ],
         ).events()
 
@@ -118,7 +118,7 @@ def test_activity_source_emits_only_canonical_auditable_ids(ac_root) -> None:
         "event:intent:1",
     }
     assert all(event.source_receipt for event in events)
-    assert all(event.participant_ids == ["person:alex"] for event in events)
+    assert all(event.participant_ids == ["person:test-contact"] for event in events)
     assert all(event.stable_id != "event:1" for event in events)
 
 

@@ -42,7 +42,7 @@ configured capabilities:
 2. `OPENAI_BASE_URL` receives embedding inputs when hybrid dense retrieval is
    enabled and a provider is configured.
 3. Chat Web search/page fetch and arbitrary local tools are excluded from the
-   default paper Chat surface. Setting
+   default model-focused Chat surface. Setting
    `[chat] unsafe_local_tools_enabled = true` explicitly exposes them; Web tools
    additionally require the optional `chat` dependency extra.
 4. Additional Chat MCP servers can make their own network calls when the user
@@ -65,7 +65,7 @@ model stages report degradation rather than silently claiming success.
 - `/model/graph` is a raw owner-local inspection surface. Default CLI/MCP model
   export is redacted; the browser viewer is not a safe publication artifact.
 - Exposing the server through a tunnel changes the privacy boundary and is not
-  a supported paper-reproduction requirement.
+  a supported deployment.
 
 ## Agent safety
 
@@ -96,8 +96,8 @@ To remove the entire local model, stop the daemon and delete the configured
 Default snapshot export removes detectable secrets, PII categories, and local
 paths. It does not guarantee that every person, organization, project, or
 writing style is anonymous. Never publish a real snapshot without informed
-consent and a separate anonymization review. Paper fixtures in this repository
-are synthetic and pass the PII gate.
+consent and a separate anonymization review. Committed fixtures in this
+repository are synthetic and pass the PII gate.
 
 ## Threat model
 

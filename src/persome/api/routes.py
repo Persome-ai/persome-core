@@ -253,7 +253,7 @@ def ingest_capture(body: CaptureIngestBody) -> ApiResponse:
     return ApiResponse(data=result)
 
 
-# ─── Paper model ──────────────────────────────────────────────────────────
+# ─── Personal model ───────────────────────────────────────────────────────
 
 
 @router.get("/model", response_class=HTMLResponse, tags=["model"])

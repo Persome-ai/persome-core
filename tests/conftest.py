@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-# Ensure src/ is on path when tests run from mutmut's mutants/ directory
+# Ensure src/ is importable when tests run from the source checkout.
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -99,23 +99,3 @@ def _load_llm_fixture(stage: str, name: str) -> str:
 def load_llm_fixture():
     """Return a callable ``(stage, name) -> str`` for loading LLM fixture JSON."""
     return _load_llm_fixture
-
-
-def _load_capture_fixture(app: str, name: str) -> dict[str, Any]:
-    """Read a capture JSON from ``tests/fixtures/captures/<app>/<name>.json``.
-
-    Harvested real captures are team-local (gitignored — they carry real screen
-    content); when one is absent the calling test skips instead of erroring, so
-    a fresh public clone stays green while team machines run the full set."""
-    import json
-
-    path = Path(__file__).parent / "fixtures" / "captures" / app / f"{name}.json"
-    if not path.exists():
-        pytest.skip(f"team-local capture fixture not present: captures/{app}/{name}.json")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-@pytest.fixture
-def load_capture_fixture():
-    """Return a callable ``(app, name) -> dict`` for loading a capture JSON."""
-    return _load_capture_fixture

@@ -1,7 +1,7 @@
 # Prompt engineering
 
 Prompts in `src/persome/prompts/` are executable behavior. Change them only
-against a stated success criterion and a reproducible test or benchmark.
+against a stated success criterion and a reproducible test.
 
 ## Before editing
 
@@ -11,8 +11,8 @@ against a stated success criterion and a reproducible test or benchmark.
 3. Add or identify a synthetic regression fixture.
 4. Record the current result before changing the prompt.
 
-Paper prediction/QA metrics belong in `persome-bench`; core tests protect state
-formation, provenance, model shape, and safe degradation.
+Core tests protect state formation, provenance, model shape, and safe
+degradation. Larger comparative evaluations remain outside the Runtime.
 
 ## Technique order
 

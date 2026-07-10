@@ -1,19 +1,4 @@
-"""Tests for the generic ``BrowserParser`` and its structured ``WebPage`` output.
-
-Two real browser captures (``tests/fixtures/captures/browser/*.json``):
-
-- ``tabbit-github-issues`` — Tabbit browser on a GitHub Issues list page.
-- ``sunbrowser-claude`` — SunBrowser on a claude.ai conversation page.
-
-Both have a ``None`` *top-level* ``url`` (the browser did not fill it), but the
-full URL is exposed in the address-bar ``AXTextField`` in the window chrome —
-the parser reads it from there. It identifies the page from the
-``AXWebArea.title`` and groups the web-area's readable text into structured
-``WebItem``s (one per GitHub issue row / per conversation turn), merging the AX
-fragments that make up a single visual line. C2: scoping to the web area drops
-the browser chrome; in-page site navigation is not stripped (the structure
-grouping keeps it from drowning the real content).
-"""
+"""Tests for generic browser parsing using synthetic Chromium AX trees."""
 
 from __future__ import annotations
 
@@ -244,18 +229,80 @@ def test_parse_returns_none_for_unmatched_bundle():
 
 
 # --------------------------------------------------------------------------- #
-# BrowserParser — real fixtures                                               #
+# BrowserParser — synthetic full-page fixtures                                #
 # --------------------------------------------------------------------------- #
 
 
-@pytest.fixture
-def tabbit(load_capture_fixture):
-    return load_capture_fixture("browser", "tabbit-github-issues")
+def _text(value: str, *, role: str = "AXStaticText") -> dict:
+    return {"role": role, "value": value, "children": []}
+
+
+def _browser_capture(*, bundle: str, title: str, url: str, children: list[dict]) -> dict:
+    return {
+        "timestamp": "2026-07-10T09:00:00+08:00",
+        "window_meta": {"app_name": "Synthetic Browser", "title": title, "bundle_id": bundle},
+        "ax_tree": {
+            "apps": [
+                {
+                    "name": "Synthetic Browser",
+                    "bundle_id": bundle,
+                    "is_frontmost": True,
+                    "windows": [
+                        {
+                            "focused": True,
+                            "elements": [
+                                {"role": "AXTextField", "value": url, "children": []},
+                                {
+                                    "role": "AXWebArea",
+                                    "title": title,
+                                    "children": children,
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
 
 
 @pytest.fixture
-def sun(load_capture_fixture):
-    return load_capture_fixture("browser", "sunbrowser-claude")
+def tabbit():
+    issue = {
+        "role": "AXGroup",
+        "children": [
+            {"role": "AXHeading", "title": "feat(app): 升级失败回滚", "children": []},
+            {"role": "AXLink", "children": [_text("area:distribution")]},
+            {"role": "AXLink", "children": [_text("type:tech-debt")]},
+            _text("Status: Open."),
+            _text("DemoUserX"),
+            _text("opened"),
+            _text("5 days ago"),
+        ],
+    }
+    return _browser_capture(
+        bundle=_TABBIT_BUNDLE,
+        title="Issues · acme-dev/acme-mono",
+        url="https://github.com/acme-dev/acme-mono/issues",
+        children=[{"role": "AXList", "children": [issue]}],
+    )
+
+
+@pytest.fixture
+def sun():
+    return _browser_capture(
+        bundle=_SUN_BUNDLE,
+        title="Synthetic conversation - Claude",
+        url="claude.ai/chat/00000000-0000-4000-8000-000000000000",
+        children=[
+            {"role": "AXHeading", "title": "You said:", "children": []},
+            _text("How can a local Runtime preserve provenance?"),
+            {"role": "AXHeading", "title": "Claude responded:", "children": []},
+            _text("寻找创新这件事本身"),
+            _text("变成了一套可工业化的流程。"),
+            _text("推荐算法作为可复用的核心基础设施可以保留字节级来源记录。"),
+        ],
+    )
 
 
 def test_tabbit_url_and_title(tabbit):

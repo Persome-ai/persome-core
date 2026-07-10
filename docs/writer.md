@@ -18,7 +18,7 @@ Root.
 | root synthesis | active Face/Volume/profile evidence | at most one level-3 Root |
 | Chat/MCP correction | explicit user/agent request | audited append, supersede, retype, merge, or revoke |
 
-No writer owns product tasks, notifications, actuation, or benchmark labels.
+No writer owns product tasks, notifications, actuation, or evaluation labels.
 
 ## Session reducer
 
@@ -73,7 +73,7 @@ the remaining tail.
 
 When `apply_enabled=false`, the delta remains an audit artifact and the legacy
 classifier regains the terminal durable-fact role. This is a compatibility and
-diagnostic switch, not the documented paper Runtime default.
+diagnostic switch, not the documented Runtime default.
 
 ## Classifier compatibility path
 

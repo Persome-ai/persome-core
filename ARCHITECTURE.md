@@ -3,7 +3,7 @@
 persome-core is a local-first macOS Personal Model Runtime. It owns four
 things: observation, state formation, personal-model construction, and model
 access. Product notification lifecycles, computer-use actuation, meetings,
-task dashboards, and benchmark scoring are outside this repository.
+task dashboards, and evaluation harnesses are outside this repository.
 
 ## Data flow
 
@@ -12,11 +12,13 @@ macOS AX watcher ─┐
 optional local OCR├─> capture buffer -> timeline blocks -> sessions
 trusted ingest API┘                              |
                                                    v
-                                      reducer -> event memory
+                                five-minute reducer -> event memory
                                                    |
                                                    v
-                                        terminal finalizer
-                          classifier + pattern + memory_delta/apply
+                             incremental memory_delta/apply
+                                                   |
+                                 session-end trailing finalizer
+                                  classifier + pattern catch-up
                                                    |
                                                    v
                    Points/Lines -> schema Faces -> Volumes -> Root
@@ -37,9 +39,10 @@ tests can run on Linux with macOS-marked tests deselected.
 3. `timeline/` groups records into one-minute blocks and preserves authored
    evidence.
 4. `session/` cuts bounded work sessions using deterministic rules.
-5. `writer/` reduces sessions, detects repeated behavior, and converts one
-   evidence-gated memory delta into durable model state. The shared terminal
-   finalizer is idempotent across daemon, retry, CLI, and build callers.
+5. `writer/` reduces the active window every five minutes by default and applies
+   an evidence-gated memory delta to durable model state. Session end processes
+   only the trailing window and detects repeated behavior. The shared service
+   is idempotent across daemon, retry, CLI, and build callers.
 
 The detailed stage behavior lives in
 [`docs/capture.md`](docs/capture.md),

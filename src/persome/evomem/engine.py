@@ -25,7 +25,6 @@ import re
 from datetime import UTC, datetime
 
 from ..store import files as files_mod
-from . import vector_recall
 from .chain import expand_evolution_chains
 from .models import MemoryLayer, MemoryNode, ReconcileAction, ReconcileOp
 from .reconciler import Reconciler
@@ -92,7 +91,6 @@ class EvoMemory:
         agent_id: str = "default",
         reconciler: Reconciler | None = None,
         store: NodeStore | None = None,
-        cfg: object | None = None,
     ) -> None:
         # reconciler 可为 None（PR-6b）：反转写口 / 确定性入口不需要 LLM 决策方；
         # 只有 ``add``（reconcile 路径）要求它，调用时缺失则显式报错。
@@ -100,9 +98,6 @@ class EvoMemory:
         self.agent_id = agent_id
         self._reconciler = reconciler
         self._store = store or NodeStore(user_id=user_id, agent_id=agent_id)
-        # 向量召回开关源（默认关 → 行为与改动前逐字节一致）。``None`` 时惰性读全局
-        # config；测试可直接注入 ``SimpleNamespace(evomem_vector_recall_enabled=True)``。
-        self._cfg = cfg
 
     @property
     def store(self) -> NodeStore:
@@ -353,21 +348,6 @@ class EvoMemory:
         hits = self._recall(query, top_k=top_k)
         return expand_evolution_chains(self._store.get_by_ids, hits)
 
-    def _resolve_cfg(self) -> object:
-        """返回向量召回开关源：注入的 ``cfg`` 优先；否则惰性读全局 config。
-
-        惰性 + 失败兜底（任何加载异常 → 一个 falsy 占位，开关判定为关）：召回不该因
-        config 读不到而崩——回退纯 LIKE 是安全默认。
-        """
-        if self._cfg is not None:
-            return self._cfg
-        try:
-            from .. import config as config_mod
-
-            return config_mod.load()
-        except Exception:  # noqa: BLE001 — fail-safe: 读不到 config 即按开关关处理
-            return object()
-
     def _lexical_recall(self, query: str, *, top_k: int) -> list[dict]:
         """整串 + 逐 token 的 LIKE 并集召回，同节点保留最高 score（子串路径，原 ``_recall``）。"""
         best: dict[str, dict] = {}
@@ -383,17 +363,5 @@ class EvoMemory:
         return ranked[:top_k]
 
     def _recall(self, query: str, *, top_k: int) -> list[dict]:
-        """召回入口：LIKE 子串路径 ⊕（开关开时）向量召回 RRF 融合。
-
-        开关默认关 / 模型不可用 / 冷启动 → ``vector_recall.fuse`` 原样返回 LIKE 命中，
-        与改动前逐字节一致。开关开 + 模型可用时，对活跃链头做向量召回并 RRF 融合，
-        让跨措辞的同义召回浮出（LIKE 漏的 paraphrase）。
-        """
-        lexical_hits = self._lexical_recall(query, top_k=top_k)
-        return vector_recall.fuse(
-            query,
-            lexical_hits,
-            top_k=top_k,
-            cfg=self._resolve_cfg(),
-            candidates_provider=self._store.all_latest,
-        )
+        """Recall active nodes through the deterministic substring/token path."""
+        return self._lexical_recall(query, top_k=top_k)

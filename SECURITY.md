@@ -6,7 +6,12 @@ policy, export caveats, and threat model are documented in
 
 ## Reporting a vulnerability
 
-Report vulnerabilities privately to a528895030@gmail.com.
+Use GitHub's private vulnerability reporting:
+https://github.com/Persome-ai/persome-core/security/advisories/new.
+
+Do not include vulnerabilities or personal capture data in a public issue.
+Repository owners must enable private vulnerability reporting before changing
+the repository visibility to public.
 
 Expected acknowledgement: within 72 hours.
 

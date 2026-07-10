@@ -145,11 +145,12 @@ ensure_uv() {
     die "uv not found and neither curl nor wget is available to install it"
   fi
 
-  local candidate
+  local candidate candidate_dir
   for candidate in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
     if [[ -x "${candidate}" ]]; then
       UV_BIN="${candidate}"
-      export PATH="$(dirname "${candidate}"):${PATH}"
+      candidate_dir="$(dirname "${candidate}")"
+      export PATH="${candidate_dir}:${PATH}"
       return
     fi
   done

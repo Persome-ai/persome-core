@@ -189,9 +189,9 @@ If `mcp.auto_start = false`, the daemon intentionally won't host a server; use s
 
 ## A remote MCP client cannot see localhost
 
-The paper Runtime supports loopback HTTP and local stdio. A cloud-hosted MCP
+The Runtime supports loopback HTTP and local stdio. A cloud-hosted MCP
 client cannot reach `127.0.0.1`; exposing Persome through a tunnel changes the
-privacy boundary and is not a supported reproduction requirement. Use a local
+privacy boundary and is not a supported deployment. Use a local
 MCP client or `persome chat`.
 
 ## MCP client connects but doesn't use the memory

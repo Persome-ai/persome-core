@@ -1,15 +1,13 @@
 """Tests for geometry-based OCR structuring (capture/ocr_structure.py).
 
-Pure functions, zero LLM, offline — drive them with constructed boxes and with three
-real WeChat OCR fixtures (tests/fixtures/ocr/*.json) captured on-device.
+Pure functions, zero LLM, offline — driven by constructed boxes and one
+committed synthetic desktop fixture.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 from persome.capture import ocr_structure
 
@@ -19,9 +17,7 @@ WECHAT = "com.tencent.xinWeChat"
 
 def _fixture(name: str) -> dict:
     path = FIXTURES / name
-    if not path.exists():  # team-local real capture, not distributed on GitHub
-        pytest.skip(f"team-local OCR fixture not present: ocr/{name}")
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # ─── constructed-input unit tests ──────────────────────────────────────────────
@@ -89,44 +85,13 @@ class TestFailOpen:
         assert st == {}
 
 
-# ─── real-fixture regression (the 25-sample experiment baseline) ───────────────
-
-
-class TestRealWeChatFixtures:
-    @pytest.mark.parametrize("name", ["wechat_0.json", "wechat_1.json"])
-    def test_main_window_fields_high_quality(self, name):
-        d = _fixture(name)
-        st = ocr_structure.structure(
-            d["texts"], d["boxes"], d["scores"], bundle_id=WECHAT, img_w=d["img_w"]
-        )
-        chats = st["sidebar"]["chats"]
-        # baseline measured in the experiment: time/contact 100%, several chats parsed
-        assert len(chats) >= 8
-        assert all(ocr_structure.TIME.match(c.get("time", "")) for c in chats)
-        assert all(c.get("contact", "").strip() for c in chats)
-        assert all(not ocr_structure.TIME.match(c.get("contact", "")) for c in chats)
-        # the structured markdown is field-labeled and non-empty
-        md = ocr_structure.to_markdown(st)
-        assert "会话列表" in md and "联系人" in md
-
-    def test_moments_small_window_no_crash(self):
-        # 朋友圈 small window: no conversation sidebar — must degrade gracefully, not crash
-        d = _fixture("wechat_2.json")
-        st = ocr_structure.structure(
-            d["texts"], d["boxes"], d["scores"], bundle_id=WECHAT, img_w=d["img_w"]
-        )
-        # may have zero chats (no list in 朋友圈) — that's correct, not a failure
-        assert isinstance(st, dict)
-        ocr_structure.to_markdown(st)  # must not raise
-
-
 # ─── v2: conversation pane sender tagging + title extraction ────────────────────
 
 
 class TestConversationSenders:
     def _chat(self):
         # title (top-left) + my right bubble + peer left bubble + a centered timestamp
-        texts = ["测试联系人", "我在写论文", "记得补上复现实验", "13:27", "已经更新结果"]
+        texts = ["测试联系人", "我在写文档", "记得补上验证步骤", "13:27", "已经更新结果"]
         boxes = [
             [352, 20, 392, 36],  # title, top, left
             [806, 60, 875, 76],  # me (right)
@@ -145,8 +110,8 @@ class TestConversationSenders:
         # title must NOT appear as a message line
         assert all(ln["text"] != "测试联系人" for ln in conv["lines"])
         by_text = {ln["text"]: ln["name"] for ln in conv["lines"]}
-        assert by_text["我在写论文"] == "我"
-        assert by_text["记得补上复现实验"] == "对方"
+        assert by_text["我在写文档"] == "我"
+        assert by_text["记得补上验证步骤"] == "对方"
         assert by_text["已经更新结果"] == "我"
         assert by_text["13:27"] == "timeline"
 
@@ -187,8 +152,8 @@ class TestConversationSenders:
         assert conv["name"] == "测试联系人"
         by_text = {ln["text"]: ln["name"] for ln in conv["lines"]}
         # Spot-check sender tagging against synthetic desktop geometry.
-        assert by_text.get("我在写论文") == "我"
-        assert by_text.get("记得补上复现实验") == "对方"
+        assert by_text.get("我在写文档") == "我"
+        assert by_text.get("记得补上验证步骤") == "对方"
         assert by_text.get("13:27") == "timeline"
         # title lifted out of the message stream
         assert all(ln["text"] != "测试联系人" for ln in conv["lines"])
@@ -201,50 +166,30 @@ class TestConversationSenders:
 class TestAdaptiveDivider:
     """The sidebar width is a user-draggable variable. A fixed `330*scale` lost the whole
     chat list when dragged narrow / leaked conversation into the list when dragged wide
-    (ablation: baseline 3/10 samples 0-list). `_wechat_divider` adapts per-image; these
-    guard the two failure modes against real narrow/wide-sidebar captures.
+    in earlier builds. `_wechat_divider` adapts per image; these synthetic
+    geometries guard both boundary directions.
     """
 
     def _nav(self, img_w):
         return ocr_structure._WECHAT_NAV * (img_w / 960)
 
+    @staticmethod
+    def _items_for_divider(divider: int) -> list[dict]:
+        texts = ["侧栏一", "侧栏二", "侧栏三", "侧栏四", "对话内容"]
+        boxes = [[80, 40 + row * 30, divider - 20, 58 + row * 30] for row in range(4)] + [
+            [divider + 20, 60, divider + 160, 80]
+        ]
+        return ocr_structure._items(texts, boxes, [0.99] * len(texts), 0.5)
+
     def test_divider_tracks_narrow_sidebar(self):
-        d = _fixture("wechat_narrow_sidebar.json")  # true divider ≈ 220 (dragged narrow)
-        items = ocr_structure._items(d["texts"], d["boxes"], d["scores"], 0.5)
-        div = ocr_structure._wechat_divider(items, d["img_w"], self._nav(d["img_w"]))
-        # adaptive divider lands near truth, NOT at the fixed 330*scale (~335)
-        assert abs(div - d["true_divider"]) <= 30, f"divider {div} far from {d['true_divider']}"
+        div = ocr_structure._wechat_divider(self._items_for_divider(220), 960, self._nav(960))
+        assert abs(div - 220) <= 2
         assert div < 300  # would have been ~335 under the old fixed rule
 
     def test_divider_tracks_wide_sidebar(self):
-        d = _fixture("wechat_wide_sidebar.json")  # true divider ≈ 510 (dragged wide)
-        items = ocr_structure._items(d["texts"], d["boxes"], d["scores"], 0.5)
-        div = ocr_structure._wechat_divider(items, d["img_w"], self._nav(d["img_w"]))
-        assert abs(div - d["true_divider"]) <= 30, f"divider {div} far from {d['true_divider']}"
+        div = ocr_structure._wechat_divider(self._items_for_divider(510), 960, self._nav(960))
+        assert abs(div - 510) <= 2
         assert div > 450  # the fixed 330*scale (~335) would split inside the sidebar
-
-    def test_narrow_sidebar_chat_list_not_lost(self):
-        # END-TO-END: the bug was 0 chats when the sidebar was dragged narrow.
-        d = _fixture("wechat_narrow_sidebar.json")
-        st = ocr_structure.structure(
-            d["texts"], d["boxes"], d["scores"], bundle_id=WECHAT, img_w=d["img_w"]
-        )
-        chats = st["sidebar"]["chats"]
-        assert len(chats) > 0, "narrow sidebar must still yield a chat list (was 0 under fixed)"
-        assert all(ocr_structure.TIME.match(c.get("time", "")) for c in chats)
-        assert all(c.get("contact", "").strip() for c in chats)
-
-    def test_wide_sidebar_no_conversation_leak(self):
-        # END-TO-END: the bug was conversation lines leaking into the chat list as
-        # over-long "contacts" when the sidebar was dragged wide.
-        d = _fixture("wechat_wide_sidebar.json")
-        st = ocr_structure.structure(
-            d["texts"], d["boxes"], d["scores"], bundle_id=WECHAT, img_w=d["img_w"]
-        )
-        chats = st["sidebar"]["chats"]
-        assert len(chats) > 0
-        long_contacts = [c for c in chats if len(c.get("contact", "")) > 15]
-        assert not long_contacts, f"conversation leaked into chat list: {long_contacts}"
 
     def test_divider_fail_open_on_single_column(self):
         # no clear gap (single dense column) → fall back to the fixed prior, never crash

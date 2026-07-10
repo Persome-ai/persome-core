@@ -59,8 +59,9 @@ appointed representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-a528895030@gmail.com.
+reported privately through the contact channel in [SECURITY.md](SECURITY.md).
+Prefix the report title with `Code of Conduct` so it reaches the project
+maintainers responsible for enforcement.
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

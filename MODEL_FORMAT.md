@@ -1,6 +1,6 @@
 # Personal model format
 
-The paper-facing model is a versioned, read-only JSON projection of local
+The public personal model is a versioned, read-only JSON projection of local
 Runtime state. CLI export, MCP `get_model_snapshot`, and the `model` object
 inside `/model/graph` expose the same schema; consumers must not import internal
 DAOs or query SQLite tables directly. Redaction policy differs: export and MCP
@@ -95,7 +95,7 @@ No API keys or full configuration values are copied into the manifest.
 ## Stats
 
 `stats` reports Point count, evolution/relation Line counts, Face/Volume/Root
-counts, receipt count, and redaction counts. A complete paper model requires
+counts, receipt count, and redaction counts. Complete geometry requires
 non-empty Points, at least one Line, at least one Face and Volume, and exactly
 one Root.
 
@@ -110,9 +110,9 @@ persome model export --raw  # explicit sensitive-data opt-out
 Default export applies the Runtime's deterministic secret/PII scrubber, removes
 detectable absolute paths and sensitive text categories, writes atomically, and
 sets mode `0600`. This is a sharing aid, not a guarantee that all names or
-organizations are anonymous. Benchmark publication requires separate consent
+organizations are anonymous. Publishing an export requires separate consent
 and anonymization review.
 
 The detailed implementation contract is in
 [`docs/model-contract.md`](docs/model-contract.md). The schema golden is
-[`tests/fixtures/paper_model/model_snapshot_v1.golden.json`](tests/fixtures/paper_model/model_snapshot_v1.golden.json).
+[`tests/fixtures/runtime_model/model_snapshot_v1.golden.json`](tests/fixtures/runtime_model/model_snapshot_v1.golden.json).

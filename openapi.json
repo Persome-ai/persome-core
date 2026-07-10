@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Persome API",
-    "description": "Local-first screen-context memory — REST API layer.",
+    "description": "Local-first screen-context memory and personal-model REST API.",
     "version": "0.2.2"
   },
   "paths": {

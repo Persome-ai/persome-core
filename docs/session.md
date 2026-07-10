@@ -1,7 +1,7 @@
-# Sessions and terminal finalization
+# Sessions and incremental modeling
 
 A session is a bounded stretch of one person's focused activity. It is the
-atomic unit for reduction and terminal personal modeling. Rows live in
+atomic unit for incremental reduction and personal modeling. Rows live in
 `index.db.sessions`; capture dedup ensures an unchanged screen does not keep a
 session alive.
 
@@ -127,6 +127,5 @@ without dropping old product-era columns.
 | Normal deep work reaches timeout | Raise `max_session_hours`, but keep a finite bound. |
 | Event memory is too delayed | Keep `flush_minutes` at 5; lower values are clamped. |
 
-Session boundaries are not paper labels or benchmark ground truth. They are a
-deterministic Runtime compression boundary that `persome-bench` may replay and
-evaluate separately.
+Session boundaries are deterministic Runtime compression boundaries, not
+semantic labels or ground truth.

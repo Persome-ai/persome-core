@@ -19,10 +19,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8
 
       - name: Check tag matches package version
         run: |
@@ -33,10 +33,41 @@ jobs:
             exit 1
           fi
 
+      - name: Verify source tree
+        env:
+          PERSOME_LLM_MOCK: "1"
+        run: |
+          uv lock --check
+          uv sync --all-extras
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest -m "not macos and not integration" -q
+          uv run python scripts/pii_scan.py
+
       - name: Build sdist + wheel
         run: uv build
 
-      - uses: actions/upload-artifact@v4
+      - name: Smoke-test built wheel
+        run: |
+          uv venv /tmp/persome-wheel --python 3.11
+          uv pip install --python /tmp/persome-wheel/bin/python dist/persome_core-*.whl
+          cd /tmp
+          PERSOME_ROOT=/tmp/persome-smoke-root /tmp/persome-wheel/bin/persome --help >/dev/null
+          /tmp/persome-wheel/bin/python - <<'PY'
+          from importlib.resources import files
+
+          bundled = files("persome") / "_bundled"
+          for relative in (
+              "mac-ax-helper.swift",
+              "mac-ax-watcher.swift",
+              "model_assets/three.module.js",
+              "ocr_models/PP-OCRv6_tiny_det/inference.pdiparams",
+              "ocr_models/PP-OCRv6_tiny_rec/inference.pdiparams",
+          ):
+              assert (bundled / relative).is_file(), relative
+          PY
+
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -48,7 +79,7 @@ jobs:
     permissions:
       id-token: write # OIDC for PyPI trusted publishing
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -62,9 +93,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/

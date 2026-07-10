@@ -1,4 +1,4 @@
-"""Paper-facing Point/Line/Face/Volume/Root model contract tests."""
+"""Public Point/Line/Face/Volume/Root model contract tests."""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ from persome.model import (
 from persome.store import fts, schema_faces
 from persome.store import relation_edges as edges
 
-FIXTURE = Path(__file__).parent / "fixtures" / "paper_model" / "model_seed.json"
-GOLDEN = Path(__file__).parent / "fixtures" / "paper_model" / "model_snapshot_v1.golden.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "runtime_model" / "model_seed.json"
+GOLDEN = Path(__file__).parent / "fixtures" / "runtime_model" / "model_snapshot_v1.golden.json"
 
 
 def _seed_model(monkeypatch: pytest.MonkeyPatch) -> dict:
@@ -231,7 +231,7 @@ def test_point_correction_and_delete_keep_auditable_history(ac_root, monkeypatch
     _seed_model(monkeypatch)
     corrected = MemoryNode(
         node_id="point-focus-v3",
-        content="The user now reserves mornings for paper revision.",
+        content="The user now reserves mornings for release review.",
         layer=MemoryLayer.L2_FACT,
         file_name="synthetic/work.md",
         valid_from="2026-07-10T08:00:00+00:00",
@@ -260,7 +260,7 @@ def test_point_correction_and_delete_keep_auditable_history(ac_root, monkeypatch
     deleted_points = {point["id"]: point for point in deleted_snapshot["points"]}
     assert deleted_points["point-focus-v3"]["status"] == "shadow"
     assert deleted_points["point-focus-v2"]["content"] == (
-        "The user reserves mornings for paper writing and review."
+        "The user reserves mornings for focused writing and review."
     )
 
 

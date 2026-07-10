@@ -114,7 +114,7 @@ def _run_stage(
 
 
 def _run_pipeline(cfg: Any) -> PipelineOutcome:
-    """Run the existing one-shot stage functions in paper-model order."""
+    """Run the one-shot structural model stages in dependency order."""
     from .. import vectors_tick
     from ..session.tick import _run_evomem_enrichment_once
     from ..writer import agent as writer_agent

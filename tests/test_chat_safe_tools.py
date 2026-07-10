@@ -1,4 +1,4 @@
-"""The paper Chat surface must not silently acquire shell or network access."""
+"""The default Chat surface must not silently acquire shell or network access."""
 
 from __future__ import annotations
 

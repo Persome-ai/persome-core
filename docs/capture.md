@@ -145,8 +145,8 @@ When `encrypt_screenshots=true`, `PERSOME_SCREENSHOT_KEY` seals them with
 AES-256-GCM. `install.sh` generates this machine-local key automatically and
 preserves it across reinstalls. If the key is absent or malformed, persistence
 fails closed by omitting pixels while retaining AX text and metadata. Set
-`include_screenshot=false` for the strictest paper run; OCR can still take an
-ephemeral focused screenshot when enabled.
+`include_screenshot=false` when persistent pixels are not required; OCR can
+still take an ephemeral focused screenshot when enabled.
 
 ## Buffer hygiene — tiered retention
 

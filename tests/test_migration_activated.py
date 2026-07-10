@@ -1,4 +1,4 @@
-"""Personal-model schema production is active in the paper runtime."""
+"""Personal-model schema production is active in the Runtime."""
 
 from __future__ import annotations
 

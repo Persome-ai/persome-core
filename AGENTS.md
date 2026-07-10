@@ -14,14 +14,12 @@ This repository owns:
 
 - AX capture and optional, local, subprocess-isolated OCR;
 - timeline and deterministic session formation;
-- session reduction and terminal personal modeling;
+- incremental session reduction and personal modeling;
 - Markdown/SQLite/evomem storage, provenance, correction, and forgetting;
 - the versioned model snapshot, local viewer, Chat, REST, and MCP.
 
 It does not own product dashboards, notification/task lifecycles, computer-use
-actuation, meeting audio, or benchmark datasets and metrics. Paper evaluation
-lives in a separate `persome-bench` repository and consumes a pinned snapshot
-contract.
+actuation, meeting audio, or evaluation datasets and runners.
 
 - macOS 13+ for live capture; Python 3.11+ via `uv`.
 - Package: `src/persome/`; CLI: `persome = "persome.cli:app"`.
@@ -33,7 +31,7 @@ contract.
 uv sync --all-extras
 bash install.sh
 
-PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration and not eval"
+PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration"
 uv run ruff check .
 uv run ruff format --check .
 uv run python scripts/pii_scan.py
@@ -70,26 +68,27 @@ mac-ax-watcher or trusted ingest
   -> capture buffer
   -> one-minute timeline blocks
   -> deterministic session cuts
-  -> reducer / event memory
-  -> terminal finalizer
+  -> five-minute active reducer / event memory
+  -> incremental Point/Line modeling
+  -> session-end trailing-window finalizer
        -> classifier compatibility/incremental pass
        -> pattern detector
        -> evidence-gated memory_delta + deterministic apply
-  -> daily/explicit model build
+  -> debounced/daily/explicit structural model build
        -> cases -> Faces -> Volumes -> Root
   -> snapshot / MCP / Chat / localhost viewer
 ```
 
-The terminal finalizer in `writer/agent.py` is shared by the daemon callback,
-retry loop, safety net, CLI recovery, and model build. `sessions.modeled_at` plus
-`session-model.lock` make it cross-process idempotent. Do not add another
-session modeling entrance.
+The windowed modeling service in `writer/agent.py` is shared by active flush,
+session-end finalization, retry, safety-net, CLI recovery, and model build.
+`sessions.delta_end`, `sessions.modeled_at`, and `session-model.lock` make it
+cross-process idempotent. Do not add another session-modeling entrance.
 
 ## Documentation map
 
 | Need | Document |
 |---|---|
-| Paper/core/bench boundary | `PAPER.md`, `REPRODUCING.md` |
+| Installation and release verification | `README.md`, `VALIDATION.md` |
 | Public Runtime flow | `ARCHITECTURE.md` |
 | Snapshot contract | `MODEL_FORMAT.md`, `docs/model-contract.md` |
 | Public MCP contract | `MCP.md`, `docs/mcp.md` |
@@ -97,8 +96,7 @@ session modeling entrance.
 | Configuration and secrets | `docs/config.md`, `docs/runtime-internals.md` |
 | Privacy boundary | `SECURITY_PRIVACY.md` |
 
-Update matching docs in the same change as behavior. Research notes under
-`docs/research/` are non-normative background.
+Update matching docs in the same change as behavior.
 
 ## Invariants
 

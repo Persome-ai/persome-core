@@ -359,8 +359,7 @@ class SearchConfig:
     default_top_k: int = 5
     # Hybrid semantic retrieval (BM25 ⊕ dense te3-large → RRF). Default ON, but the daemon only
     # activates it when an embeddings endpoint (OPENAI_*) is configured — otherwise it stays
-    # byte-identical BM25 (no vectors written/queried). Benchmark claims live in
-    # persome-bench; core keeps only the runtime switch and deterministic fallback.
+    # byte-identical BM25 (no vectors written or queried).
     hybrid_enabled: bool = True
     hybrid_recall_n: int = 50  # BM25/dense candidate pool depth before RRF
     hybrid_rrf_k: int = 20  # RRF fusion constant
@@ -465,8 +464,8 @@ class ChatConfig:
     # claude-haiku-4+, deepseek-reasoner via /anthropic gateway, etc.).
     # Streamed back to the UI as ``type: reasoning`` SSE frames.
     thinking_budget: int = 0
-    # Shell, arbitrary filesystem, and web tools expand Chat beyond the paper
-    # runtime's model-access boundary. They are available only by explicit opt-in.
+    # Shell, arbitrary filesystem, and web tools expand Chat beyond the default
+    # model-access boundary. They are available only by explicit opt-in.
     unsafe_local_tools_enabled: bool = False
     # MCP client connections: the chat agent connects to these as a client so the
     # model can invoke their tools alongside the built-in tool set.
@@ -497,7 +496,6 @@ class Config:
     # Cross-cutting runtime/model feature flags. Capture privacy controls live
     # under CaptureConfig because capture workers receive that object directly.
     api_require_local_origin: bool = True
-    evomem_vector_recall_enabled: bool = True
     # Entity and reusable-case enrichment inside the shared model build.
     person_graph_enabled: bool = True
     case_extraction_enabled: bool = True
@@ -645,7 +643,6 @@ def load(path: Path | None = None) -> Config:
         # Competitive-enhancement flat toggles (spec 2026-06-23): top-level TOML
         # scalars so config.toml can override the safe defaults.
         api_require_local_origin=bool(raw.get("api_require_local_origin", True)),
-        evomem_vector_recall_enabled=bool(raw.get("evomem_vector_recall_enabled", True)),
         person_graph_enabled=bool(raw.get("person_graph_enabled", True)),
         case_extraction_enabled=bool(raw.get("case_extraction_enabled", True)),
         relation_extraction_enabled=bool(raw.get("relation_extraction_enabled", False)),
@@ -677,7 +674,6 @@ DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
 
 # Cross-cutting runtime/model switches.
 api_require_local_origin = true
-evomem_vector_recall_enabled = true
 person_graph_enabled = true
 case_extraction_enabled = true
 relation_extraction_enabled = false

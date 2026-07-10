@@ -36,7 +36,7 @@ from .store import fts, index_md
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Local-first screen-context memory for LLM agents.",
+    help="Local-first screen-context memory and personal modeling for macOS.",
 )
 console = Console()
 
@@ -2254,7 +2254,7 @@ def debug_chat_captures(
         help="Maximum output bytes (most recent content kept on truncation).",
     ),
 ) -> None:
-    """Inspect drill_chat_captures output against real captured data.
+    """Inspect reconstructed chat output against locally captured data.
 
     Queries the live index.db and prints the reconstructed conversation with
     scroll-gap markers, so you can verify what the classifier will see.

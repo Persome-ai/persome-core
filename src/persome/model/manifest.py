@@ -1,4 +1,4 @@
-"""Reproducibility metadata for paper-facing model builds and snapshots."""
+"""Reproducibility metadata for model builds and snapshots."""
 
 from __future__ import annotations
 

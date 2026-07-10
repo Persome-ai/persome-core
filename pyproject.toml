@@ -1,12 +1,13 @@
 [project]
 name = "persome-core"
 version = "0.2.2"
-description = "Local-first screen-context memory for any LLM agent. Captures AX Tree + screenshots, exposes the result via MCP."
+description = "Local-first macOS Runtime for screen-context memory, personal modeling, Chat, and MCP."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES"]
 authors = [{ name = "Persome contributors" }]
-keywords = ["mcp", "memory", "context", "accessibility", "ax-tree", "agent"]
+keywords = ["mcp", "memory", "personal-model", "accessibility", "macos", "agent"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -25,19 +26,25 @@ dependencies = [
     "Pillow>=10.0",
     "mcp>=1.0",
     "fastapi>=0.115",
+    # Imported directly by the local API/streaming surface. Declare these instead
+    # of relying on FastAPI or MCP to keep pulling them transitively.
+    "pydantic>=2.7",
+    "starlette>=0.40",
+    "sse-starlette>=2.1",
     # Directly required: the daemon serves the FastAPI/MCP ASGI app via uvicorn.
     # Currently pulled in transitively by `mcp`, but we depend on it ourselves —
     # declare it so a future `mcp` slim-down can't silently break the server.
     "uvicorn>=0.30",
     "httpx[socks]>=0.27",
-    "tomli>=2.0; python_version < '3.11'",
+    "certifi>=2024.2",
+    "cryptography>=42.0",
     "anthropic>=0.50",
     # On-device OCR for AX-poor apps (WeChat/Feishu). PP-OCRv6 via paddleocr on the
     # paddlepaddle CPU runtime; weights are vendored in ocr_models/ and loaded from a
     # local dir (no network). Paddle's macOS wheel is arm64-only; Intel installs
     # keep the AX pipeline and degrade cleanly without local OCR.
-    "paddleocr==3.7.0; platform_machine == 'arm64'",
-    "paddlepaddle==3.3.1; platform_machine == 'arm64'",
+    "paddleocr==3.7.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    "paddlepaddle==3.3.1; platform_system == 'Darwin' and platform_machine == 'arm64'",
     # Vector retrieval and the OCR in-process decode path import numpy directly;
     # do not rely on the transitive copy pulled in by Paddle on arm64.
     "numpy>=1.26",
@@ -53,7 +60,7 @@ chat = [
 persome = "persome.cli:app"
 
 [project.urls]
-Homepage = "https://persome-ai.github.io/persome/"
+Homepage = "https://github.com/Persome-ai/persome-core"
 Repository = "https://github.com/Persome-ai/persome-core"
 Issues = "https://github.com/Persome-ai/persome-core/issues"
 Documentation = "https://github.com/Persome-ai/persome-core/tree/main/docs"
@@ -76,19 +83,17 @@ packages = ["src/persome"]
 
 [dependency-groups]
 dev = [
-    "mutmut>=3.5.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=7.1.0",
+    "httpx2>=2.0",
     "ruff>=0.6",
-    "mypy>=1.10",
-    "pytest-cov>=5.0",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = ["mutants", ".claude/worktrees"]
+exclude = [".claude/worktrees"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
@@ -97,24 +102,13 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Project root on sys.path so the `tests` package is importable from test
-# modules — including `tests.eval` / `tests.evals` (the eval harnesses; they
-# carry harvested real-usage data, so they are team-local and gitignored).
+# modules and subprocesses.
 pythonpath = ["."]
 asyncio_mode = "auto"
 markers = [
     "macos: tests that require macOS-specific capture / Swift helpers",
     "integration: tests that touch real LLM providers",
-    "eval: regression evals (slow, non-deterministic)",
 ]
-
-[tool.mypy]
-python_version = "3.11"
-strict = false
-ignore_missing_imports = true
-disallow_untyped_defs = true
-warn_return_any = true
-warn_unused_ignores = true
-exclude = ["mutants/", "\\.claude/worktrees/"]
 
 [tool.coverage.run]
 source = ["src/persome"]

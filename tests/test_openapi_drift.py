@@ -1,6 +1,6 @@
 """Guard: committed ``openapi.json`` must match the live FastAPI schema.
 
-The paper runtime publishes this file as its canonical HTTP contract. If routes
+The Runtime publishes this file as its canonical HTTP contract. If routes
 or response models change without regenerating it, clients and documentation
 silently drift.
 

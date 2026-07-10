@@ -36,7 +36,7 @@ def logs_dir() -> Path:
 
 
 def exports_dir() -> Path:
-    """Generated, user-shareable artifacts such as the paper model snapshot."""
+    """Generated, user-shareable artifacts such as model snapshots."""
     return root() / "exports"
 
 

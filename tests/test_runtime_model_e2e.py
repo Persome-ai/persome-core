@@ -1,4 +1,4 @@
-"""Fresh-root paper path: capture ingest through model build and export."""
+"""Fresh-root Runtime path: capture ingest through model build and export."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from persome.session.manager import SessionManager
 from persome.store import fts
 from persome.timeline import tick as timeline_tick
 
-FIXTURE = Path(__file__).parent / "fixtures" / "paper_model" / "captures.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "runtime_model" / "captures.json"
 TZ = timezone(timedelta(hours=8))
 
 
@@ -43,11 +43,11 @@ def _classifier_script() -> list[SimpleNamespace]:
             "The runtime exposes the personal model through MCP.",
             "The runtime keeps model data local by default.",
         ],
-        "project-publication.md": [
-            "The paper maps state formation to runtime artifacts.",
-            "The release uses synthetic reproducibility fixtures.",
+        "project-release.md": [
+            "The runtime maps state formation to inspectable artifacts.",
+            "The release uses synthetic verification fixtures.",
             "The model export carries provenance receipts.",
-            "The benchmark consumes a versioned snapshot contract.",
+            "External clients consume a versioned snapshot contract.",
         ],
     }
     for path, facts in projects.items():
@@ -57,7 +57,7 @@ def _classifier_script() -> list[SimpleNamespace]:
                 {
                     "path": path,
                     "description": f"Synthetic facts for {path}",
-                    "tags": ["project", "paper-fixture"],
+                    "tags": ["project", "runtime-fixture"],
                 },
             )
         )
@@ -65,7 +65,7 @@ def _classifier_script() -> list[SimpleNamespace]:
             ("append", {"path": path, "content": fact, "tags": ["fact", "synthetic"]})
             for fact in facts
         )
-    calls.append(("commit", {"summary": "wrote synthetic paper model facts"}))
+    calls.append(("commit", {"summary": "wrote synthetic runtime model facts"}))
     return [
         _response(tool_calls=[_tool_call(name, args, f"classifier-{index}")])
         for index, (name, args) in enumerate(calls)
@@ -121,7 +121,7 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
         assert client.post("/captures/ingest", json=captures[0]).status_code == 200
         clock_state[0] = datetime(2026, 7, 10, 9, 2, tzinfo=TZ)
         assert client.post("/captures/ingest", json=captures[1]).status_code == 200
-        assert manager.force_end(reason="paper-fixture") is not None
+        assert manager.force_end(reason="runtime-fixture") is not None
     finally:
         scheduler._set_active_runner(None)
         routes_mod.set_config(None)
@@ -139,7 +139,7 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
         ),
         _response(
             payload=_schema_payload(
-                "Publication work favors reproducible artifacts.",
+                "Release work favors reproducible artifacts.",
                 "Future releases will ship replayable fixtures.",
             )
         ),
@@ -147,8 +147,8 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
     fake_llm.add_script("schema_miner", [*schema_responses, *schema_responses])
     collision = {
         "detected": True,
-        "central_proposition": "The user turns personal context into inspectable research artifacts.",
-        "supporting_summary": "Runtime and publication behavior share an auditability preference.",
+        "central_proposition": "The user turns personal context into inspectable runtime artifacts.",
+        "supporting_summary": "Runtime and release behavior share an auditability preference.",
         "expected_inferences": ["Future model changes will require receipts and replay."],
         "confidence": 0.92,
     }
@@ -166,8 +166,8 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
             datetime(2026, 7, 10, 9, 5, 2, tzinfo=UTC),
         ]
     )
-    first = run_model_build(cfg, trigger="paper-fixture", now=lambda: next(moments))
-    second = run_model_build(cfg, trigger="paper-fixture", now=lambda: next(moments))
+    first = run_model_build(cfg, trigger="runtime-fixture", now=lambda: next(moments))
+    second = run_model_build(cfg, trigger="runtime-fixture", now=lambda: next(moments))
     assert first.status == "degraded"
     with fts.cursor() as conn:
         face_debug = [
@@ -199,7 +199,7 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
         "stages": second.stages,
     }
 
-    output = ac_root / "exports" / "paper-model.json"
+    output = ac_root / "exports" / "runtime-model.json"
     with fts.cursor() as conn:
         exported = export_snapshot(
             conn,

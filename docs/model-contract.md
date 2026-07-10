@@ -1,8 +1,8 @@
 # Model snapshot contract
 
-`persome.model` is the paper-facing, read-only projection of the model stored by the runtime.
+`persome.model` is the public, read-only projection of the model stored by the Runtime.
 It does not define a second model or run capture/build jobs. It turns the current SQLite state into
-one versioned JSON object that a viewer, MCP adapter, or benchmark can consume without importing
+one versioned JSON object that a viewer, MCP adapter, or external client can consume without importing
 internal DAOs.
 
 The operator surface is:
@@ -63,6 +63,6 @@ The `model` object in loopback `/model/graph` uses the same schema but raw local
 content so the owner can inspect the real model. It is not a publication export.
 
 The synthetic contract fixture lives at
-[`tests/fixtures/paper_model/model_seed.json`](../tests/fixtures/paper_model/model_seed.json). It
+[`tests/fixtures/runtime_model/model_seed.json`](../tests/fixtures/runtime_model/model_seed.json). It
 contains no screenshots or harvested user data and exercises Point, evolution Line, relation Line,
 Face, Volume, Root, and receipt projection from a fresh temporary data root.

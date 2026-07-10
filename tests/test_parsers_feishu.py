@@ -1,9 +1,4 @@
-"""Tests for the per-app parser layer and the Feishu parser.
-
-Fixtures (``tests/fixtures/captures/lark/*.json``) are two real Feishu captures
-in feed-list state. They are loaded via the ``load_capture_fixture`` conftest
-helper; only the ``ax_tree`` is exercised here.
-"""
+"""Tests for the per-app parser layer and Feishu parser using synthetic AX trees."""
 
 from __future__ import annotations
 
@@ -186,13 +181,13 @@ def test_get_parser_unknown_or_none_returns_none():
 
 
 # --------------------------------------------------------------------------- #
-# FeishuParser — feed-list state (real fixtures)                              #
+# FeishuParser — synthetic feed and open-thread state                         #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.fixture
-def feed_meeting(load_capture_fixture):
-    return load_capture_fixture("lark", "feed-list-with-meeting")
+def feed_meeting():
+    return _synthetic_lark_capture()
 
 
 def test_feishu_parses_feed_meeting_card(feed_meeting):
@@ -208,8 +203,8 @@ def test_feishu_parses_feed_meeting_card(feed_meeting):
     # survive even though a conversation is also open in the main pane.
     assert "会议" in rendered
     assert "20:00 - 20:30" in rendered
-    assert "沈砚舟" in rendered
-    # This fixture has a conversation open in the main pane, so the result mixes
+    assert "测试联系人" in rendered
+    # The synthetic tree has a conversation open in the main pane, so the result mixes
     # outgoing thread bubbles with incoming feed previews — it is no longer
     # all-incoming the way a pure feed-list state would be.
     assert any(m.direction == "outgoing" for m in conv.messages)
@@ -231,15 +226,15 @@ def test_feishu_extracts_sender_and_timestamp(feed_meeting):
     parser = parsers.get_parser(_LARK_BUNDLE)
     conv = parser.parse(feed_meeting["ax_tree"], window_title="飞书")
     assert conv is not None
-    # The "沈砚舟 / 12:20 / 我超" feed-preview card lives in ``previews`` (a
+    # The "测试联系人 / 12:20 / 收到" feed-preview card lives in ``previews`` (a
     # different conversation, not the current thread): header split into sender
     # + timestamp.
     hit = next(
-        (m for m in conv.previews if m.sender == "沈砚舟" and m.timestamp_text == "12:20"),
+        (m for m in conv.previews if m.sender == "测试联系人" and m.timestamp_text == "12:20"),
         None,
     )
     assert hit is not None
-    assert "我超" in hit.body
+    assert "收到" in hit.body
 
 
 def test_feishu_thread_title_is_the_open_conversation_name(feed_meeting):
@@ -251,8 +246,8 @@ def test_feishu_thread_title_is_the_open_conversation_name(feed_meeting):
     parser = parsers.get_parser(_LARK_BUNDLE)
     conv = parser.parse(feed_meeting["ax_tree"], window_title="飞书")
     assert conv is not None
-    assert conv.thread_title == "沈砚舟"  # the open 1:1 peer, not "飞书"
-    assert '<current_conversation name="沈砚舟">' in conv.render()
+    assert conv.thread_title == "测试联系人"  # the open 1:1 peer, not "飞书"
+    assert '<current_conversation name="测试联系人">' in conv.render()
 
 
 def test_feishu_thread_title_falls_back_to_window_title():
@@ -272,10 +267,10 @@ def test_feishu_drops_badge_tokens_from_sender(feed_meeting):
     parser = parsers.get_parser(_LARK_BUNDLE)
     conv = parser.parse(feed_meeting["ax_tree"], window_title="飞书")
     assert conv is not None
-    # The "刘小舟 / 智能体 / 11:28" bot card (a feed preview): 智能体 badge dropped.
-    hit = next((m for m in conv.previews if m.sender and "刘小舟" in m.sender), None)
+    # The "日程助手 / 智能体 / 11:28" card drops the badge from its sender.
+    hit = next((m for m in conv.previews if m.sender and "日程助手" in m.sender), None)
     assert hit is not None
-    assert hit.sender == "刘小舟"
+    assert hit.sender == "日程助手"
     assert "日程已创建" in hit.body
 
 
@@ -286,9 +281,9 @@ def test_feishu_body_truncation(feed_meeting):
     assert all(len(m.body) <= 500 for m in conv.messages)
 
 
-def test_feishu_second_fixture_parses(load_capture_fixture):
+def test_feishu_synthetic_capture_parses():
     parser = parsers.get_parser(_LARK_BUNDLE)
-    cap = load_capture_fixture("lark", "feed-list-2")
+    cap = _synthetic_lark_capture()
     conv = parser.parse(cap["ax_tree"], window_title="飞书")
     assert conv is not None
     assert conv.messages
@@ -520,14 +515,14 @@ def test_feishu_open_thread_drops_edit_and_expand_chrome():
 
 # --------------------------------------------------------------------------- #
 # FeishuParser — routing: open-thread is primary, feed is secondary            #
-# (the real bug: feed cards are always present, so the old router never        #
+# (feed cards are always present, so the old router never                       #
 #  parsed the open conversation)                                              #
 # --------------------------------------------------------------------------- #
 
 
 @pytest.fixture
-def open_thread(load_capture_fixture):
-    return load_capture_fixture("lark", "open-thread-dominant")
+def open_thread():
+    return _synthetic_lark_capture()
 
 
 def test_feishu_parses_open_thread_main_pane(open_thread):
@@ -536,7 +531,7 @@ def test_feishu_parses_open_thread_main_pane(open_thread):
     conv = parser.parse(open_thread["ax_tree"], window_title="飞书")
     assert conv is not None
     rendered = conv.render()
-    # A real line from the open conversation's main pane (was invisible before
+    # A synthetic line from the open conversation's main pane (was invisible before
     # the routing fix because the always-present feed sidebar shadowed it).
     # Pick one that is within the kept thread tail.
     assert "在做意图识别还有记忆的整合" in rendered or "calendar" in rendered
@@ -604,6 +599,38 @@ def _feed_card(*texts):
     )
 
 
+def _synthetic_lark_capture() -> dict:
+    """A complete synthetic AX tree with a thread, feed cards, and filter tabs."""
+    elements = [
+        _node(
+            classes=["chatWindow_chatName"],
+            children=[_node(role="AXStaticText", value="测试联系人")],
+        ),
+        _bubble("message-not-self", sender="测试联系人", body="在做记忆整合"),
+        _bubble("message-self", body="calendar 接口已经更新"),
+        _node(
+            classes=["a11y_feed_filter_list_item"],
+            children=[_node(role="AXStaticText", value=label) for label in _FILTER_TAB_LABELS],
+        ),
+        _feed_card("测试联系人", "12:20", "收到"),
+        _feed_card("日程助手", "智能体", "11:28", "日程已创建"),
+        _feed_card("会议", "20:00 - 20:30", "今晚运行时对齐会议"),
+    ]
+    return {
+        "timestamp": "2026-07-10T09:00:00+08:00",
+        "window_meta": {"app_name": "飞书", "title": "飞书", "bundle_id": _LARK_BUNDLE},
+        "ax_tree": {
+            "apps": [
+                {
+                    "bundle_id": _LARK_BUNDLE,
+                    "is_frontmost": True,
+                    "windows": [{"focused": True, "elements": elements}],
+                }
+            ]
+        },
+    }
+
+
 def test_feishu_long_thread_does_not_starve_feed_meeting_preview():
     """A long open conversation must not crowd out the feed meeting preview.
 
@@ -658,16 +685,28 @@ def test_get_parser_routes_lark_iron_bundle():
     assert _IRON_BUNDLE in parser.bundle_ids
 
 
-def test_feishu_declines_iron_meeting_window(load_capture_fixture):
-    """Real iron capture shape (sanitized): the 飞书会议 window exposes an empty
+def test_feishu_declines_iron_meeting_window():
+    """The observed iron shape exposes an empty
     AX tree — a single bare RootView AXGroup, no text, no a11y_* classes
     (forensics 2026-06-12: 46/46 live captures). The parser must decline
     (None), which telemetry records as miss/decline — the correct verdict for
     an AX-opaque window, distinguishable from breakage via the miss reason."""
-    cap = load_capture_fixture("lark-iron", "meeting-window")
-    assert cap["window_meta"]["bundle_id"] == _IRON_BUNDLE
+    tree = {
+        "apps": [
+            {
+                "bundle_id": _IRON_BUNDLE,
+                "is_frontmost": True,
+                "windows": [
+                    {
+                        "focused": True,
+                        "elements": [{"role": "AXGroup", "title": "RootView", "children": []}],
+                    }
+                ],
+            }
+        ]
+    }
     parser = parsers.get_parser(_IRON_BUNDLE)
-    assert parser.parse(cap["ax_tree"], window_title="飞书会议") is None
+    assert parser.parse(tree, window_title="飞书会议") is None
 
 
 def test_feishu_parses_lark_dom_under_iron_bundle():

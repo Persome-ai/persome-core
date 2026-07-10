@@ -948,10 +948,10 @@ def build_server(cfg: Config | None = None):  # type: ignore[no-untyped-def]
     def get_model_snapshot(redact: bool = True) -> str:
         """Return the versioned Point/Line/Face/Volume/Root personal-model snapshot.
 
-        This is the stable paper/runtime boundary used by viewers and benchmarks. It includes
-        build metadata, provenance receipts, geometry counts, and the singleton Root. The call is
-        local, read-only, and uncached. ``redact=true`` is the safe default; pass false only when
-        the user explicitly needs their unredacted local model.
+        This is the stable Runtime boundary used by viewers and external clients. It includes
+        build metadata, provenance receipts, geometry counts, and the singleton Root. The call
+        is local, read-only, and uncached. ``redact=true`` is the safe default; pass false only
+        when the user explicitly needs their unredacted local model.
         """
         with fts.cursor() as conn:
             return json.dumps(_get_model_snapshot(conn, redact=redact), ensure_ascii=False)

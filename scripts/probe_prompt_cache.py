@@ -51,18 +51,18 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--base-url",
-        default="https://api.deepseek.com/anthropic",
-        help="Anthropic-compatible base URL (default: DeepSeek /anthropic gateway).",
+        default=os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+        help="Anthropic-compatible base URL (default: ANTHROPIC_BASE_URL or official API).",
     )
     p.add_argument(
         "--model",
-        default="deepseek-chat",
-        help="Model id to test (default: deepseek-chat).",
+        default=os.environ.get("PERSOME_CACHE_PROBE_MODEL", "claude-haiku-4-5"),
+        help="Model id to test (default: PERSOME_CACHE_PROBE_MODEL or claude-haiku-4-5).",
     )
     p.add_argument(
         "--api-key-env",
-        default="DEEPSEEK_API_KEY",
-        help="Env var holding the API key (default: DEEPSEEK_API_KEY).",
+        default="ANTHROPIC_API_KEY",
+        help="Environment variable holding the API key (default: ANTHROPIC_API_KEY).",
     )
     args = p.parse_args()
 

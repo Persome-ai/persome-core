@@ -1,4 +1,4 @@
-"""evomem 核心数据模型（clean-room，参见 docs/research/2026-06-06-hy-memory-teardown.md §1-§2）。"""
+"""Core data models for the versioned evomem graph."""
 
 from __future__ import annotations
 

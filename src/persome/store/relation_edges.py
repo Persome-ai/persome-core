@@ -432,8 +432,7 @@ def neighbors(
     include_shadow: bool = False,
 ) -> set[str]:
     """Identities reachable within ``depth`` hops of ``seeds`` via edges valid
-    at ``as_of`` — the §3.3 relation head's traversal primitive (the production
-    twin of the eval prototype in ``tests/eval/graph_retrieval_eval.py``).
+    at ``as_of`` — the relation head's production traversal primitive.
 
     Returns the REACHED identities only (seeds excluded). ``status`` defaults
     to ``active``, so shadow edges stay out of retrieval (§3.3 策略闸) — with

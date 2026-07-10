@@ -10,9 +10,9 @@
     },
     {
       "id": "point-focus-v2",
-      "content": "The user reserves mornings for paper writing and review.",
+      "content": "The user reserves mornings for focused writing and review.",
       "file_name": "synthetic/work.md",
-      "tags": "work focus paper",
+      "tags": "work focus writing",
       "valid_from": "2026-07-01T08:00:00+00:00",
       "supersedes": "point-focus-v1"
     },

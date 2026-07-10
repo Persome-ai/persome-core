@@ -37,7 +37,7 @@ body:
         - Retrieval (hybrid search / recall / MCP tools)
         - MCP server / agent integration
         - CLI / install / doctor
-        - Memory geometry visualization (/dev/memory)
+        - Personal model viewer (/model)
         - Privacy / security
         - Other
     validations:

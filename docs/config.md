@@ -323,7 +323,6 @@ Top-level API/model defaults include:
 
 ```toml
 api_require_local_origin = true
-evomem_vector_recall_enabled = true
 ```
 
 Capture privacy defaults, configured inside the `[capture]` table, are:
