@@ -35,7 +35,8 @@ trusted MCP client.
 ## Five-minute sample demo
 
 See the whole model without an API key, Accessibility permission, or access to
-your real `~/.persome` data:
+your real `~/.persome` data. This path requires Git and
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
 git clone https://github.com/Persome-ai/persome-core.git
