@@ -52,7 +52,7 @@ def _quartz_screen_is_locked() -> bool | None:
     Isolated so tests can monkeypatch it without importing Quartz.
     """
     try:
-        from Quartz import CGSessionCopyCurrentDictionary  # type: ignore[import-not-found]
+        from Quartz import CGSessionCopyCurrentDictionary
     except Exception:  # noqa: BLE001 — pyobjc not present (e.g. Linux CI / minimal venv)
         return None
     try:
@@ -173,19 +173,3 @@ def is_secure_input_active(out: dict[str, Any]) -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.debug("secure-input probe errored: %s", exc)
     return False
-
-
-def should_suppress_capture(out: dict[str, Any]) -> tuple[bool, str]:
-    """Combined verdict for a built capture.
-
-    Returns ``(suppress, reason)`` where ``reason`` is one of ``""`` (don't
-    suppress), ``"locked"`` (skip the whole capture), or ``"secure_input"``
-    (skip the screenshot + AX for this window). Lock wins over secure-input
-    because it is the stronger / whole-capture gate. The scheduler owns the
-    config toggles; this helper is pure signal.
-    """
-    if is_screen_locked():
-        return True, "locked"
-    if is_secure_input_active(out):
-        return True, "secure_input"
-    return False, ""

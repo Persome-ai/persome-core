@@ -54,7 +54,7 @@ def runtime_available() -> bool:
     (only manylinux x86_64, win_amd64, and macos arm64), so ``pyproject.toml`` gates the paddle
     deps to ``platform_machine == 'arm64'`` and the PyInstaller spec skips collecting them off
     arm64. The x86_64 daemon slice therefore ships WITHOUT local OCR: AX-poor apps (WeChat /
-    Feishu) get no OCR text, but AX-based context / intent recognition and every other feature
+    Feishu) get no OCR text, but AX-based state formation and every other feature
     work normally. This is the intended graceful degrade, not a failure.
 
     Cheap + side-effect-free: uses ``importlib.util.find_spec`` (no import), so it never triggers
@@ -298,22 +298,6 @@ def _recognize_detailed_inproc(
 
     texts, boxes, scores = _extract_detailed(results)
     return (texts, boxes, scores) if texts else None
-
-
-def _extract_texts(results: Any) -> list[str]:
-    """Pull ``rec_texts`` out of a PaddleOCR 3.x predict result (list of dict-like)."""
-    if not results:
-        return []
-    out: list[str] = []
-    for r in results:
-        texts = None
-        if hasattr(r, "get"):
-            texts = r.get("rec_texts")
-        if texts is None:
-            texts = getattr(r, "rec_texts", None)
-        if texts:
-            out.extend(str(t) for t in texts)
-    return out
 
 
 def recognize_detailed(

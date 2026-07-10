@@ -35,6 +35,7 @@ def _http_client() -> Any:
 
     return httpx.Client(timeout=_TIMEOUT)
 
+
 MODEL = "text-embedding-3-large"
 _TIMEOUT = 60.0
 _RETRIES = 3

@@ -1,7 +1,7 @@
 """evomem SSOT 切换 PR-1 生存性设施测试（设计稿 §3.2/§3.3）。
 
 覆盖：链不变式自检七条（happy + violation）、写口冻结 seam（默认不冻结）、
-报警通路（SSE 事件可注入验证）、每日快照（创建 / 同日重跑 / 坏快照报警不覆盖 /
+报警通路（结构化错误日志可注入验证）、每日快照（创建 / 同日重跑 / 坏快照报警不覆盖 /
 保留策略）、WAL checkpoint 调用，以及 P0：config 全关时 daily tick 行为与现状一致。
 """
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-import threading
 from contextlib import suppress
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -35,12 +34,33 @@ def _reset_freeze():
 
 @pytest.fixture
 def alerts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, dict]]:
-    """Capture every events.publish call (the SSE side of the alert channel)."""
+    """Capture structured integrity alerts while retaining the real log call."""
     captured: list[tuple[str, str, dict]] = []
-    monkeypatch.setattr(
-        "persome.events.publish",
-        lambda stage, etype, payload: captured.append((stage, etype, payload)),
-    )
+    original = integrity.emit_alert
+
+    def _capture(check, detail, *, source, structural=False, frozen=False):
+        captured.append(
+            (
+                "integrity",
+                "integrity_alert",
+                {
+                    "check": check,
+                    "detail": detail,
+                    "source": source,
+                    "structural": structural,
+                    "frozen": frozen,
+                },
+            )
+        )
+        original(
+            check,
+            detail,
+            source=source,
+            structural=structural,
+            frozen=frozen,
+        )
+
+    monkeypatch.setattr(integrity, "emit_alert", _capture)
     return captured
 
 
@@ -278,30 +298,6 @@ def test_inject_violation_exercises_alert_pipeline(ac_root: Path, alerts: list) 
         t == "integrity_alert" and p["check"] == "drill" and p["source"] == "drill"
         for _, t, p in alerts
     )
-
-
-async def test_alert_reaches_real_sse_bus(ac_root: Path) -> None:
-    """端到端：报警从工作线程穿过真实 events bus 抵达订阅者（HUD 同款路径）。"""
-    from persome import events as ev
-
-    got: list[dict] = []
-
-    async def reader() -> None:
-        async with ev.subscribe() as sub:
-            async for e in sub:
-                got.append(e)
-                break
-
-    task = asyncio.create_task(reader())
-    await asyncio.sleep(0.05)
-    fake = integrity.Violation("drill", "sse drill", structural=False)
-    threading.Thread(
-        target=lambda: integrity.check_and_handle(source="drill", inject_violation=fake)
-    ).start()
-    await asyncio.wait_for(task, timeout=3)
-    assert got[0]["stage"] == "integrity"
-    assert got[0]["type"] == "integrity_alert"
-    assert got[0]["check"] == "drill"
 
 
 def test_startup_check_gating(ac_root: Path) -> None:

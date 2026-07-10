@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 from persome import config as config_mod
 from persome.session import store as session_store
@@ -113,3 +116,86 @@ def test_build_manager_wires_reducer_end_to_end(ac_root: Path, monkeypatch) -> N
 def test_prune_telemetry_calls_parser_store(ac_root: Path, monkeypatch) -> None:
     monkeypatch.setattr(session_tick.parser_ticks_store, "prune", lambda conn: 7)
     assert session_tick._prune_telemetry_tables() == {"parser_ticks": 7}
+
+
+@pytest.mark.parametrize("llm_succeeded", [True, False])
+def test_terminal_callback_finalizes_no_write_and_heuristic_results(
+    ac_root: Path,
+    monkeypatch,
+    llm_succeeded: bool,
+) -> None:
+    """No-new-block and heuristic terminal results both enter model finalization."""
+    callback = None
+
+    def fake_reduce_async(cfg, **kwargs):
+        nonlocal callback
+        callback = kwargs["on_done"]
+        return None
+
+    modeled: list[str] = []
+    monkeypatch.setattr(session_tick.session_reducer, "reduce_session_async", fake_reduce_async)
+    monkeypatch.setattr(
+        session_tick.writer_agent,
+        "finalize_session",
+        lambda cfg, **kwargs: (
+            modeled.append(kwargs["session_id"])
+            or type("Result", (), {"completed": True, "errors": [], "skipped_reason": ""})()
+        ),
+    )
+
+    cfg = config_mod.load(ac_root / "config.toml")
+    manager = session_tick.build_manager(cfg)
+    manager.on_event({"event_type": "focus", "bundle_id": "com.test"})
+    sid = manager.current_id
+    assert sid is not None
+    manager.force_end(reason="test")
+    assert callback is not None
+    callback(
+        session_reducer.ReduceResult(
+            session_id=sid,
+            succeeded=llm_succeeded,
+            written=False,
+            is_final=True,
+        )
+    )
+    assert modeled == [sid]
+
+
+async def test_reducer_retry_tick_finalizes_due_results(ac_root: Path, monkeypatch) -> None:
+    reduced = session_reducer.ReduceResult(
+        session_id="sess_retry_tick",
+        succeeded=False,
+        written=True,
+        path="event-2026-07-10.md",
+        entry_id="entry-1",
+        is_final=True,
+    )
+    monkeypatch.setattr(session_tick.session_reducer, "retry_due", lambda cfg: [reduced])
+    seen: list[dict] = []
+    monkeypatch.setattr(
+        session_tick.writer_agent,
+        "finalize_session",
+        lambda cfg, **kwargs: (
+            seen.append(kwargs)
+            or type("Result", (), {"completed": True, "errors": [], "skipped_reason": ""})()
+        ),
+    )
+    sleeps = 0
+
+    async def fake_sleep(seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps > 1:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(session_tick.asyncio, "sleep", fake_sleep)
+    cfg = config_mod.load(ac_root / "config.toml")
+    with pytest.raises(asyncio.CancelledError):
+        await session_tick.run_reducer_retry_tick(cfg)
+    assert seen == [
+        {
+            "session_id": "sess_retry_tick",
+            "event_daily_path": "event-2026-07-10.md",
+            "just_written_entry_id": "entry-1",
+        }
+    ]

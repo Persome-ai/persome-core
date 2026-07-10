@@ -1,9 +1,7 @@
-"""memory_delta consolidator — Phase 0 shadow channel (spec §4.1/§6.2).
+"""Session memory-delta extraction, gates, persistence, and apply.
 
-Covers the wiring-acceptance requirements (§6.3 SHADOW + consumer): the channel
-fires off a session window, its deterministic gates (quote evidence / roster
-multiple-choice / closed predicate set / confidence floor) drop what they must,
-malformed LLM output fails open, and the flag-off default is a strict no-op.
+Covers the deterministic gates (quote evidence / roster multiple-choice /
+closed predicate set / confidence floor), persistence, and safe degradation.
 """
 
 from __future__ import annotations
@@ -301,7 +299,11 @@ def test_gate_cooccurrence_off_is_noop(ac_root) -> None:
         "assertions": [],
     }
     clean, _ = delta_mod.gate_delta(
-        raw, roster=roster, session_text="[Feishu] 张伟 和 李四", min_confidence=0.5, cooccurrence=False
+        raw,
+        roster=roster,
+        session_text="[Feishu] 张伟 和 李四",
+        min_confidence=0.5,
+        cooccurrence=False,
     )
     assert clean["relations"] == []
 

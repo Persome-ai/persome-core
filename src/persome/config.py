@@ -6,7 +6,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from . import paths
 
@@ -69,17 +69,17 @@ class CaptureConfig:
     # Geometry structuring of raw OCR (zero LLM, on-device): reconstruct columns/regions
     # + per-app field labels (WeChat contact/time/preview) instead of a flat noisy join.
     ocr_structured: bool = True
-    # Collect local-only OCR training samples (geometry + structured result, NEVER the
-    # screenshot) for future UI-region-model training. Local only; no upload path exists.
-    ocr_collect_training_data: bool = True
-    # Deprecated cloud-OCR fields, kept only so old config.toml still decodes.
-    ocr_api_token: str = ""
-    ocr_model: str = "PP-OCRv5"
     # cmux signal source (issue #558): when the frontmost app is cmux, read
     # the visible terminal text over its local unix-socket RPC and append it
     # to visible_text. Safe-by-construction: read-only local socket, zero
     # external cost, sub-second deadline, silent degrade on any failure.
     cmux_source_enabled: bool = True
+    # Privacy and evidence-retention controls belong to the capture subsystem.
+    pause_on_lock: bool = True
+    suppress_secure_input: bool = True
+    encrypt_screenshots: bool = True
+    extended_retention_enabled: bool = True
+    actionable_retention_days: int = 7
 
 
 @dataclass
@@ -89,9 +89,6 @@ class TimelineConfig:
     # every flush_minutes ≥5m) is the stage that does real compression.
     window_minutes: int = 1
     cold_lookback_minutes: int = 30
-    # Wall-clock horizon of blocks kept warm for tooling / context.
-    # 720 × 1-min ≈ 12h.
-    recent_context_blocks: int = 720
     # Parallel LLM workers used when processing a backlog of closed windows.
     # Has no effect when there is only 1 pending window (steady state).
     max_parallel_windows: int = 4
@@ -106,9 +103,6 @@ class TimelineConfig:
 @dataclass
 class WriterConfig:
     soft_limit_tokens: int = 20_000
-    hard_limit_tokens: int = 50_000
-    dedup_window_hours: int = 24
-    cold_start_conservative_hours: int = 0
     max_tool_iterations: int = 12
     context_token_limit: int = 80_000
     llm_retry_attempts: int = 6
@@ -127,16 +121,8 @@ class WriterConfig:
     # The classifier prompt always teaches the abstraction path; this flag
     # only changes the directive injected into the user message.
     contradiction_strategy: str = "abstract"
-    # Trigger an offline consolidation every N completed (classified) sessions.
-    # Placeholder today: runs per-file compaction over files flagged
-    # ``needs_compact``. PRD-4 will replace this with cross-file consolidation.
+    # Run pending per-file compaction every N completed classifier sessions.
     consolidation_cadence: int = 8
-    # Offline consolidation (writer/consolidator.py) — cross-file dedup +
-    # synthesis driven by an LLM tool-call loop. Triggered manually or by
-    # the daemon; never inline with classifier.
-    consolidation_max_region_size: int = 50
-    consolidation_max_iterations: int = 15
-    consolidation_stage: str = "consolidator"
 
 
 @dataclass
@@ -172,15 +158,14 @@ class ReducerConfig:
 
 @dataclass
 class ClassifierConfig:
-    # How often to fire the classifier inside an active session. The
-    # terminal classifier still runs at session end over any trailing
-    # window that this tick hasn't covered. Clamped to >= 5 minutes.
+    # Legacy classifier cadence when memory_delta.apply_enabled is false.
+    # Clamped to >= 5 minutes.
     interval_minutes: int = 30
 
 
 @dataclass
 class PatternDetectorConfig:
-    # Enable pattern detection stage after classifier.
+    # Enable evidence-backed pattern detection during terminal finalization.
     enabled: bool = True
     # Two modes:
     #   true  = structured SQL filtering first, then LLM validation (saves tokens)
@@ -190,24 +175,16 @@ class PatternDetectorConfig:
     lookback_days: int = 7
     # Minimum occurrences of a pattern to be considered for LLM validation.
     min_occurrences: int = 2
-    # Confidence threshold (0.0-1.0) for auto-accepting LLM-validated patterns.
-    confidence_threshold: float = 0.7
 
 
 @dataclass
 class MemoryDeltaConfig:
     # One LLM reading of the just-ended session emits a structured
     # ``memory_delta {entities, assertions, relations, events}`` persisted to
-    # the ``memory_deltas`` table with status='shadow' — nothing downstream
-    # consumes it yet except the parity report (``persome delta-report``) and the
-    # Phase-1 dual-run eval that must reach parity before the four scattered
-    # extractors (person name-source / relation LLM pass / case extraction /
-    # classifier attribution) retire.
-    # 2026-07-04: **parity-cleared** → 翻 ON（生产路）。对拍 delta≥legacy 全头过（确定性档 +
-    # 4×--real，relations 靠确定性共现 knows 补齐无召回损失，spec §6.2 Phase-1「平价退役」）。
+    # the ``memory_deltas`` table before deterministic application mints or
+    # reinforces evomem Points and relation Lines.
     enabled: bool = True
-    # Upper bound on session timeline blocks fed (model-context guard, mirrors
-    # the recognizer's max_blocks).
+    # Upper bound on session timeline blocks fed to the model.
     max_blocks: int = 120
     # Known-identity roster entries injected into the prompt (§4.1 选择题:
     # entities are references into this roster or an explicit new_entity — the
@@ -269,7 +246,6 @@ class MemoryDecayConfig:
 class SkillCheckConfig:
     # Detect skill matches inside the per-minute timeline LLM call.
     enabled: bool = True
-    confidence_floor: float = 0.65
 
 
 @dataclass
@@ -378,14 +354,8 @@ class EvomemConfig:
 
 
 @dataclass
-class MemoryConfig:
-    auto_dormant_days: int = 30
-
-
-@dataclass
 class SearchConfig:
     default_top_k: int = 5
-    filter_superseded_by_default: bool = True
     # Hybrid semantic retrieval (BM25 ⊕ dense te3-large → RRF). Default ON, but the daemon only
     # activates it when an embeddings endpoint (OPENAI_*) is configured — otherwise it stays
     # byte-identical BM25 (no vectors written/queried). Benchmark claims live in
@@ -512,7 +482,6 @@ class Config:
     reducer: ReducerConfig = field(default_factory=ReducerConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     writer: WriterConfig = field(default_factory=WriterConfig)
-    memory: MemoryConfig = field(default_factory=MemoryConfig)
     evomem: EvomemConfig = field(default_factory=EvomemConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
@@ -524,17 +493,11 @@ class Config:
     schema: SchemaConfig = field(default_factory=SchemaConfig)
     user: UserConfig = field(default_factory=UserConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
-    # --- Competitive-enhancement feature flags (spec 2026-06-23-evomem-...) ---
-    # Flat top-level toggles, read defensively via ``getattr(cfg, name, default)``
-    # at each feature site (api Origin/Host guard · extraction known-memory
-    # priming · evomem vector recall · capture lock/secure-input gating). Kept
-    # flat (not nested) so the feature code stays decoupled from this dataclass.
+    # Cross-cutting runtime/model feature flags. Capture privacy controls live
+    # under CaptureConfig because capture workers receive that object directly.
     api_require_local_origin: bool = True
-    extraction_known_memory_priming: bool = True
     evomem_vector_recall_enabled: bool = True
-    capture_pause_on_lock: bool = True
-    capture_suppress_secure_input: bool = True
-    # Wave 2: E1 person graph · E2 case extraction · #6 screenshot encryption.
+    # Entity and reusable-case enrichment inside the shared model build.
     person_graph_enabled: bool = True
     case_extraction_enabled: bool = True
     # Graph-memory P0-2 (#428): deterministic + LLM relation-edge extraction → SHADOW.
@@ -543,10 +506,6 @@ class Config:
     # §7-3 转正扇出上限（promotion volume IS dilution volume）；edge-audit 全量 0%
     # 幻觉后默认 10→20（B 步），sweep 复跑护带。
     edge_promote_fanout: int = 20
-    capture_encrypt_screenshots: bool = True
-    # Extended retention for user-input-anchored capture receipts.
-    capture_extended_retention_enabled: bool = True
-    capture_actionable_retention_days: int = 7
 
     def model_for(self, stage: str) -> ModelConfig:
         """Return stage config (already inherited from default at build time)."""
@@ -620,8 +579,8 @@ def _build_dataclass(cls, raw: dict):  # type: ignore[no-untyped-def]
 
 
 def _build_chat(raw: dict) -> ChatConfig:
-    # Secret/base_url are env-only now (managed by Mens.app). TOML scalars
-    # cover model + thinking_budget + mcp_connect_daemon.
+    # Secrets/base URLs are env-only. TOML scalars cover model,
+    # thinking_budget, and mcp_connect_daemon.
     scalar_fields = {
         k: v for k, v in raw.items() if k in ChatConfig.__dataclass_fields__ and k != "mcp_servers"
     }
@@ -638,6 +597,22 @@ def _build_chat(raw: dict) -> ChatConfig:
     return cfg
 
 
+def _build_capture(raw: dict) -> CaptureConfig:
+    """Build `[capture]`, accepting the former top-level privacy keys."""
+    section = dict(_as_dict(raw.get("capture")))
+    legacy = {
+        "pause_on_lock": "capture_pause_on_lock",
+        "suppress_secure_input": "capture_suppress_secure_input",
+        "encrypt_screenshots": "capture_encrypt_screenshots",
+        "extended_retention_enabled": "capture_extended_retention_enabled",
+        "actionable_retention_days": "capture_actionable_retention_days",
+    }
+    for current, old in legacy.items():
+        if current not in section and old in raw:
+            section[current] = raw[old]
+    return cast(CaptureConfig, _build_dataclass(CaptureConfig, section))
+
+
 def load(path: Path | None = None) -> Config:
     path = path or paths.config_file()
     raw: dict = {}
@@ -647,13 +622,12 @@ def load(path: Path | None = None) -> Config:
 
     return Config(
         models=_build_models(_as_dict(raw.get("models"))),
-        capture=_build_dataclass(CaptureConfig, _as_dict(raw.get("capture"))),
+        capture=_build_capture(raw),
         timeline=_build_dataclass(TimelineConfig, _as_dict(raw.get("timeline"))),
         session=_build_dataclass(SessionConfig, _as_dict(raw.get("session"))),
         reducer=_build_dataclass(ReducerConfig, _as_dict(raw.get("reducer"))),
         classifier=_build_dataclass(ClassifierConfig, _as_dict(raw.get("classifier"))),
         writer=_build_dataclass(WriterConfig, _as_dict(raw.get("writer"))),
-        memory=_build_dataclass(MemoryConfig, _as_dict(raw.get("memory"))),
         evomem=_build_dataclass(EvomemConfig, _as_dict(raw.get("evomem"))),
         search=_build_dataclass(SearchConfig, _as_dict(raw.get("search"))),
         mcp=_build_dataclass(MCPConfig, _as_dict(raw.get("mcp"))),
@@ -670,19 +644,11 @@ def load(path: Path | None = None) -> Config:
         # Competitive-enhancement flat toggles (spec 2026-06-23): top-level TOML
         # scalars so config.toml can override the safe defaults.
         api_require_local_origin=bool(raw.get("api_require_local_origin", True)),
-        extraction_known_memory_priming=bool(raw.get("extraction_known_memory_priming", True)),
         evomem_vector_recall_enabled=bool(raw.get("evomem_vector_recall_enabled", True)),
-        capture_pause_on_lock=bool(raw.get("capture_pause_on_lock", True)),
-        capture_suppress_secure_input=bool(raw.get("capture_suppress_secure_input", True)),
         person_graph_enabled=bool(raw.get("person_graph_enabled", True)),
         case_extraction_enabled=bool(raw.get("case_extraction_enabled", True)),
         relation_extraction_enabled=bool(raw.get("relation_extraction_enabled", False)),
         edge_promote_fanout=int(raw.get("edge_promote_fanout", 20)),
-        capture_encrypt_screenshots=bool(raw.get("capture_encrypt_screenshots", True)),
-        capture_extended_retention_enabled=bool(
-            raw.get("capture_extended_retention_enabled", True)
-        ),
-        capture_actionable_retention_days=int(raw.get("capture_actionable_retention_days", 7)),
     )
 
 
@@ -708,6 +674,13 @@ DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
 #   the gateway serves, e.g. model = "deepseek-v4-flash" (the shipped default).
 # Verify your setup any time with `persome doctor` (offline, zero LLM calls).
 
+# Cross-cutting runtime/model switches.
+api_require_local_origin = true
+evomem_vector_recall_enabled = true
+person_graph_enabled = true
+case_extraction_enabled = true
+relation_extraction_enabled = false
+edge_promote_fanout = 20
 
 [user]
 # Your name — tells the chat assistant who it is talking to.
@@ -741,12 +714,6 @@ model = "deepseek-v4-flash"   # bare name, sent verbatim to ANTHROPIC_BASE_URL g
 # into user-/project-/topic-/tool-/person-/org- files via tool calls.
 # Accuracy-sensitive — pick a capable model.
 
-[models.consolidator]
-# Cross-file offline consolidation — reads a working region of recent +
-# semantically related entries, dedups / abstracts / merges them.
-# Inherits from [models.default] unless overridden.
-
-
 [capture]
 source = "daemon"             # "daemon" (daemon owns OS capture) | "ingest" (Swift app pushes captures via POST /captures/ingest; daemon needs no OS permission)
 event_driven = true           # capture on window/app/typing events via mac-ax-watcher (source="daemon" only)
@@ -767,36 +734,31 @@ ax_timeout_seconds = 3
 # OCR fallback for apps that block Accessibility API (WeChat, Feishu, NetEase Music, etc.)
 # On-device PP-OCRv6 — the focused-window screenshot is OCR'd locally; nothing leaves the machine.
 enable_ocr_fallback = false   # local inference; no network, no API token
-# KILL-SWITCH: the bundled PaddlePaddle can SIGSEGV *during* inference (native fault, #335/#218),
-# which — running on an in-process daemon thread — takes the whole daemon down. To hard-disable all
-# OCR inference at deploy time WITHOUT a config rebuild, set the env var PERSOME_DISABLE_OCR=1
-# (degrades to "no OCR text for AX-poor apps"; paddle is never imported). Subprocess isolation is the
-# follow-up root fix.
+# Inference runs in an isolated local worker, so a native Paddle crash does not
+# kill the daemon. PERSOME_DISABLE_OCR=1 is the deployment kill switch.
 ocr_tier = "tiny"             # tiny (default) | small | medium — local PP-OCRv6 weights
 ocr_min_gap_seconds = 15.0    # minimum seconds between OCR runs for the same window
 ocr_structured = true              # geometry-structure raw OCR (zero LLM, on-device): columns/regions + per-app field labels
-ocr_collect_training_data = true   # local-only OCR samples (geometry + structured result, NEVER screenshots) for future model training; no upload
 # cmux signal source: real terminal text via cmux's local unix-socket RPC (GPU-rendered
 # terminals expose ~no AX text). Read-only, zero external cost, sub-second deadline,
 # silent degrade when cmux isn't running — hence default on.
 cmux_source_enabled = true
+pause_on_lock = true
+suppress_secure_input = true
+encrypt_screenshots = true       # requires PERSOME_SCREENSHOT_KEY; no key -> warned plaintext fallback
+extended_retention_enabled = true
+actionable_retention_days = 7
 
 [timeline]
 window_minutes = 1             # length of each aggregator block (verbatim-preserving normalizer)
 cold_lookback_minutes = 30
-recent_context_blocks = 720    # ~12h of 1-min blocks
 max_parallel_windows = 4       # parallel LLM workers for backlog catchup (1 = sequential)
 
 [writer]
 soft_limit_tokens = 20000
-hard_limit_tokens = 50000
-dedup_window_hours = 24
-cold_start_conservative_hours = 0
 context_token_limit = 80000      # trim message history when estimated tokens exceed this
-llm_retry_attempts = 2           # retry LLM call this many times on transient failure
-consolidation_cadence = 8        # trigger offline consolidation every N completed sessions
-consolidation_max_region_size = 50    # max entries assembled into a working region
-consolidation_max_iterations = 15     # tool-call loop ceiling for the consolidator
+llm_retry_attempts = 6           # retry LLM call this many times on transient failure
+consolidation_cadence = 8        # run pending per-file compaction every N completed sessions
 
 [session]
 gap_minutes = 5            # hard cut: idle > 5 min ends the session
@@ -814,14 +776,19 @@ daily_tick_minute = 55     # local-time minute for the daily safety-net tick
 interval_minutes = 30      # durable-fact extraction cadence inside active sessions (min 5)
 
 [pattern_detector]
-enabled = true             # detect repetitive behavior patterns after classifier
+enabled = true             # detect repeated evidence-backed behavior after session finalization
 structured_filter = true   # true = SQL candidate filter first (save tokens); false = raw data to LLM (burn tokens, may catch more)
 lookback_days = 7          # scan this many days of event-daily for patterns
 min_occurrences = 2        # minimum repetitions to flag as a candidate
-confidence_threshold = 0.7 # auto-accept threshold for LLM-validated patterns
 
-[memory]
-auto_dormant_days = 30
+[memory_delta]
+enabled = true             # one evidence-gated structured extraction per ended session
+max_blocks = 120
+roster_max = 60
+min_confidence = 0.5
+apply_enabled = true       # deterministic Point/Line production after persist
+apply_assertions = true
+cooccurrence_knows = true
 
 [evomem]
 # evomem SSOT switch — survivability base (snapshots + chain self-check).
@@ -829,7 +796,7 @@ auto_dormant_days = 30
 snapshot_enabled = true            # daily VACUUM INTO backup/evo-YYYYMMDD.db at the 23:55 tick (after the WAL checkpoint); bad snapshots alert instead of overwriting good ones
 snapshot_keep_daily = 7            # keep every daily snapshot from the last N days
 snapshot_keep_weekly = 4           # additionally keep Monday snapshots from the last N weeks
-integrity_check_enabled = true     # chain-invariant self-check at daemon startup + after each snapshot (quick_check / pointer symmetry / anti-fork / head consistency / acyclicity / projection reconciliation); alerts via the integrity_alert SSE event
+integrity_check_enabled = true     # chain-invariant self-check at daemon startup + after each snapshot; failures are structured error logs
 freeze_writes_on_failure = false   # when a STRUCTURAL check fails, freeze memory write paths (reads stay available) until a human decides; off = alert-only by default
 shadow_write_enabled = true        # PR-3 双写影子期: every markdown main write also shadow-writes the affected entries into evo_nodes (backfill 单条版); failures/skips warn + count only, NEVER touch the main write — run `persome evomem-backfill` once before the shadow phase starts for real
 write_authority = "markdown"       # PR-6b 写权反转开关 (§4.4): "markdown" (default) = status quo, markdown is the SSOT + shadow dual-write into evo_nodes; "evomem" = the inversion — engine writes evo_nodes as truth, FTS tables become the retrieval projection, memory/*.md becomes a best-effort human-readable projection (manual edits are overwritten — use `persome evomem-import-markdown <file>`), the shadow hook auto-deactivates, event-*.md stays legacy (Q2). KEEP "markdown" until PR-5 主读 has been stable ≥1 week; a human flips this — never the code default. Rollback = flip back (legacy paths + shadow resume; project --live --force + rebuild-index first to flush)
@@ -843,7 +810,6 @@ relation_include_shadow = true     # §7-3 关系头喂食：审计干净的 sha
 contains_pool_rerank = true        # §7-10 池内 dense 重排（残余探针杠杆）；关=回 recency 序
 relation_pool_weight = 1.0         # 关系图扩展池权重（SS7-8 调优判决：真库关系探针 7/12 vs 文本基线 4/12；auto-golden 回归 rel 0.0-1.0 逐字节等值=对普通查询免费）
 associative_read_enabled = true    # §5 读路 cutover：查询期消费方（MCP/chat/writer 工具）走联想入口（无槽退化 hybrid）；false=全部回 search_hybrid（kill-switch）
-filter_superseded_by_default = true
 tags_matchable = false             # 轴A (#557)：BM25 只匹配 content 列——分类标签词表（#intent/#kind:meeting/schema/fact…）不再被当正文命中；true=旧行为（kill-switch）
 recency_half_life_days = 14.0      # 轴B (#557)：融合后按条目年龄做半衰期衰减重排（rank 分 × max(floor, 0.5^(age/半衰期))）；锚= until 或候选集内最新时间戳（非墙钟，纯确定性）；0 = 关（字节等价旧版）
 recency_decay_floor = 0.2          # 衰减下限：老而最相关的持久事实不至于被新噪声淹没；全老候选集因子一致=顺序不变
@@ -877,16 +843,17 @@ mcp_connect_daemon = true         # auto-connect to the daemon's own MCP server
 
 [skill_check]
 enabled = true                    # detect skill matches inside the per-minute timeline LLM call
-confidence_floor = 0.65           # minimum confidence to record a skill_hint
 
 
 [schema]
 enabled = true                    # D2 schema miner daily tick: induce predictive schema-*.md priors from durable facts
 daily_tick_hour = 0               # local-time hour for the daily schema tick (after safety-net 23:55)
 daily_tick_minute = 15            # local-time minute for the daily schema tick
-cross_domain_enabled = true       # Hy-Memory cross-domain sweeper: collide topic-far/behavior-near schemas (no embedding); ON — low-quality fusions are born forming (not injected), only stable ones bias recognition
+cross_domain_enabled = true       # Hy-Memory cross-domain sweeper: collide topic-far/behavior-near schemas (no embedding); low-quality fusions stay forming, only stable ones enter active model reads
 cross_domain_behavior_max_distance = 0.5  # behavior-distance ceiling for the deterministic pre-filter (≤ == behavior-near)
 cross_domain_min_confidence = 0.6 # fused cross-domain schema below this confidence is born forming (not injected)
+root_synthesis_enabled = true      # synthesize at most one active Root
+root_token_budget = 1500
 
 """
 

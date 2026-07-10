@@ -206,7 +206,9 @@ def _resolve_helper_path() -> Path | None:
     if platform.system() != "Darwin":
         return None
 
-    override = (os.environ.get("PERSOME_AX_HELPER") or os.environ.get("MENS_CONTEXT_AX_HELPER"))  # Mens is the legacy name
+    override = os.environ.get("PERSOME_AX_HELPER") or os.environ.get(
+        "MENS_CONTEXT_AX_HELPER"
+    )  # Mens is the legacy name
     if override:
         p = Path(override).expanduser().resolve()
         if p.is_file() and os.access(p, os.X_OK):
@@ -244,12 +246,6 @@ class AXProvider(Protocol):
 
     def capture_frontmost(self, *, focused_window_only: bool = True) -> AXCaptureResult | None: ...
 
-    def capture_all_visible(self) -> AXCaptureResult | None: ...
-
-    def capture_app(
-        self, app_name: str, *, focused_window_only: bool = True
-    ) -> AXCaptureResult | None: ...
-
 
 class UnavailableAXProvider:
     def __init__(self, reason: str) -> None:
@@ -260,14 +256,6 @@ class UnavailableAXProvider:
         return False
 
     def capture_frontmost(self, *, focused_window_only: bool = True) -> AXCaptureResult | None:
-        return None
-
-    def capture_all_visible(self) -> AXCaptureResult | None:
-        return None
-
-    def capture_app(
-        self, app_name: str, *, focused_window_only: bool = True
-    ) -> AXCaptureResult | None:
         return None
 
 
@@ -285,30 +273,14 @@ class MacAXHelperProvider:
         return True
 
     def capture_frontmost(self, *, focused_window_only: bool = True) -> AXCaptureResult | None:
-        return self._run(all_visible=False, focused_window_only=focused_window_only)
-
-    def capture_all_visible(self) -> AXCaptureResult | None:
-        return self._run(all_visible=True)
-
-    def capture_app(
-        self, app_name: str, *, focused_window_only: bool = True
-    ) -> AXCaptureResult | None:
-        return self._run(
-            all_visible=False, app_name=app_name, focused_window_only=focused_window_only
-        )
+        return self._run(focused_window_only=focused_window_only)
 
     def _run(
         self,
         *,
-        all_visible: bool,
-        app_name: str | None = None,
         focused_window_only: bool = False,
     ) -> AXCaptureResult | None:
         args: list[str] = [self._helper_path]
-        if app_name:
-            args.extend(["--app-name", app_name])
-        elif all_visible:
-            args.append("--all-visible")
         if focused_window_only:
             args.append("--focused-window-only")
         if self._raw:
@@ -345,12 +317,16 @@ class MacAXHelperProvider:
             return None
 
         data = _strip_frame_fields(data)
-        mode = "all-visible" if all_visible else "frontmost"
         return AXCaptureResult(
             raw_json=data,
             timestamp=data.get("timestamp", ""),
             apps=data.get("apps", []),
-            metadata={"mode": mode, "depth": self._depth, "platform": "macos", "raw": self._raw},
+            metadata={
+                "mode": "frontmost",
+                "depth": self._depth,
+                "platform": "macos",
+                "raw": self._raw,
+            },
         )
 
 

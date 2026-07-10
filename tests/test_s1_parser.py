@@ -223,19 +223,32 @@ def test_enrich_browser_narrows_to_page_and_folds_chrome() -> None:
                             "title": "Example",
                             "focused": True,
                             "elements": [
-                                {"role": "AXToolbar", "children": [
-                                    {"role": "AXButton", "title": "Bookmark One"},
-                                    {"role": "AXButton", "title": "Bookmark Two"},
-                                    {"role": "AXTextField", "value": "https://example.com"},
-                                ]},
-                                {"role": "AXTabGroup", "children": [
-                                    {"role": "AXRadioButton", "title": "Tab A"},
-                                    {"role": "AXRadioButton", "title": "Tab B"},
-                                ]},
-                                {"role": "AXWebArea", "title": "Example Page", "children": [
-                                    {"role": "AXHeading", "value": "The Real Article Heading"},
-                                    {"role": "AXStaticText", "value": "Body paragraph the user is actually reading."},
-                                ]},
+                                {
+                                    "role": "AXToolbar",
+                                    "children": [
+                                        {"role": "AXButton", "title": "Bookmark One"},
+                                        {"role": "AXButton", "title": "Bookmark Two"},
+                                        {"role": "AXTextField", "value": "https://example.com"},
+                                    ],
+                                },
+                                {
+                                    "role": "AXTabGroup",
+                                    "children": [
+                                        {"role": "AXRadioButton", "title": "Tab A"},
+                                        {"role": "AXRadioButton", "title": "Tab B"},
+                                    ],
+                                },
+                                {
+                                    "role": "AXWebArea",
+                                    "title": "Example Page",
+                                    "children": [
+                                        {"role": "AXHeading", "value": "The Real Article Heading"},
+                                        {
+                                            "role": "AXStaticText",
+                                            "value": "Body paragraph the user is actually reading.",
+                                        },
+                                    ],
+                                },
                             ],
                         }
                     ],
@@ -269,9 +282,16 @@ def test_enrich_browser_without_webarea_falls_open() -> None:
                     "bundle_id": "com.google.Chrome",
                     "is_frontmost": True,
                     "windows": [
-                        {"title": "New Tab", "focused": True, "elements": [
-                            {"role": "AXToolbar", "children": [{"role": "AXButton", "title": "Home"}]}
-                        ]},
+                        {
+                            "title": "New Tab",
+                            "focused": True,
+                            "elements": [
+                                {
+                                    "role": "AXToolbar",
+                                    "children": [{"role": "AXButton", "title": "Home"}],
+                                }
+                            ],
+                        },
                     ],
                 }
             )
@@ -301,10 +321,14 @@ def test_enrich_focused_element_from_helper_axfocused() -> None:
                     "has_selection": True,
                 },
                 "windows": [
-                    {"title": "X", "focused": True, "elements": [
-                        # deep, NOT a direct child the legacy scan would find
-                        {"role": "AXGroup", "children": [{"role": "AXWebArea"}]}
-                    ]},
+                    {
+                        "title": "X",
+                        "focused": True,
+                        "elements": [
+                            # deep, NOT a direct child the legacy scan would find
+                            {"role": "AXGroup", "children": [{"role": "AXWebArea"}]}
+                        ],
+                    },
                 ],
             }
         )
@@ -326,9 +350,11 @@ def test_enrich_focused_element_falls_back_to_scan_without_helper() -> None:
                 "bundle_id": "com.apple.Notes",
                 "is_frontmost": True,
                 "windows": [
-                    {"title": "Note", "focused": True, "elements": [
-                        {"role": "AXTextArea", "value": "legacy-scanned focus"}
-                    ]},
+                    {
+                        "title": "Note",
+                        "focused": True,
+                        "elements": [{"role": "AXTextArea", "value": "legacy-scanned focus"}],
+                    },
                 ],
             }
         )

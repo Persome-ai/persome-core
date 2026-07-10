@@ -14,17 +14,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from persome import paths
 from persome.evomem import backfill, restore
 from persome.store import entries as entries_mod
 from persome.store import fts
-
-
-@pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
 
 
 def _set_authority(root, value: str) -> None:

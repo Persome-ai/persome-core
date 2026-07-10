@@ -29,7 +29,7 @@ The test starts with a new temporary `PERSOME_ROOT` and performs:
 synthetic capture ingest
   -> timeline blocks
   -> ended session
-  -> reducer/classifier
+  -> reducer + terminal memory-delta modeling
   -> two idempotent model builds
   -> Point/Line/Face/Volume/Root assertions
   -> redacted 0600 snapshot export
@@ -90,7 +90,8 @@ Exports default to `<PERSOME_ROOT>/exports/`, are redacted, and use mode
 
 Without a configured LLM key, capture and BM25 retrieval still run, while LLM
 stages report degradation. Real Point/Line/Face/Volume/Root construction needs
-the configured stages to produce enough stable evidence.
+the configured stages to produce enough stable, repeated evidence. A sparse
+first build may correctly remain degraded.
 
 The release wheel carries the Swift helper sources, local Three.js assets, and
 PP-OCRv6 weights. Verify a built wheel from outside the source checkout:

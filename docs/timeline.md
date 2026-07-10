@@ -34,13 +34,15 @@ Only closed windows are produced. The current half-formed window sits as "traili
 
 ## The aggregator LLM call
 
-`timeline/aggregator.py` reads each capture's S1 fields (`focused_element`, `visible_text`, `url`, `window_meta`) — **not** the raw AX tree. This keeps the prompt tractable:
+`timeline/aggregator.py` reads each capture's S1 fields (`focused_element`, `visible_text`, `url`, `window_meta`) — **not** the raw AX tree during normal operation. This keeps the prompt tractable:
 
 - `visible_text` is a pre-rendered, length-capped markdown view of the AX tree (capped at 10 KB per capture by S1, then capped at 4 KB per capture by the timeline prompt).
 - `focused_element` carries the user's current cursor / input context (role, title, value, editable flag). When `is_editable=true` and `value_length > 0`, the value is the user's own typed content — the prompt treats this as the highest-priority signal to preserve verbatim.
 - `url` is regex-extracted from visible text when present.
+- When capture JSON has no AX text and `ocr_submitted=true`, the aggregator
+  consults the OCR backfill in `captures` FTS before declaring the window empty.
 
-Up to `_MAX_EVENTS_PER_WINDOW = 30` events per window (rarely hit at 1-min granularity). The prompt (`prompts/timeline_block.md`) commands the model to emit a JSON array of normalized activity records, one per distinct conversation / context / tab / file. Each record follows this shape:
+Up to `_MAX_EVENTS_PER_WINDOW = 30` events per window (rarely hit at 1-min granularity). The prompts (`prompts/timeline_block.system.md` and `timeline_block.user.md`) command the model to emit normalized activity records, one per distinct conversation / context / tab / file. Each record follows this shape:
 
 ```
 [<app name>] <context (title/URL/file)>: <what happened>. <Authored text verbatim, in quotes, if any>. Involving: <people/topics/files named in this conversation>.
@@ -75,11 +77,20 @@ CREATE TABLE timeline_blocks (
   apps_used TEXT NOT NULL,       -- JSON array of app names
   capture_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
+  skill_hints TEXT NOT NULL DEFAULT '[]',
+  action_trace TEXT NOT NULL DEFAULT '[]',
+  focus_excerpt TEXT NOT NULL DEFAULT '',
+  focus_structured TEXT NOT NULL DEFAULT '',
+  attention_surface TEXT NOT NULL DEFAULT '',
+  attention_confidence REAL NOT NULL DEFAULT 0.0,
+  attention_rung TEXT NOT NULL DEFAULT '',
   UNIQUE(start_time, end_time)
 );
 ```
 
-Stored in the same `index.db` as the FTS tables. Not FTS-indexed — the reducer queries them directly by time range for each session / flush.
+Stored in the same `index.db` as the FTS tables. It is not FTS-indexed; reducer,
+memory-delta, case, and attention stages query it by time range. Structured
+focus and raw excerpts preserve evidence that the normalized entry may omit.
 
 ## CLI
 

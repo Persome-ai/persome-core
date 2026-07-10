@@ -39,7 +39,9 @@ def _resolve_watcher_path() -> Path | None:
     if platform.system() != "Darwin":
         return None
 
-    override = (os.environ.get("PERSOME_AX_WATCHER") or os.environ.get("MENS_CONTEXT_AX_WATCHER"))  # Mens is the legacy name
+    override = os.environ.get("PERSOME_AX_WATCHER") or os.environ.get(
+        "MENS_CONTEXT_AX_WATCHER"
+    )  # Mens is the legacy name
     if override:
         p = Path(override).expanduser().resolve()
         if p.is_file() and os.access(p, os.X_OK):

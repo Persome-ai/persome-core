@@ -101,7 +101,9 @@ def _helper_path() -> Path | None:
     its ``.swift`` like the AX helpers). None off-Darwin / when unresolved."""
     if platform.system() != "Darwin":
         return None
-    override = (os.environ.get("PERSOME_URL_HELPER") or os.environ.get("MENS_CONTEXT_URL_HELPER"))  # Mens is the legacy name
+    override = os.environ.get("PERSOME_URL_HELPER") or os.environ.get(
+        "MENS_CONTEXT_URL_HELPER"
+    )  # Mens is the legacy name
     if override:
         p = Path(override).expanduser()
         return p if p.is_file() else None

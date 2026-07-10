@@ -23,8 +23,8 @@ contract; this directory contains implementation details for maintainers.
 | [`architecture.md`](architecture.md) | Detailed pipeline, task registry, storage, and code map. |
 | [`capture.md`](capture.md) | AX/OCR ingestion and app-specific attention extraction. |
 | [`timeline.md`](timeline.md) | Minute-window aggregation and evidence preservation. |
-| [`session.md`](session.md) | Session cut rules and reducer/classifier bookmarks. |
-| [`writer.md`](writer.md) | Durable fact, schema, Volume, and Root construction. |
+| [`session.md`](session.md) | Session cuts, reducer retry, and shared terminal finalization. |
+| [`writer.md`](writer.md) | Point/Line writing plus Face, Volume, and Root construction. |
 | [`memory-format.md`](memory-format.md) | Markdown memory file format. |
 | [`model-contract.md`](model-contract.md) | Snapshot implementation details and build locking. |
 | [`mcp.md`](mcp.md) | MCP implementation reference. |

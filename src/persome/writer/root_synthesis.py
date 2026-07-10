@@ -147,7 +147,9 @@ def _active(conn: sqlite3.Connection, level: int, limit: int | None = None) -> l
     return list(conn.execute(q, args))
 
 
-def _build_user_prompt(bodies: list[sqlite3.Row], faces: list[sqlite3.Row], profile: list[str]) -> str:
+def _build_user_prompt(
+    bodies: list[sqlite3.Row], faces: list[sqlite3.Row], profile: list[str]
+) -> str:
     parts: list[str] = []
     if bodies:
         parts.append(

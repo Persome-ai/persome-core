@@ -30,11 +30,6 @@ def _set_authority(root: Path, value: str) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
-
-
-@pytest.fixture(autouse=True)
 def _reset_inversion_misses() -> None:
     evo_inversion.reset_misses()
 

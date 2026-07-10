@@ -35,7 +35,7 @@ def rebuild(conn: sqlite3.Connection) -> None:
         lines.append("_(none yet)_")
     lines.append("")
 
-    lines.append("## Dormant files (30+ days no update)")
+    lines.append("## Dormant files")
     lines.append("")
     if dormant_only:
         lines.append("| File | Description | Last Updated |")
@@ -75,11 +75,3 @@ def rebuild(conn: sqlite3.Connection) -> None:
     lines.append("")
 
     files_mod.atomic_write_text(paths.memory_dir() / "index.md", "\n".join(lines))
-
-
-def auto_dormant(conn: sqlite3.Connection, *, days: int = 30) -> int:
-    cutoff = (date.today() - timedelta(days=days)).isoformat()
-    cur = conn.execute(
-        "UPDATE files SET status='dormant' WHERE status='active' AND updated < ?", (cutoff,)
-    )
-    return cur.rowcount or 0

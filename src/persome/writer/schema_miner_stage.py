@@ -4,7 +4,7 @@
 ``SchemaResult(central_proposition, supporting_summary, expected_inferences,
 confidence)``. That miner is an isolated pure function: it neither reads facts
 from anywhere nor writes its output to disk. This stage is the landing layer
-that closes both gaps for acme (design ``2026-06-06-migration-D2-cognition.md``):
+that closes both gaps for Persome:
 
 1. **Input adapter (screen modality, not chat)** — :func:`collect_fact_bundles`
    assembles "关联事实集" from acme's durable fact memory. The MVP clusters
@@ -46,8 +46,7 @@ Tests inject a fake ``llm_call`` (no network), mirroring
 ``tests/test_evomem/test_schema_miner.py``.
 
 This stage only ever writes the ``schema-*.md`` prefix — it never touches
-``skill-*`` / ``event-*`` / ``user-*`` etc., the same write-boundary discipline
-the classifier and consolidator hold (design §2.2 硬隔离).
+``skill-*`` / ``event-*`` / ``user-*`` etc.; every writer owns a narrow prefix.
 """
 
 from __future__ import annotations
@@ -486,7 +485,3 @@ def mine_schemas_for_user(
         stable_threshold=stable_threshold,
         llm_call=llm_call,
     )
-
-
-# Back-compat alias: the first cut named the entry point ``run_schema_mining``.
-run_schema_mining = mine_schemas_for_user

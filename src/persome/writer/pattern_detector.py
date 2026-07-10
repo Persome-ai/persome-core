@@ -1,11 +1,10 @@
-"""Pattern detector stage: detects repetitive user behavior patterns
-that could be scripted or automated. Runs after the classifier.
+"""Pattern detector stage: detects repeated, evidence-backed user behavior.
 
 Two-stage design:
 1. Structured filtering: SQL queries extract high-frequency candidate patterns
    from timeline_blocks, captures, and event-daily entries.
 2. LLM validation: LLM judges whether candidates are real habits vs coincidence,
-   then writes confirmed patterns to workflow-*.md via tool-call loop.
+   then writes confirmed behavioral memory to skills/skill-*.md.
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ def detect_after_classify(
     session_start: datetime | None = None,
     session_end: datetime | None = None,
 ) -> DetectResult:
-    """Pattern detection entry point. Called after classifier commits."""
+    """Pattern detection entry point for terminal session finalization."""
     if not cfg.pattern_detector.enabled:
         return DetectResult(session_id=session_id, skipped_reason="pattern detector disabled")
 
@@ -150,8 +149,7 @@ def _collect_candidates(
     if time_clusters:
         candidates["time_clusters"] = time_clusters
 
-    # 5. Durable past activity memory. This keeps a semantic event signal without
-    # depending on the proactive-intent product lifecycle.
+    # 5. Durable past activity memory supplies the semantic repetition signal.
     event_memory = _collect_event_memory(conn, lookback_start, window_end)
     if event_memory:
         candidates["event_memory"] = event_memory
@@ -370,11 +368,11 @@ def _assemble_raw_context(
         f"## Raw activity data (last {(window_end - lookback_start).days + 1} days)",
         "",
         "Your job is to scan this raw data and detect any repetitive behavior "
-        "patterns that could be scripted or automated. Look for:",
+        "evidence-backed behavior patterns. Look for:",
         "- App sequences that repeat across days",
         "- Window titles or URLs visited repeatedly",
         "- Sessions that consistently start at the same time",
-        "- Any other routine or habit worth automating",
+        "- Any other routine or habit repeated across independent sessions",
         "",
     ]
 
@@ -449,7 +447,7 @@ def _assemble_context(
         "",
         "These are high-frequency signals detected by structured queries. "
         "Your job is to judge which ones represent real user habits worth "
-        "scripting, vs coincidence or noise.",
+        "recording as behavioral memory, vs coincidence or noise.",
         "",
     ]
 

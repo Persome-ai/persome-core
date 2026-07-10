@@ -1,9 +1,8 @@
 """Dotenv-format env loader for daemon startup.
 
-Mens.app is the single source of truth for LLM secrets (Keychain). It mirrors
-the managed key/value pairs to ``~/.persome/env`` so that the daemon can
-pick them up regardless of who started it (App spawn vs. terminal ``persome
-start``). Business code stays on ``os.environ.get(...)``; this loader merges the
+Runtime secrets live in ``~/.persome/env``. A user may edit that owner-only
+file directly, or an embedding product may mirror secrets from its own secure
+store. Business code stays on ``os.environ.get(...)``; this loader merges the
 file's contents into ``os.environ`` once, at CLI ``start`` time, before forking.
 
 Semantics:
@@ -12,8 +11,8 @@ Semantics:
 * Missing file is fine — returns 0.
 * Format is minimal dotenv: ``KEY=VALUE`` per line, ``#`` comments, blank lines
   ignored, optional single/double-quoted values (quotes stripped, no escapes).
-* No shell expansion, no ``$VAR`` interpolation — we want predictable behavior
-  across the App and CLI launch paths.
+* No shell expansion, no ``$VAR`` interpolation — behavior is identical for
+  direct CLI and embedding-product launch paths.
 """
 
 from __future__ import annotations

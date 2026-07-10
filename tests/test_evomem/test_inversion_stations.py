@@ -7,7 +7,7 @@ harness 见 ``inversion_harness.py``。
 
 站点清单（§1.3；Q2 豁免 ``writer/session_reducer.py`` 与 timeline 的 event 写）：
 intent/sink、chat/memory_extractor、chat/tool_handlers、
-writer/tools（classifier/pattern_detector/consolidator 共用的写工具层）、
+writer/tools（classifier/pattern_detector 共用的写工具层）、
 writer/schema_miner_stage、writer/cross_domain_sweeper、intent/schema_feedback。
 """
 
@@ -20,12 +20,6 @@ import pytest
 from persome.store import fts
 
 from .inversion_harness import assert_equivalent, run_in_both_modes
-
-
-@pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
-
 
 # ── 站点 2：chat/memory_extractor（create+append + dedup 守卫读投影）─────────
 
@@ -86,7 +80,7 @@ def test_station_chat_tool_handlers_set_user_name(
     assert_equivalent(snap_md, snap_evo)
 
 
-# ── 站点 4：writer/tools（classifier/pattern_detector/consolidator 写层）─────
+# ── 站点 4：writer/tools（classifier/pattern_detector 写层）─────
 
 
 def test_station_writer_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

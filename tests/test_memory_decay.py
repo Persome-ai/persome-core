@@ -42,6 +42,21 @@ class FakeDistiller:
         )
 
 
+def test_default_llm_adapter_uses_current_call_signature(ac_root, monkeypatch) -> None:
+    cfg = _cfg(ac_root)
+    seen = {}
+
+    def call_llm(actual_cfg, stage, *, messages):
+        seen.update(cfg=actual_cfg, stage=stage, messages=messages)
+        return FakeDistiller("ok")([])
+
+    monkeypatch.setattr(decay.llm_mod, "call_llm", call_llm)
+    messages = [{"role": "user", "content": "distill"}]
+    decay._build_llm_call(cfg)(messages)
+
+    assert seen == {"cfg": cfg, "stage": "memory_decay", "messages": messages}
+
+
 def _cfg(ac_root, **overrides):
     cfg = config_mod.load(ac_root / "config.toml")
     cfg.memory_decay.enabled = True

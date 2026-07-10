@@ -9,7 +9,7 @@ files instead of a session DB table. For a session that just ended:
      ``event-<session-start-local-date>.md`` — creating the file if it
      doesn't exist yet.
   4. On LLM success mark the session row ``reduced``; on failure with
-     retries remaining mark it ``failed`` + schedule next retry; on
+     retries remaining mark it ``failed`` + schedule the next retry; on
      terminal failure write a heuristic entry and mark ``reduced``.
 
 This module is called from two places:
@@ -17,8 +17,8 @@ This module is called from two places:
   * The SessionManager's ``on_session_end`` callback — spawns
     ``reduce_session`` on a daemon thread so the dispatcher doesn't
     block on LLM latency.
-  * The daily 23:55 cron / retry tick — calls ``retry_due`` which
-    picks up any ``failed`` rows whose ``next_retry_at`` has elapsed.
+  * The daemon retry tick calls ``retry_due`` once per minute and the daily
+    safety net unconditionally catches anything left behind.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ class ReduceResult:
     end_time: datetime | None = None
     # False for incremental flushes inside an active session, True for the
     # terminal reduction at session end (or the catch-up path). Drives
-    # whether the caller should fire the classifier.
+    # whether the caller should run terminal person-model finalization.
     is_final: bool = True
 
 
@@ -90,6 +90,15 @@ def reduce_session(
     """
     with fts.cursor() as conn:
         existing = session_store.get_by_id(conn, session_id)
+        if existing is not None and existing.status == "reduced":
+            return ReduceResult(
+                session_id=session_id,
+                succeeded=True,
+                written=False,
+                start_time=start_time,
+                end_time=end_time,
+                is_final=True,
+            )
         flush_end = existing.flush_end if existing and existing.flush_end else None
         window_start = flush_end if flush_end and flush_end > start_time else start_time
         return _reduce_window_locked(

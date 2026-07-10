@@ -163,39 +163,22 @@ def _fake_shot() -> SimpleNamespace:
 
 
 def _build_with_screenshot(monkeypatch: pytest.MonkeyPatch, *, encrypt_flag: bool) -> dict:
-    """Drive the scheduler's screenshot-writing block with a fake grab + config."""
+    """Drive the scheduler's real screenshot attachment chokepoint."""
     from persome.capture import scheduler
 
     cfg = SimpleNamespace(
-        include_screenshot=True,
-        screenshot_max_width=1920,
-        screenshot_jpeg_quality=80,
-        capture_encrypt_screenshots=encrypt_flag,
-        # secure-input guard reads these; keep it inert
-        capture_suppress_secure_input=False,
+        encrypt_screenshots=encrypt_flag,
     )
-    monkeypatch.setattr(scheduler.screenshot, "grab", lambda **_: _fake_shot())
     out: dict = {}
-    # Replicate the scheduler's screenshot block by exercising the real module
-    # constant + helpers it uses, so the test tracks the production code path.
-    shot = scheduler.screenshot.grab(
-        max_width=cfg.screenshot_max_width, jpeg_quality=cfg.screenshot_jpeg_quality
+    shot = _fake_shot()
+    scheduler._attach_screenshot(
+        cfg,
+        out,
+        shot.image_base64,
+        shot.mime_type,
+        shot.width,
+        shot.height,
     )
-    image_b64 = shot.image_base64
-    screenshot_enc = False
-    if getattr(cfg, "capture_encrypt_screenshots", False):
-        key = scheduler.screenshot_crypto.load_key()
-        if key is not None:
-            image_b64 = scheduler.screenshot_crypto.encrypt(shot.image_base64, key)
-            screenshot_enc = True
-    out["screenshot"] = {
-        "image_base64": image_b64,
-        "mime_type": shot.mime_type,
-        "width": shot.width,
-        "height": shot.height,
-    }
-    if screenshot_enc:
-        out["screenshot"]["screenshot_enc"] = True
     return out
 
 

@@ -27,7 +27,8 @@ persome stop
 ```
 
 `start` double-forks and writes `<PERSOME_ROOT>/.pid`. The HTTP/MCP server
-defaults to `127.0.0.1:8742`.
+defaults to `127.0.0.1:8742`; the same loopback app serves `/model` and Chat
+REST routes. `persome chat` is the bundled interactive client.
 
 Optional launchd ownership:
 
@@ -55,10 +56,16 @@ belong in core.
 | `memory/` | durable Markdown memory |
 | `index.db` | SQLite WAL model/index |
 | `model-build.lock` | cross-process build lock |
+| `session-model.lock` | cross-process terminal-session finalization lock |
 | `model-build.json` | last build manifest |
 | `exports/` | owner-only snapshots |
 | `backup/` | optional SQLite snapshots |
 | `logs/` | component logs |
+
+OCR is off by default. When enabled it uses a child worker process managed by
+`capture/ocr_subprocess.py`; a native Paddle crash does not take down the daemon.
+The parent OCR submission thread only coordinates local inference and SQLite
+backfill.
 
 New code must use `paths.py`; tests use a temporary `PERSOME_ROOT` and must
 never inspect the real store.

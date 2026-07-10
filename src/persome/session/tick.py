@@ -1,6 +1,6 @@
 """Async daemon wiring for the session/reducer pipeline.
 
-Three asyncio tasks live here:
+The daemon tasks wired here include:
 
   * ``run_check_cuts`` — calls ``SessionManager.check_cuts`` every
     ``session.tick_seconds`` so idle gaps / soft cuts fire even when
@@ -9,6 +9,8 @@ Three asyncio tasks live here:
     ``reducer.daily_tick_hour/minute``), force-ends the currently open
     session, retries any ``failed`` sessions, and covers the edge case
     where the process was offline across midnight.
+  * ``run_reducer_retry_tick`` — retries due failed reductions once per minute
+    and sends terminal success or heuristic fallback through model finalization.
   * ``build_manager`` — factory that wires ``on_session_end`` to
     persist a ``sessions`` row and spawn the S2 reducer thread.
 """
@@ -18,7 +20,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta
 
-from .. import events as events_mod
 from ..config import Config
 from ..evomem import backup as evo_backup
 from ..evomem import integrity as evo_integrity
@@ -26,6 +27,7 @@ from ..evomem import inversion as evo_inversion
 from ..logger import get
 from ..store import fts
 from ..store import parser_ticks as parser_ticks_store
+from ..writer import agent as writer_agent
 from ..writer import classifier as classifier_mod
 from ..writer import (
     contradiction_check,
@@ -33,7 +35,6 @@ from ..writer import (
     orphan_reaper,
     session_reducer,
 )
-from ..writer import pattern_detector as pattern_detector_mod
 from . import store as session_store
 from .manager import SessionManager
 
@@ -90,131 +91,23 @@ def build_manager(cfg: Config) -> SessionManager:
         )
 
     def _after_reduce(result: session_reducer.ReduceResult) -> None:
-        """Terminal reducer succeeded → classify any window the 30-min tick missed."""
-        if not result.written or not result.entry_id or not result.path:
-            return
+        """Terminal reducer completion -> run the shared model finalizer."""
         if not result.is_final:
-            # Incremental flushes are handled by run_classifier_tick on its
-            # own cadence — the reducer callback only fires the terminal
-            # catch-up for any trailing window the tick hadn't reached yet.
             return
-        window_start: datetime | None = None
-        if result.end_time is not None:
-            with fts.cursor() as conn:
-                row = session_store.get_by_id(conn, result.session_id)
-                if row and row.classified_end:
-                    window_start = row.classified_end
-        try:
-            events_mod.publish("classifier", "stage_start", {"session_id": result.session_id})
-            classify = classifier_mod.classify_after_reduce(
-                cfg,
-                session_id=result.session_id,
-                event_daily_path=result.path,
-                just_written_entry_id=result.entry_id,
-                session_start=result.start_time,
-                session_end=result.end_time,
-                window_start=window_start,
-                on_event=events_mod.make_on_event("classifier"),
-            )
-            if classify.committed and classify.written_ids:
-                logger.info(
-                    "classifier %s: wrote %d entries into %s",
-                    result.session_id,
-                    len(classify.written_ids),
-                    ", ".join(classify.created_paths) or "existing files",
-                )
-            elif classify.skipped_reason:
-                logger.info(
-                    "classifier %s: skipped (%s)", result.session_id, classify.skipped_reason
-                )
-            else:
-                logger.info("classifier %s: committed with no writes", result.session_id)
-            events_mod.publish(
-                "classifier",
-                "stage_end",
-                {
-                    "session_id": result.session_id,
-                    "summary": classify.summary or "",
-                    "written": len(classify.written_ids),
-                },
-            )
-            if classify.committed and result.end_time is not None:
-                with fts.cursor() as conn:
-                    session_store.set_classified_end(
-                        conn,
-                        result.session_id,
-                        result.end_time,
-                    )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("classifier %s: crashed: %s", result.session_id, exc, exc_info=True)
-
-        # Pattern detection runs after classifier, using the same session window.
-        try:
-            events_mod.publish("pattern_detector", "stage_start", {"session_id": result.session_id})
-            detect = pattern_detector_mod.detect_after_classify(
-                cfg,
-                session_id=result.session_id,
-                event_daily_path=result.path,
-                session_start=result.start_time,
-                session_end=result.end_time,
-            )
-            if detect.committed and detect.written_ids:
-                logger.info(
-                    "pattern_detector %s: wrote %d entries into %s",
-                    result.session_id,
-                    len(detect.written_ids),
-                    ", ".join(detect.created_paths) or "existing files",
-                )
-            elif detect.skipped_reason:
-                logger.info(
-                    "pattern_detector %s: skipped (%s)",
-                    result.session_id,
-                    detect.skipped_reason,
-                )
-            else:
-                logger.info(
-                    "pattern_detector %s: committed with no writes",
-                    result.session_id,
-                )
-            events_mod.publish(
-                "pattern_detector",
-                "stage_end",
-                {
-                    "session_id": result.session_id,
-                    "written": len(detect.written_ids),
-                },
-            )
-        except Exception as exc:  # noqa: BLE001
+        modeled = writer_agent.finalize_session(
+            cfg,
+            session_id=result.session_id,
+            event_daily_path=result.path,
+            just_written_entry_id=result.entry_id,
+        )
+        if modeled.completed:
+            logger.info("session %s: terminal model stages complete", result.session_id)
+        else:
             logger.warning(
-                "pattern_detector %s: crashed: %s", result.session_id, exc, exc_info=True
+                "session %s: terminal model stages incomplete (%s)",
+                result.session_id,
+                "; ".join(modeled.errors) or modeled.skipped_reason,
             )
-
-        # memory_delta consolidator (Memory-rebuild Phase 0, spec §4.1/§6.2):
-        # one shadow LLM read of the whole ended session → structured delta into
-        # the memory_deltas table. Gated on [memory_delta] enabled (default OFF);
-        # best-effort — a delta failure never affects the chain around it.
-        try:
-            from ..writer import memory_delta as memory_delta_mod
-
-            delta = memory_delta_mod.run_after_session(
-                cfg,
-                session_id=result.session_id,
-                start_time=result.start_time,
-                end_time=result.end_time,
-            )
-            if delta.written:
-                logger.info(
-                    "memory_delta %s: shadow row %d (%s)",
-                    result.session_id,
-                    delta.delta_id,
-                    ", ".join(f"{h}={n}" for h, n in delta.counts.items()),
-                )
-            elif delta.skipped_reason not in ("", "disabled"):
-                logger.info(
-                    "memory_delta %s: skipped (%s)", result.session_id, delta.skipped_reason
-                )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("memory_delta %s: crashed: %s", result.session_id, exc)
 
     return SessionManager(
         gap_minutes=cfg.session.gap_minutes,
@@ -223,6 +116,42 @@ def build_manager(cfg: Config) -> SessionManager:
         on_session_start=_on_start,
         on_session_end=_on_end,
     )
+
+
+async def run_reducer_retry_tick(cfg: Config) -> None:
+    """Retry due terminal reductions and finalize any completed session."""
+    if not cfg.reducer.enabled:
+        logger.info("reducer retry loop not started (reducer disabled)")
+        return
+    interval = 60
+    logger.info("reducer retry loop started (every %ds)", interval)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            results = await asyncio.to_thread(session_reducer.retry_due, cfg)
+            for reduced in results:
+                modeled = await asyncio.to_thread(
+                    writer_agent.finalize_session,
+                    cfg,
+                    session_id=reduced.session_id,
+                    event_daily_path=reduced.path,
+                    just_written_entry_id=reduced.entry_id,
+                )
+                if modeled.completed:
+                    logger.info(
+                        "session %s: retry completed terminal model stages",
+                        reduced.session_id,
+                    )
+                elif modeled.skipped_reason != "session not ready for modeling":
+                    logger.warning(
+                        "session %s: retry left model stages incomplete (%s)",
+                        reduced.session_id,
+                        "; ".join(modeled.errors) or modeled.skipped_reason,
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("reducer retry tick failed: %s", exc, exc_info=True)
 
 
 async def run_check_cuts(cfg: Config, manager: SessionManager) -> None:
@@ -305,7 +234,6 @@ async def run_classifier_tick(cfg: Config, manager: SessionManager) -> None:
             if now - window_start < timedelta(seconds=interval):
                 continue
 
-            events_mod.publish("classifier", "stage_start", {"session_id": session_id})
             result = await asyncio.to_thread(
                 classifier_mod.classify_window,
                 cfg,
@@ -314,7 +242,6 @@ async def run_classifier_tick(cfg: Config, manager: SessionManager) -> None:
                 start=window_start,
                 end=now,
                 include_prior_day=window_start == session_start,
-                on_event=events_mod.make_on_event("classifier"),
             )
 
             if result.committed and result.written_ids:
@@ -335,16 +262,6 @@ async def run_classifier_tick(cfg: Config, manager: SessionManager) -> None:
                     "classifier tick %s: committed with no writes",
                     session_id,
                 )
-            events_mod.publish(
-                "classifier",
-                "stage_end",
-                {
-                    "session_id": session_id,
-                    "summary": result.summary or "",
-                    "written": len(result.written_ids),
-                },
-            )
-
             if result.committed or result.skipped_reason:
                 with fts.cursor() as conn:
                     session_store.set_classified_end(conn, session_id, now)
@@ -416,7 +333,7 @@ async def run_daily_safety_net(cfg: Config, manager: SessionManager) -> None:
                 # Give the just-force-ended session's async reducer thread a
                 # chance to finish before the catch-up pass would re-process it.
                 await asyncio.sleep(2)
-                await asyncio.to_thread(session_reducer.reduce_all_pending, cfg)
+                await asyncio.to_thread(writer_agent.run, cfg)
             # ② reader↔重建保鲜（apply_enabled=True，delta 铸点已上线，spec 2026-07-04 §reader-cutover）：
             # add_direct 只写 evo_nodes、不投影 entries（inversion 只投 choke-point 动词），classifier
             # 又已退役 → 检索读的 entries 会随新写陈旧。每日从 evo_nodes 全量重投影 entries/entry_metadata
@@ -506,9 +423,8 @@ async def run_daily_safety_net(cfg: Config, manager: SessionManager) -> None:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("daily wal_checkpoint failed: %s", exc)
-            # Retention for the per-call telemetry tables (#508): they record a
-            # row on every recall/recognition/parser tick and define a bounded
-            # `prune` that previously had no caller. Run it once per day so the
+            # Retention for parser-tick telemetry (#508): the table defines a
+            # bounded `prune` that previously had no caller. Run it once per day so the
             # advertised bound actually holds. Pure side channel — failures
             # alert in the log and never kill the tick.
             try:
@@ -520,8 +436,8 @@ async def run_daily_safety_net(cfg: Config, manager: SessionManager) -> None:
             # evomem survivability base (design §3.2/§3.3, PR-1): daily verified
             # VACUUM INTO snapshot + retention, then the chain-invariant
             # self-check on the live DB. Both are side channels — config off
-            # means this tick behaves exactly as before. Failures alert via
-            # the integrity_alert SSE event; neither ever kills the tick.
+            # means this tick behaves exactly as before. Failures emit
+            # structured error logs; neither ever kills the tick.
             if cfg.evomem.snapshot_enabled:
                 try:
                     await asyncio.to_thread(evo_backup.run_daily_backup, cfg)
@@ -595,38 +511,51 @@ async def run_schema_tick(cfg: Config) -> None:
             await asyncio.sleep(60)
 
 
-def _run_evomem_enrichment_once(cfg: Config) -> None:
+def _run_evomem_enrichment_once(
+    cfg: Config,
+    *,
+    raise_on_error: bool = False,
+) -> dict[str, object]:
     """One enrichment pass: person-graph ingest (#1) + case extraction (#2).
 
     Both layers gate INTERNALLY on their own flags and no-op when off, so this is
     safe to call whenever the tick fires. Person-graph ingest is deterministic (no
     LLM); case extraction makes one LLM pass over the last 24h of timeline blocks.
     Extracted so the wiring is unit-testable without driving the daily loop. Each
-    layer is isolated in its own try so one failing never blocks the other.
+    layer is isolated in its own try so one failure never blocks the others.
+    Scheduled callers stay fail-open; the model build passes ``raise_on_error``
+    so its manifest cannot label a partially failed enrichment stage complete.
     """
     from ..evomem.engine import EvoMemory
     from ..evomem.person_graph import PersonGraph
     from ..model.entity_source import MemoryPersonNameSource
     from ..writer import case_extractor
 
+    report: dict[str, object] = {"person_updates": 0, "case_cards": 0, "relation_edges": 0}
+    errors: list[str] = []
+
     if getattr(cfg, "person_graph_enabled", False):
         try:
             touched = PersonGraph(
                 EvoMemory(), cfg=cfg, name_source=MemoryPersonNameSource()
             ).ingest()
+            report["person_updates"] = len(touched)
             logger.info("evomem enrichment: person graph ingested %d update(s)", len(touched))
         except Exception as exc:  # noqa: BLE001 — best-effort enrichment, never crash the tick
             logger.error("evomem enrichment: person graph failed: %s", exc, exc_info=True)
+            errors.append(f"person_graph: {type(exc).__name__}: {exc}")
 
     if getattr(cfg, "case_extraction_enabled", False):
         try:
             result = case_extractor.run_case_extraction(cfg)
+            report["case_cards"] = getattr(result, "written_count", 0)
             logger.info(
                 "evomem enrichment: case extraction wrote %d card(s)",
                 getattr(result, "written_count", 0),
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("evomem enrichment: case extraction failed: %s", exc, exc_info=True)
+            errors.append(f"case_extraction: {type(exc).__name__}: {exc}")
 
     # Graph-memory P0-2 (#428): relation-edge extraction → SHADOW. Gates internally on
     # relation_extraction_enabled (default off) + fully fail-open, like the two layers above.
@@ -635,6 +564,7 @@ def _run_evomem_enrichment_once(cfg: Config) -> None:
             from ..evomem import relation_extractor
 
             rel = relation_extractor.run_relation_extraction(cfg)
+            report["relation_edges"] = rel.written_count
             logger.info(
                 "evomem enrichment: relation extraction wrote %d shadow edge(s) (det=%d llm=%d)",
                 rel.written_count,
@@ -659,3 +589,9 @@ def _run_evomem_enrichment_once(cfg: Config) -> None:
                 logger.info("evomem enrichment: %d relation edge(s) promoted to ACTIVE", n_promoted)
         except Exception as exc:  # noqa: BLE001 — best-effort enrichment, never crash the tick
             logger.error("evomem enrichment: relation extraction failed: %s", exc, exc_info=True)
+            errors.append(f"relation_extraction: {type(exc).__name__}: {exc}")
+
+    report["errors"] = errors
+    if errors and raise_on_error:
+        raise RuntimeError("; ".join(errors))
+    return report

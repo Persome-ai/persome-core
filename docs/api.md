@@ -39,7 +39,13 @@ static routes are package resources and are intentionally omitted from OpenAPI.
 
 Chat consumes the same memory and provenance interfaces as MCP. It is not a
 second model store. Shell, arbitrary filesystem, and Web tools are omitted by
-default and require `[chat] unsafe_local_tools_enabled = true`.
+default and require `[chat] unsafe_local_tools_enabled = true`. Skill Markdown
+loads as model guidance in either mode, but executable
+`memory/skills/*/tools.py` is gated by the same unsafe opt-in. Configured
+external MCP servers are separate explicit trust grants.
+
+There is no browser Chat page in this repository. `persome chat` is the shipped
+interactive client; the routes above support trusted local product clients.
 
 ## Model contract
 
@@ -54,6 +60,11 @@ points, lines, faces, volumes, root, receipts, stats
 Every Line derived from activity carries `source_kind`, `source_id`, and
 `source_receipt`. Legacy `event:<id>` identities are normalized to
 `event:intent:<id>` and are read only when an old `intents` table exists.
+
+The loopback viewer receives raw local graph/model detail so its owner can
+inspect the real person model. `persome model export` and MCP
+`get_model_snapshot` apply deterministic redaction by default; `/model/graph`
+is not a publication endpoint.
 
 ## Security boundary
 

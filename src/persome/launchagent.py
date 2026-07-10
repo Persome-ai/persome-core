@@ -1,14 +1,11 @@
-"""macOS LaunchAgent integration — lets launchd own the daemon process so its
-lifetime is decoupled from the Mens.app GUI.
+"""macOS LaunchAgent integration for a launchd-owned daemon process.
 
 Design (issue #194):
 
 - launchd becomes the *owner* of the daemon. The plist runs the daemon in the
   foreground (``persome start --foreground``); ``KeepAlive`` makes launchd
-  relaunch it whenever it exits (crash, ``stop``, OOM). This is the launchd-native
-  equivalent of the app-side auto-restart (#170) — when launchd-managed, the app
-  asks launchd to restart the job via ``launchctl kickstart -k`` instead of
-  spawning its own detached process, so the two never fight.
+  relaunch it whenever it exits (crash, ``stop``, OOM). Lifecycle ownership stays
+  in one place instead of an embedding product spawning a competing daemon.
 - stdout/stderr are routed into ``logs/launchd.{out,err}.log`` under the data root
   so the diagnostic bundle (#168), which globs ``logs/``, picks them up unchanged.
 - The plist itself must live in ``~/Library/LaunchAgents/`` — launchd only scans
@@ -16,8 +13,7 @@ Design (issue #194):
   ``PERSOME_ROOT`` so tests stay hermetic.
 
 This module is the single source of truth for the label, plist location, and
-``launchctl`` invocations; the Dart side (`embedded_daemon_service.dart`) mirrors
-the same label/path contract.
+``launchctl`` invocations.
 """
 
 from __future__ import annotations
@@ -64,7 +60,9 @@ def build_plist(binary: str) -> dict[str, object]:
     env: dict[str, str] = {}
     # Propagate the data-root override so a test/dev launchd job and the CLI
     # that registered it agree on where state lives.
-    root_override = (os.environ.get("PERSOME_ROOT") or os.environ.get("MENS_CONTEXT_ROOT")) or os.environ.get("OPENCHRONICLE_ROOT")  # Mens is the legacy name
+    root_override = (
+        os.environ.get("PERSOME_ROOT") or os.environ.get("MENS_CONTEXT_ROOT")
+    ) or os.environ.get("OPENCHRONICLE_ROOT")  # Mens is the legacy name
     if root_override:
         env["PERSOME_ROOT"] = root_override
 
@@ -124,17 +122,6 @@ def bootout() -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
-
-
-def kickstart(restart: bool = True) -> subprocess.CompletedProcess[str]:
-    """Ask launchd to (re)start the job. With ``restart=True`` (``-k``) it kills
-    the current instance first — this is the launchd-native restart used by the
-    app instead of spawning its own process."""
-    args = ["launchctl", "kickstart"]
-    if restart:
-        args.append("-k")
-    args.append(gui_domain_target())
-    return subprocess.run(args, capture_output=True, text=True, check=False)
 
 
 def _terminate_stray_daemon(timeout: float = 2.0) -> None:

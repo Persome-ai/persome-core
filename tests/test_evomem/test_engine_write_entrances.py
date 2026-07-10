@@ -2,8 +2,7 @@
 
 覆盖：apply_ops/add_direct 不调 LLM、file_name 路由校验 + event 栅栏、
 make_id 形态 node_id、UPDATE 出处补洞（refined_from）、ABSTRACT 链语义②
-（abstracted_from provenance 边 + 源 retire 不写单指针）、run_system2 四元组
-全字段（审计 3.3）。
+（abstracted_from provenance 边 + 源 retire 不写单指针）。
 """
 
 import re
@@ -19,7 +18,6 @@ from persome.evomem.models import (
     ReconcileOp,
 )
 from persome.evomem.reconciler import Reconciler
-from persome.evomem.schema_miner import SchemaMiner, SchemaResult
 from persome.evomem.store import NodeStore
 
 _MAKE_ID_RE = re.compile(r"^\d{8}-\d{4}-[0-9a-f]{6}$")
@@ -147,35 +145,6 @@ def test_save_and_retire_sources_skips_missing_source(ac_root):
     store.save_and_retire_sources(syn, source_ids=["a", "missing"])
     assert store.get("a").is_latest is False
     assert store.get("s").is_latest is True
-
-
-# ── run_system2 四元组全字段（审计 3.3）─────────────────────────────────────
-
-
-def test_run_system2_persists_full_schema_quadruple(ac_root):
-    result = SchemaResult(
-        success=True,
-        central_proposition="偏好极简工具",
-        supporting_summary="多次选择 uv/ruff",
-        expected_inferences=["会拒绝重型框架", "评估工具先看依赖体积"],
-        confidence=0.72,
-    )
-    miner = SchemaMiner(llm_call=lambda m: None)
-    miner.mine_schema = lambda facts: result  # type: ignore[method-assign]
-    mem = EvoMemory(
-        user_id="u1",
-        reconciler=Reconciler(llm_call=_llm_must_not_be_called),
-        schema_miner=miner,
-    )
-    mem.run_system2(["用 uv", "用 ruff", "拒 litellm"])
-
-    schemas = [n for n in mem.store.all_latest() if n.layer is MemoryLayer.L6_SCHEMA]
-    assert len(schemas) == 1
-    node = schemas[0]
-    assert node.content == "偏好极简工具"
-    assert node.schema_summary == "多次选择 uv/ruff"
-    assert node.schema_inferences == ["会拒绝重型框架", "评估工具先看依赖体积"]
-    assert node.schema_confidence == 0.72
 
 
 # ── 反转写口 commit_node / commit_supersede / commit_retire（PR-6b）─────────

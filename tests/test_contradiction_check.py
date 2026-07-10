@@ -37,6 +37,21 @@ class CountingJudge:
         return _resp({"contradictory": self.contradictory, "reason": "测试判定"})
 
 
+def test_default_llm_adapter_uses_current_call_signature(ac_root, monkeypatch) -> None:
+    cfg = _cfg(ac_root)
+    seen = {}
+
+    def call_llm(actual_cfg, stage, *, messages):
+        seen.update(cfg=actual_cfg, stage=stage, messages=messages)
+        return _resp({"contradictory": False, "reason": "clean"})
+
+    monkeypatch.setattr(check.llm_mod, "call_llm", call_llm)
+    messages = [{"role": "user", "content": "judge"}]
+    check._build_llm_call(cfg)(messages)
+
+    assert seen == {"cfg": cfg, "stage": "contradiction_check", "messages": messages}
+
+
 # Same-subject, different-claim pair — solidly inside the similarity band.
 FACT_A = "张伟目前全职负责支付模块的后端开发工作"
 FACT_B = "张伟目前全职负责搜索模块的后端开发工作"

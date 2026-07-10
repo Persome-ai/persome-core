@@ -52,7 +52,7 @@ Example client configuration:
 |---|---|
 | `current_context` | Read recent capture headlines, text, and timeline blocks. |
 | `search_captures` | Search the local capture index. |
-| `read_recent_capture` | Read a nearby capture; screenshot inclusion is opt-in. |
+| `read_recent_capture` | Read an exact `file_stem` or nearby capture; screenshot inclusion is opt-in. |
 | `attention_trajectory` | Read the attention path used during state formation. |
 
 ## Explicit write tools
@@ -90,6 +90,10 @@ use streamable HTTP or stdio.
 - Screenshots are excluded unless explicitly requested.
 - `get_model_snapshot` redacts by default.
 - `remember` and `correct_memory` are deliberate writes with audit history.
+
+The daemon HTTP endpoint also serves `/model`, but no browser Chat UI. Use
+`persome chat` for the bundled interactive client or the documented Chat REST
+routes from a trusted local application.
 
 See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) for the full data and egress
 model. The implementation-oriented reference remains

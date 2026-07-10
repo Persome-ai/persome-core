@@ -12,7 +12,7 @@ The user message that follows contains two sections: first, the preceding entrie
 
 **No duplication with preceding entries.** Do not emit a sub_task whose `[HH:MM-HH:MM, app]` range overlaps the range of a preceding entry for the same activity. This window's sub_tasks should describe *new* activity in the window's stated start/end range only.
 
-**Observed-regularity surfacing.** A separate downstream classifier decides what long-term preference / habit / style facts are worth persisting. It is forbidden from inventing claims you did not state, so it depends on *you* to flag behavioral regularities in concrete, quotable form.
+**Observed-regularity surfacing.** A separate terminal modeling stage decides what long-term preference / habit / style facts are worth persisting. It is forbidden from inventing claims the evidence does not support, so it depends on *you* to flag behavioral regularities in concrete, quotable form.
 
 Fire this rule when the current window exhibits, or continues, a clearly repeated behavior:
 
@@ -30,7 +30,7 @@ Do NOT fire this rule for:
 - transient events (scheduling, one-off appointments, reading a specific doc) — those belong in sub_tasks, not here
 - anything you would hedge with "probably" / "seems to" / "suggests"
 
-If nothing qualifies, omit the sentence. The classifier's default is silence; an unjustified "Observed regularity" line will poison the downstream preferences file.
+If nothing qualifies, omit the sentence. The modeling stage's default is silence; an unjustified "Observed regularity" line will poison the downstream preferences file.
 
 ## Output
 

@@ -185,22 +185,6 @@ class TestDisableKillSwitch:
 # ─── result extraction ───────────────────────────────────────────────────────
 
 
-class TestExtractTexts:
-    def test_dict_form(self) -> None:
-        assert ocr_local._extract_texts([{"rec_texts": ["a", "b"]}]) == ["a", "b"]
-
-    def test_attr_form(self) -> None:
-        class _R:
-            rec_texts = ["c"]
-
-        assert ocr_local._extract_texts([_R()]) == ["c"]
-
-    def test_empty_and_none(self) -> None:
-        assert ocr_local._extract_texts([]) == []
-        assert ocr_local._extract_texts(None) == []
-        assert ocr_local._extract_texts([{"rec_texts": None}]) == []
-
-
 # ─── real inference (integration; deselected by the default gate) ─────────────
 
 _CJK_FONTS = [

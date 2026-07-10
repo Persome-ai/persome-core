@@ -123,7 +123,7 @@ def _slice_visible_text(
 
 
 # Budget for the raw focus excerpt stored on each block (a lossless backstop for
-# the recognizer; see TimelineBlock.focus_excerpt). Generous head slice so a
+# session modeling; see TimelineBlock.focus_excerpt). Generous head slice so a
 # chat message that sits just after the sidebar (the common AX layout) is always
 # included — the chat-"tail" heuristic in _slice_visible_text would miss it.
 _FOCUS_EXCERPT_CHARS = 8000
@@ -132,8 +132,8 @@ _FOCUS_EXCERPT_CHARS = 8000
 def _focus_excerpt(parsed: list[tuple[Path, dict]]) -> str:
     """Raw visible_text of the window's most recent capture, head-truncated.
 
-    Stored verbatim on the block as a lossless fallback the intent recognizer
-    can read for the focus minute — so a message body the LLM normalizer dropped
+    Stored verbatim on the block as a lossless fallback session modeling can
+    read — so a message body the LLM normalizer dropped
     (e.g. a counterpart's "周五3点开会?") is still recoverable downstream.
     """
     for _p, data in reversed(parsed):
@@ -145,15 +145,6 @@ def _focus_excerpt(parsed: list[tuple[Path, dict]]) -> str:
         if vt:
             return vt[:_FOCUS_EXCERPT_CHARS]
     return ""
-
-
-# Canonical miss reasons (the ``miss_reason`` slot of
-# ``_focus_structured_with_outcome``). The ``parser_ticks`` table keeps its
-# three-state outcome (no schema change); the finer reason is emitted on a
-# structured ``parser_miss`` log line so a miss-rate spike can be split into
-# "correct rejection" (decline on a non-chat / AX-opaque window) vs "the parser
-# is broken" (exception, or anchors matched but rendered empty).
-MISS_REASONS: tuple[str, ...] = ("decline", "empty_render", "exception")
 
 
 def _focus_structured_with_outcome(
@@ -171,7 +162,7 @@ def _focus_structured_with_outcome(
 
     If **no** capture's app had a parser but at least one capture carried an
     ``ax_tree`` + ``bundle`` → ``("", <most-recent-such-bundle>, "fallback", None)``
-    (the recognizer then falls back to the raw ``focus_excerpt``, #258).
+    (session modeling then falls back to the raw ``focus_excerpt``).
 
     If the window had nothing parseable at all (no ax_tree+bundle) →
     ``("", None, None, None)`` and the caller records no tick.
@@ -181,9 +172,7 @@ def _focus_structured_with_outcome(
     logs without touching the ``parser_ticks`` schema (#548).
 
     Never raises — a parser failure on one capture is logged and treated as a
-    ``miss``. Returns ``(text, bundle, outcome, miss_reason)``;
-    ``_focus_structured`` wraps this to expose just ``text`` so existing
-    callers/tests stay unchanged.
+    ``miss``. Returns ``(text, bundle, outcome, miss_reason)``.
     """
     fallback_bundle: str | None = None
     for _p, data in reversed(parsed):
@@ -224,19 +213,6 @@ def _focus_structured_with_outcome(
     if fallback_bundle is not None:
         return "", fallback_bundle, "fallback", None
     return "", None, None, None
-
-
-def _focus_structured(parsed: list[tuple[Path, dict]]) -> str:
-    """Per-app structured conversation for the window's most recent parseable capture.
-
-    Thin wrapper over :func:`_focus_structured_with_outcome` returning only the
-    rendered text (``""`` when no parser matched / declined). The aggregator's
-    block-production path uses the richer ``_with_outcome`` form to record a
-    parser-hit telemetry tick; this wrapper keeps the simple text contract for
-    direct callers and unit tests.
-    """
-    text, _bundle, _outcome, _reason = _focus_structured_with_outcome(parsed)
-    return text
 
 
 def _capture_stem_in_window(stem: str, start: datetime, end: datetime) -> bool:
@@ -618,13 +594,6 @@ def produce_block_for_window(
     )
     with fts_store.cursor() as conn:
         store.insert(conn, block)
-        # R4 (#544): timeline no longer feeds the unified intent stream — the
-        # session-level trajectory recognizer is the sole producer (it reads
-        # blocks as events with cross-window/cross-session context). The
-        # ``helpful_intent_tags`` column is 保列停写: kept in the schema for
-        # historical rows, but new blocks always store ``[]`` — even a model
-        # that volunteers the field is ignored (the parse path is gone).
-        #
         # Parser-hit telemetry (general observability): one tick per window that
         # had something parseable. Records hit/miss/fallback bucketed by bundle
         # so we can prove the per-app parsers are firing and catch semantic-class

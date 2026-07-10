@@ -1,5 +1,9 @@
 # Personome 参考文献表
 
+> **Non-normative research note.** This dated bibliography is manuscript
+> background. It does not describe current Runtime behavior or executable
+> claims; use the paper-facing documents in the repository root for that.
+
 > 用途：Personome 技术报告 References 的候选池。arXiv id 全部来自本轮检索/深读。
 > **可信度标注**：⭐ = 已逐字深读核实（元数据 verbatim 确认）；○ = 检索到 arXiv 页/id（可靠，投稿前建议 spot-check）；末尾「须二次核实」段 = 仅见搜索列表、引用前必须打开确认。
 > 生成日期：2026-07-06。BibTeX 可直接从每条 arXiv 链接的 "Export citation" 拉取。

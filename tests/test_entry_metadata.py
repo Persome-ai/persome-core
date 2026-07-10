@@ -8,15 +8,15 @@ Three things are pinned here:
 2. **Invariant**: ``entry_metadata`` built incrementally equals a fresh
    ``rebuild_index`` row-for-row — the load-bearing增量 == rebuild guarantee.
    A row exists IFF the entry carries a non-default tag (all-default → no row).
-3. **Recall rendering**: ``include_confidence`` annotates only low / conflicted
-   hits with a ``⚠`` note; off → output byte-identical to today.
+3. **Recall projection**: the production MCP search returns confidence and
+   conflict fields as structured metadata.
 """
 
 from __future__ import annotations
 
 import sqlite3
 
-from persome.retrieval import layered as recall
+from persome.mcp import server as mcp_server
 from persome.store import entries as entries_mod
 from persome.store import files as files_mod
 from persome.store import fts
@@ -114,7 +114,7 @@ def test_supersede_sets_new_head_metadata(ac_root):
         _assert_matches_fresh_rebuild(conn)
 
 
-# ── recall rendering (flag-gated) ────────────────────────────────────────────
+# ── production recall metadata ───────────────────────────────────────────────
 
 
 def _seed_recall_entries(conn: sqlite3.Connection) -> None:
@@ -130,25 +130,14 @@ def _seed_recall_entries(conn: sqlite3.Connection) -> None:
     )
 
 
-def test_recall_flag_off_has_no_annotation(ac_root):
+def test_production_recall_returns_confidence_and_conflict_metadata(ac_root):
     with fts.cursor() as conn:
         _seed_recall_entries(conn)
-        bg = recall.assemble_background(conn, scope="", hints=["alpha"], include_confidence=False)
-        assert "alpha" in bg
-        assert "⚠" not in bg
-
-
-def test_recall_flag_on_marks_low_and_conflicted_only(ac_root):
-    with fts.cursor() as conn:
-        _seed_recall_entries(conn)
-        bg = recall.assemble_background(
-            conn, scope="", hints=["alpha"], per_hint=5, include_confidence=True
-        )
-        assert "⚠(低置信)" in bg
-        assert "⚠(冲突未裁决)" in bg
-        # the high-confidence hit is present but unmarked
-        assert "alpha solid fact" in bg
-        assert bg.count("⚠") == 2  # only the low + conflicted hits, not the high one
+        rows = mcp_server._search(conn, query="alpha", top_k=5)["results"]
+    by_content = {row["content"]: row for row in rows}
+    assert by_content["alpha solid fact"]["confidence"] == "high"
+    assert by_content["alpha shaky guess"]["confidence"] == "low"
+    assert by_content["alpha disputed claim"]["conflicted"] is True
 
 
 def test_occurred_at_with_space_is_normalized_and_round_trips(ac_root):

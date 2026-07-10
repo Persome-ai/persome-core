@@ -14,8 +14,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-import time
-from collections.abc import Callable
 from typing import Any
 
 from .. import config as config_mod
@@ -30,86 +28,6 @@ _logger = _get_logger("persome.chat")
 # Extraction throttle: only run every N turns or after token growth
 _MIN_TURNS_BETWEEN_EXTRACTIONS = 3
 _MIN_TOKEN_GROWTH_FOR_EXTRACTION = 5_000
-
-# ─── Known-memory priming (E4) ───────────────────────────────────────────────
-# When `cfg.extraction_known_memory_priming` is on, the extractor is fed a
-# cached summary of what we already know so it produces deltas/updates rather
-# than restating existing facts. The summary is wrapped with an anti-anchoring
-# guard: the live conversation always wins on conflict, and the summary is a
-# hint only — never license to invent facts not present in the conversation.
-
-# Provider seam: returns a plain-text "known memory" summary string. Defaults to
-# returning "" (no priming material). Tests inject a fake that returns canned
-# text and counts calls; the daemon can later wire a live recent-memory reader
-# (e.g. fts.recent) without touching the extraction logic.
-KnownMemoryProvider = Callable[[], str]
-
-
-def _default_known_memory_provider() -> str:
-    return ""
-
-
-_known_memory_provider: KnownMemoryProvider = _default_known_memory_provider
-
-# Small TTL cache so we don't rebuild the summary on every extraction in a
-# burst — mirrors the few-minute cache habit elsewhere in the daemon.
-_KNOWN_MEMORY_TTL_SECONDS = 300.0
-_known_memory_cache: tuple[float, str] | None = None
-_known_memory_lock = threading.Lock()
-
-_ANTI_ANCHORING = (
-    "When the known summary below conflicts with the current conversation, "
-    "trust the current observation — the summary is only a hint, and you must "
-    "not invent facts that do not appear in the current conversation. Prefer "
-    "emitting updates/deltas over restating facts the summary already covers."
-)
-
-
-def set_known_memory_provider(provider: KnownMemoryProvider | None) -> None:
-    """Inject the known-memory summary source (test/seam hook).
-
-    Passing None restores the default empty provider. Also clears the cache so a
-    freshly-injected provider isn't shadowed by a stale entry.
-    """
-    global _known_memory_provider, _known_memory_cache
-    with _known_memory_lock:
-        _known_memory_provider = provider or _default_known_memory_provider
-        _known_memory_cache = None
-
-
-def _cached_known_memory(*, now: float | None = None) -> str:
-    """Return the known-memory summary, rebuilt at most once per TTL window."""
-    global _known_memory_cache
-    ts = time.monotonic() if now is None else now
-    with _known_memory_lock:
-        cached = _known_memory_cache
-        if cached is not None and (ts - cached[0]) < _KNOWN_MEMORY_TTL_SECONDS:
-            return cached[1]
-        provider = _known_memory_provider
-    # Build outside the lock (provider may do IO); tolerate failures.
-    try:
-        summary = (provider() or "").strip()
-    except Exception:
-        _logger.debug("known-memory provider failed", exc_info=True)
-        summary = ""
-    with _known_memory_lock:
-        _known_memory_cache = (ts, summary)
-    return summary
-
-
-def _build_known_memory_block(cfg: config_mod.Config) -> str:
-    """The prompt block injected before the conversation.
-
-    Empty string when the feature is off (so the prompt is byte-identical to the
-    pre-feature behavior) or when there is no known-memory material to inject.
-    """
-    if not getattr(cfg, "extraction_known_memory_priming", False):
-        return ""
-    summary = _cached_known_memory()
-    if not summary:
-        return ""
-    return f"Known memory summary (cached; may be stale):\n{_ANTI_ANCHORING}\n\n{summary}\n\n"
-
 
 # The extractor's free taxonomy (user/feedback/project/reference) is mapped onto
 # the canonical memory-file prefixes the classifier writes, so chat-learned facts
@@ -183,7 +101,7 @@ def _run_extraction(
     """Execute memory extraction and write results to disk."""
     try:
         conversation = _format_for_extraction(new_messages)
-        prompt = _render_prompt(conversation, _build_known_memory_block(cfg))
+        prompt = _render_prompt(conversation)
 
         raw = complete_sync(
             cfg.chat,
@@ -231,19 +149,14 @@ def _load_prompt() -> str:
     return load_prompt("chat_memory_extract.md")
 
 
-def _render_prompt(conversation: str, known_memory_block: str) -> str:
-    """Fill the prompt's two placeholders.
+def _render_prompt(conversation: str) -> str:
+    """Fill the prompt's conversation placeholder.
 
     Uses targeted ``str.replace`` rather than ``str.format`` because the prompt
     embeds a literal JSON example whose ``{ }`` braces would make ``format``
-    raise. ``{known_memory}`` collapses to "" when priming is off, so the
-    rendered prompt is byte-identical to the pre-feature output in that case.
+    raise.
     """
-    return (
-        _load_prompt()
-        .replace("{known_memory}", known_memory_block)
-        .replace("{conversation}", conversation)
-    )
+    return _load_prompt().replace("{conversation}", conversation)
 
 
 def _resolve_name(mem_type: str, name: str) -> str:

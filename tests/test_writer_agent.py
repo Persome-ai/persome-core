@@ -87,7 +87,9 @@ def test_writer_run_reduces_pending_and_classifies(ac_root: Path, monkeypatch) -
     monkeypatch.setattr(llm_mod, "call_llm", fake_call_llm)
 
     cfg = config_mod.load(ac_root / "config.toml")
-    cfg.memory_delta.apply_enabled = False  # 测 reduce+classify legacy 路径；apply_enabled=True 下 classifier 退役
+    cfg.memory_delta.apply_enabled = (
+        False  # 测 reduce+classify legacy 路径；apply_enabled=True 下 classifier 退役
+    )
     result = agent.run(cfg)
 
     assert result.reduced == 1
@@ -106,3 +108,69 @@ def test_writer_run_respects_reducer_disabled(ac_root: Path, monkeypatch) -> Non
     cfg.reducer.enabled = False
     result = agent.run(cfg)
     assert result.reduced == 0
+
+
+def test_terminal_finalizer_applies_default_person_model(
+    ac_root: Path,
+    fake_llm,
+) -> None:
+    """A reduced session mints model state even when no terminal entry was written."""
+    start = datetime(2026, 7, 10, 9, 0, tzinfo=_TZ)
+    end = start + timedelta(minutes=1)
+    with fts.cursor() as conn:
+        timeline_store.insert(
+            conn,
+            timeline_store.TimelineBlock(
+                start_time=start,
+                end_time=end,
+                entries=['[Feishu] 聊天: 和张三确认了评审结论。"周五版本可以发"'],
+                apps_used=["Feishu"],
+                capture_count=1,
+            ),
+        )
+        session_store.insert(
+            conn,
+            session_store.SessionRow(
+                id="sess_model_default",
+                start_time=start,
+                end_time=end,
+                status="reduced",
+            ),
+        )
+
+    fake_llm.set_default(
+        "memory_delta",
+        json.dumps(
+            {
+                "entities": [
+                    {
+                        "new_entity": "张三",
+                        "kind": "person",
+                        "quote": "和张三确认了评审结论",
+                        "confidence": 0.9,
+                    }
+                ],
+                "assertions": [],
+                "relations": [],
+                "events": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    cfg = config_mod.load(ac_root / "config.toml")
+    assert cfg.memory_delta.enabled is True
+    assert cfg.memory_delta.apply_enabled is True
+    result = agent.finalize_session(cfg, session_id="sess_model_default")
+
+    assert result.completed is True
+    assert result.delta.written is True
+    assert result.delta.applied is True
+    with fts.cursor() as conn:
+        row = session_store.get_by_id(conn, "sess_model_default")
+        delta = conn.execute(
+            "SELECT apply_status FROM memory_deltas WHERE session_id=?",
+            ("sess_model_default",),
+        ).fetchone()
+    assert row is not None and row.modeled_at is not None
+    assert delta is not None and delta["apply_status"] == "applied"

@@ -1,9 +1,9 @@
 """Top-level daemon: capture scheduler + timeline aggregator + session cutter.
 
-The v2 writer is driven by session boundaries. ``SessionManager.on_session_end``
-(wired in ``session/tick.py``) spawns the S2 reducer on a daemon thread, and
-the reducer's success callback kicks the classifier. No periodic writer loop
-is needed — each session produces exactly one reducer + classifier pass.
+The writer is driven by session boundaries. ``SessionManager.on_session_end``
+(wired in ``session/tick.py``) spawns the S2 reducer on a daemon thread, then
+the shared terminal finalizer runs classification, pattern detection, and
+memory-delta modeling. A retry task recovers transient reducer failures.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
-from . import events as events_mod
 from . import paths
 from .capture import ocr_local
 from .capture import scheduler as capture_scheduler
@@ -134,6 +133,11 @@ def _build_task_registry() -> list[TaskDefinition]:
             create=lambda cfg, sm: session_tick.run_check_cuts(cfg, sm),
         ),
         TaskDefinition(
+            name="reducer-retry",
+            enabled=lambda cfg, capture_only: cfg.reducer.enabled,
+            create=lambda cfg, sm: session_tick.run_reducer_retry_tick(cfg),
+        ),
+        TaskDefinition(
             name="daily-safety-net",
             enabled=lambda cfg, capture_only: True,
             create=lambda cfg, sm: session_tick.run_daily_safety_net(cfg, sm),
@@ -150,7 +154,9 @@ def _build_task_registry() -> list[TaskDefinition]:
         ),
         TaskDefinition(
             name="classifier-tick",
-            enabled=lambda cfg, capture_only: not capture_only,
+            enabled=lambda cfg, capture_only: (
+                not capture_only and not cfg.memory_delta.apply_enabled
+            ),
             create=lambda cfg, sm: session_tick.run_classifier_tick(cfg, sm),
         ),
         TaskDefinition(
@@ -196,7 +202,6 @@ def _create_tasks_from_registry(
 async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = False) -> None:
     paths.ensure_dirs()
     paths.pid_file().write_text(str(os.getpid()))
-    events_mod.init(asyncio.get_running_loop())
 
     # Register this daemon ("Persome Backend") in the macOS Screen Recording list + prompt,
     # so screenshots capture real app windows instead of just the desktop wallpaper (and
@@ -301,7 +306,7 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
         # async task drain (_shutdown_tasks).
         #
         # The drain runs Python — spinning the event loop for up to
-        # _SHUTDOWN_TIMEOUT_SECONDS awaiting task cancellation — while the daemon's background LLM-recognition
+        # _SHUTDOWN_TIMEOUT_SECONDS awaiting task cancellation — while background LLM modeling
         # and te3-large embedding calls are still mid-flight on the default
         # executor (asyncio.to_thread), parked in a TLS read (_ssl__SSLSocket_read).
         # On a real app quit there are typically several such SSL workers live;
@@ -341,7 +346,7 @@ def run(cfg: Config, *, capture_only: bool = False) -> None:
     """Boot the daemon event loop, block until a stop signal, then hard-exit.
 
     Two cooperating pieces stop the app-quit / launchd-bootout teardown SIGSEGV,
-    whose root is the daemon's background LLM-recognition / te3-large embedding
+    whose root is the daemon's background LLM-modeling / te3-large embedding
     calls: every off-loop blocking call goes through ``asyncio.to_thread`` → the
     default executor, and at quit time several of those workers are parked in a
     TLS read (``_ssl__SSLSocket_read``). Running *any* event-loop / interpreter

@@ -115,7 +115,7 @@ _CLS_MESSAGE_CONTENT = "message-content"
 # outgoing bubbles (you never see your own name) and on continuation rows.
 _CLS_MESSAGE_INFO_NAME = "message-info-name"
 # The open conversation's name in the main-pane header (the 1:1 peer name or
-# the group name) — used as the thread title so the recognizer knows *which*
+# the group name) — used as the thread title so the model knows *which*
 # conversation is open. Absent in the conversation-list-only state.
 _CLS_CHAT_NAME = "chatWindow_chatName"
 
@@ -125,7 +125,7 @@ _SELF_SENDER = "我"
 
 # Image-message body classes (live inside message-content). A pure-image bubble
 # exposes no text value, so without this it would be dropped as "empty" — we
-# instead emit a placeholder so the recognizer still sees an image was sent (a
+# instead emit a placeholder so the model still sees an image was sent (a
 # screenshot of a poster/calendar must not vanish). Avatar images
 # (ud__avatar-image) live outside message-content and are intentionally excluded.
 _CLS_IMAGE = (
@@ -140,7 +140,7 @@ _IMAGE_PLACEHOLDER = "[图片]"
 
 # Chrome tokens that live inside message-content but are not message text:
 # edit markers, expand/collapse affordances, thread-reply counters. Dropped
-# from the body so the recognizer sees clean text.
+# from the body so the model sees clean text.
 _BODY_CHROME = frozenset(
     {
         "（已编辑）",
@@ -320,7 +320,7 @@ def _parse_open_thread(root: ax.Node) -> list[Message]:
 
     A pure-image bubble exposes no text under ``message-content``; rather than
     drop it (a sent screenshot/poster would vanish), we emit an ``[图片]``
-    placeholder so the recognizer still sees an image was sent. Bubbles that are
+    placeholder so the model still sees an image was sent. Bubbles that are
     genuinely empty (no text, no image — e.g. some task cards) are skipped.
     """
     items = ax.find_all(root, dom_class=_CLS_MESSAGE_ITEM)
@@ -391,7 +391,7 @@ class FeishuParser(Parser):
             return None
 
         # Prefer the open conversation's own name (chatWindow_chatName) over the
-        # generic window title ("飞书") so the recognizer sees which conversation
+        # generic window title ("飞书") so the model sees which conversation
         # is open; fall back to the window title when no conversation is open.
         title = _thread_title(root) or (window_title or None)
 

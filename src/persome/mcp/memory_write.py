@@ -6,7 +6,7 @@ they pass the same ``ensure_writes_allowed`` integrity gate + evomem write-inver
 writer — NO bypass.
 
 Every agent-written entry is force-tagged ``source:agent-run`` so it stays distinguishable from
-recognizer- and user-authored memory forever (queryable, auditable, reversible). An optional
+observed and user-authored memory forever (queryable, auditable, reversible). An optional
 ``run_id`` (the agent passes its ``$PERSOME_TASK_ID``) adds ``run:<id>`` for per-run attribution —
 the daemon is a shared process and can't infer which dispatched run is calling.
 """

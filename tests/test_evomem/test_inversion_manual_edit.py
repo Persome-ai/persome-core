@@ -13,8 +13,7 @@ from persome.store import files as files_mod
 
 
 @pytest.fixture(autouse=True)
-def _quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
+def _quiet() -> None:
     evo_inversion.reset_misses()
 
 

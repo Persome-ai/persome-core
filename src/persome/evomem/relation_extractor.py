@@ -106,7 +106,7 @@ class _Activity:
     quote: str
     status: str
     participants: list[str]  # canonical person identities (consolidated only)
-    ts: str | None = None  # recognition time — the activity edge's valid_from
+    ts: str | None = None  # source-event time — the activity edge's valid_from
     source_kind: str = ""
     source_id: str = ""
     source_receipt: str = ""

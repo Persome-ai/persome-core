@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 import persome.evomem.person_graph as pg_mod
 import persome.session.tick as tick
 import persome.writer.case_extractor as case_mod
@@ -63,6 +65,25 @@ def test_enrichment_person_failure_does_not_block_case(ac_root, monkeypatch) -> 
     cfg = SimpleNamespace(person_graph_enabled=True, case_extraction_enabled=True)
     tick._run_evomem_enrichment_once(cfg)  # person boom is caught → case still runs
     assert _CALLS == ["case"]
+
+
+def test_strict_enrichment_reports_failure_after_running_all_layers(ac_root, monkeypatch) -> None:
+    _CALLS.clear()
+
+    class _BoomGraph:
+        def __init__(self, *_a, **_k) -> None:
+            pass
+
+        def ingest(self):  # noqa: ANN201
+            _CALLS.append("person")
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(pg_mod, "PersonGraph", _BoomGraph)
+    monkeypatch.setattr(case_mod, "run_case_extraction", _fake_case)
+    cfg = SimpleNamespace(person_graph_enabled=True, case_extraction_enabled=True)
+    with pytest.raises(RuntimeError, match="person_graph"):
+        tick._run_evomem_enrichment_once(cfg, raise_on_error=True)
+    assert _CALLS == ["person", "case"]
 
 
 def test_enrichment_has_no_second_daemon_schedule() -> None:

@@ -19,9 +19,8 @@ Slot ↔ head ↔ cost (§3.3):
   column/index is the later optimization, not a prerequisite.
 - **When (since/until)** — a small CLOSED set of deterministic temporal
   expressions (absolute M月D日 / YYYY-MM-DD, and 今天/昨天/前天 relatives
-  anchored at ``now``); free. Deliberately narrow — the intent recognizer's
-  full ``when_text`` grammar targets FUTURE scheduling; queries about the past
-  need only day-window anchoring, and an unparsed expression simply leaves the
+  anchored at ``now``); free. Deliberately narrow: personal-memory queries
+  mostly need day-window anchoring, and an unparsed expression simply leaves the
   slot empty (fail-open to the other heads), never guesses.
 - **What (text)** — carried verbatim; the lexical (BM25) and semantic (dense)
   heads read it downstream.
@@ -33,8 +32,10 @@ concern — this module never talks to the network.
 from __future__ import annotations
 
 import re
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from ..evomem import identity as identity_mod
 from ..logger import get
@@ -145,20 +146,20 @@ logger = get("persome.retrieval")
 
 
 def associative_read(
-    conn,
+    conn: sqlite3.Connection,
     *,
     query: str,
     top_k: int = 5,
     since: str | None = None,
     until: str | None = None,
     path_patterns: list[str] | None = None,
-    embedder=None,
+    embedder: Any | None = None,
     now: datetime | None = None,
     with_chains: bool = False,
     chain_budget_chars: int = 2000,
     entities: list[str] | None = None,
     mmr_diversity: float = 0.0,
-):
+) -> Any:
     """The PRODUCTION read entrance (§3.2/§5 cutover — the single choke point
     every query-time consumer hangs on: MCP search, the chat memory tool, the
     writer tool-loop).
@@ -212,6 +213,7 @@ def associative_read(
     for mention in entities or []:
         res = identity_mod.resolve_identity(mention, roster)
         if res.matched and res.canonical not in explicit:
+            assert res.canonical is not None
             explicit.append(res.canonical)
     eff_entities = explicit + [e for e in q.entities if e not in explicit]
     hits = fts.search_associative(

@@ -232,9 +232,8 @@ def start(
 ) -> None:
     """Start the Persome daemon."""
     cfg = _init()
-    # Source the env file (managed by Mens.app, single SoT for LLM secrets)
-    # before any fork so the daemon — and every subsystem reading os.environ —
-    # sees the same values regardless of who started us.
+    # Source the owner-only env file before any fork so the daemon and every
+    # subsystem reading os.environ see the same values regardless of launcher.
     env_file_mod.load_env_file(paths.env_file())
     pid = _read_pid()
     if pid:
@@ -396,16 +395,6 @@ def status() -> None:
             )
         else:
             table.add_row("Sessions", "(none)")
-        # `sessions.end_time` is aware-local; bind a tz-correct cutoff instead of
-        # `datetime('now','-7 days')` (UTC, space-sep — same #586-class skew).
-        since_7d = (datetime.now().astimezone() - timedelta(days=7)).isoformat()
-        cost_row = conn.execute(
-            "SELECT SUM(total_cost_usd)/7.0 FROM sessions"
-            " WHERE end_time > ? AND total_cost_usd IS NOT NULL",
-            (since_7d,),
-        ).fetchone()
-        if cost_row and cost_row[0] is not None:
-            table.add_row("Avg daily cost (7d)", f"${cost_row[0]:.4f}")
         active = fts.list_files(conn, include_dormant=False)
         dormant = [f for f in fts.list_files(conn, include_dormant=True) if f.status == "dormant"]
         total_entries = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
@@ -1736,7 +1725,7 @@ def model_status_cmd() -> None:
 
 @writer_app.command("run")
 def writer_run() -> None:
-    """Reduce any pending sessions and run the classifier on each result."""
+    """Reduce pending sessions and finish their personal-model stages."""
     cfg = _init()
     from .writer import agent
 
@@ -1744,6 +1733,7 @@ def writer_run() -> None:
     console.print(
         f"[bold]reduced={result.reduced} "
         f"classified={result.classified} "
+        f"modeled={result.modeled} "
         f"written={len(result.written_ids)}[/bold]"
     )
     for s in result.summaries:

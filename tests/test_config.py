@@ -34,6 +34,41 @@ base_url = "https://example/anthropic"
     assert classifier.base_url == "https://example/anthropic"
 
 
+def test_capture_privacy_settings_are_nested(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[capture]
+pause_on_lock = false
+suppress_secure_input = false
+encrypt_screenshots = false
+extended_retention_enabled = false
+actionable_retention_days = 3
+"""
+    )
+    capture = config.load(path).capture
+    assert capture.pause_on_lock is False
+    assert capture.suppress_secure_input is False
+    assert capture.encrypt_screenshots is False
+    assert capture.extended_retention_enabled is False
+    assert capture.actionable_retention_days == 3
+
+
+def test_legacy_top_level_capture_privacy_settings_still_load(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+capture_pause_on_lock = false
+capture_encrypt_screenshots = false
+capture_actionable_retention_days = 2
+"""
+    )
+    capture = config.load(path).capture
+    assert capture.pause_on_lock is False
+    assert capture.encrypt_screenshots is False
+    assert capture.actionable_retention_days == 2
+
+
 def test_legacy_api_key_fields_ignored(tmp_path: Path) -> None:
     """Old TOMLs may still set ``api_key`` / ``api_key_env`` — silently drop
     them so users can upgrade without a migration step."""

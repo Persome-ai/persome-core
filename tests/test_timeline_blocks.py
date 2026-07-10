@@ -2,10 +2,7 @@
 
 * :func:`persome.timeline.aggregator.produce_block_for_window` is driven
   with the ``fake_llm`` fixture: entries round-trip, heuristic fallback on
-  malformed JSON, cache-friendly call shape, and — since the R4 retirement
-  (#544) — the assertion that a model-volunteered ``helpful_intent_tags``
-  field is IGNORED (the column is 保列停写: kept for historical rows, new
-  blocks always store ``[]``).
+  malformed JSON, and cache-friendly call shape.
 * Parser-hit telemetry ticks (hit / miss / fallback) are exercised against
   the real 飞书 fixture.
 * :func:`persome.timeline.store._row_to_block` is checked against legacy
@@ -90,27 +87,12 @@ _HAPPY_PAYLOAD = json.dumps(
                 " Helpful intent: meeting with 张三 at 明天下午5点."
             )
         ],
-        "helpful_intent_tags": [
-            {
-                "kind": "meeting",
-                "when_text": "明天下午5点",
-                "with": ["张三"],
-                "channel": "WeChat",
-                "confidence": 0.9,
-                "source_entry_index": 0,
-                "rationale": 'user typed "好啊，明天下午5点聊一下" in WeChat composer',
-            }
-        ],
     },
     ensure_ascii=False,
 )
 
 
-def test_produce_block_ignores_volunteered_intent_tags(ac_root: Path, fake_llm) -> None:
-    """R4 retirement (#544): a model that volunteers ``helpful_intent_tags``
-    must not resurrect the old layer — entries round-trip normally, but the
-    block (and the persisted column) stay empty.
-    """
+def test_produce_block_round_trips_entries(ac_root: Path, fake_llm) -> None:
     start = datetime(2026, 4, 21, 17, 7, tzinfo=_TZ)
     win_start, win_end = _seed_window(start)
     fake_llm.set_default("timeline", _HAPPY_PAYLOAD)
@@ -124,20 +106,9 @@ def test_produce_block_ignores_volunteered_intent_tags(ac_root: Path, fake_llm) 
         " accepting the proposed time. Involving: 张三."
         " Helpful intent: meeting with 张三 at 明天下午5点."
     ]
-    assert block.helpful_intent_tags == []
-
-    # Round-trip: the column persists (保列), but always as the empty list.
-    with fts.cursor() as conn:
-        row = conn.execute(
-            "SELECT helpful_intent_tags FROM timeline_blocks WHERE id = ?",
-            (block.id,),
-        ).fetchone()
-    assert row is not None
-    assert json.loads(row["helpful_intent_tags"]) == []
 
 
-def test_produce_block_treats_missing_field_as_empty(ac_root: Path, fake_llm) -> None:
-    """A v1-shape LLM response (entries-only) must still parse."""
+def test_produce_block_accepts_entries_only(ac_root: Path, fake_llm) -> None:
     start = datetime(2026, 4, 21, 17, 11, tzinfo=_TZ)
     win_start, win_end = _seed_window(start)
 
@@ -150,11 +121,10 @@ def test_produce_block_treats_missing_field_as_empty(ac_root: Path, fake_llm) ->
 
     assert block is not None
     assert block.entries == ["[WeChat] something happened"]
-    assert block.helpful_intent_tags == []
 
 
 def test_produce_block_handles_malformed_llm_json(ac_root: Path, fake_llm) -> None:
-    """Truly invalid JSON falls back to the heuristic entry list and ``[]``."""
+    """Truly invalid JSON falls back to the heuristic entry list."""
     start = datetime(2026, 4, 21, 17, 15, tzinfo=_TZ)
     win_start, win_end = _seed_window(start)
 
@@ -163,7 +133,6 @@ def test_produce_block_handles_malformed_llm_json(ac_root: Path, fake_llm) -> No
     block = aggregator.produce_block_for_window(cfg, start=win_start, end=win_end)
 
     assert block is not None
-    assert block.helpful_intent_tags == []
     assert block.entries  # heuristic fallback
 
 
@@ -262,7 +231,7 @@ def test_produce_block_records_parser_hit_for_feishu(ac_root: Path, fake_llm) ->
 
 def test_produce_block_records_fallback_for_unparsed_bundle(ac_root: Path, fake_llm) -> None:
     """A window whose only app has no registered parser → one ``fallback`` tick
-    attributed to that bundle (the recognizer falls back to focus_excerpt)."""
+    attributed to that bundle (modeling falls back to focus_excerpt)."""
     start = datetime(2026, 6, 2, 12, 30, tzinfo=_TZ)
     _write_bundle_capture(start + timedelta(seconds=20), bundle_id="com.apple.Safari")
     fake_llm.set_default("timeline", _HAPPY_PAYLOAD)
@@ -366,27 +335,25 @@ def test_ensure_schema_migrates_legacy_table(ac_root: Path) -> None:
             ),
         )
 
-        # Re-run ensure_schema and confirm the new column appears with default.
+        # Re-run ensure_schema and confirm current optional columns appear.
         timeline_store.ensure_schema(conn)
         row = conn.execute(
-            "SELECT helpful_intent_tags FROM timeline_blocks WHERE id = 'tlb-legacy'"
+            "SELECT skill_hints, focus_structured FROM timeline_blocks WHERE id = 'tlb-legacy'"
         ).fetchone()
         assert row is not None
-        assert row["helpful_intent_tags"] == "[]"
+        assert row["skill_hints"] == "[]"
+        assert row["focus_structured"] == ""
 
         # And _row_to_block must still round-trip the legacy row.
         full = conn.execute("SELECT * FROM timeline_blocks WHERE id = 'tlb-legacy'").fetchone()
         block = timeline_store._row_to_block(full)
         assert block.id == "tlb-legacy"
         assert block.entries == ["[Test] legacy entry"]
-        assert block.helpful_intent_tags == []
+        assert block.skill_hints == []
 
 
 def test_row_to_block_defaults_when_column_missing() -> None:
-    """A tuple-shaped row that omits ``helpful_intent_tags`` (e.g. an
-    in-process row built before the column existed) should still parse to
-    an empty list rather than raise.
-    """
+    """A legacy row that omits optional columns still parses safely."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute(
@@ -418,11 +385,12 @@ def test_row_to_block_defaults_when_column_missing() -> None:
     )
     row = conn.execute("SELECT * FROM timeline_blocks").fetchone()
     block = timeline_store._row_to_block(row)
-    assert block.helpful_intent_tags == []
+    assert block.skill_hints == []
+    assert block.focus_structured == ""
 
 
 # ---------------------------------------------------------------------------
-# focus_excerpt (raw visible_text backstop for the recognizer)
+# focus_excerpt (raw visible_text backstop for session modeling)
 # ---------------------------------------------------------------------------
 
 
@@ -460,7 +428,7 @@ def test_focus_excerpt_empty_when_no_text() -> None:
 
 
 # ---------------------------------------------------------------------------
-# focus_structured (per-app parser output fed to the recognizer; Phase 2)
+# focus_structured (per-app parser output fed to session modeling)
 # ---------------------------------------------------------------------------
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "captures" / "lark"
@@ -577,7 +545,6 @@ def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) ->
                 apps_used TEXT NOT NULL,
                 capture_count INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                helpful_intent_tags TEXT NOT NULL DEFAULT '[]',
                 skill_hints TEXT NOT NULL DEFAULT '[]',
                 action_trace TEXT NOT NULL DEFAULT '[]',
                 focus_excerpt TEXT NOT NULL DEFAULT '',
@@ -589,8 +556,8 @@ def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) ->
             """
             INSERT INTO timeline_blocks
                 (id, start_time, end_time, timezone, entries, apps_used, capture_count,
-                 created_at, helpful_intent_tags, skill_hints, action_trace, focus_excerpt)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 created_at, skill_hints, action_trace, focus_excerpt)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 "tlb-pre-p2",
@@ -601,7 +568,6 @@ def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) ->
                 json.dumps(["Feishu"]),
                 2,
                 "2026-06-02T12:21:05+08:00",
-                "[]",
                 "[]",
                 "[]",
                 "温子墨: 晚上8点约一个会议",
@@ -624,11 +590,13 @@ def test_ensure_schema_migrates_table_without_focus_structured(ac_root: Path) ->
 
 def test_focus_structured_renders_feishu_fixture() -> None:
     """Feeding the Phase-1 Feishu fixture's ax_tree + window_meta through
-    ``_focus_structured`` yields the parser's rendered conversation, carrying real
-    signal (a meeting card, real sender names) the LLM normalizer would lose."""
+    the production parser entrance yields signal the normalizer would lose."""
     parsed = [(Path("cap.json"), _load_lark_fixture())]
-    out = aggregator._focus_structured(parsed)
+    out, bundle, outcome, reason = aggregator._focus_structured_with_outcome(parsed)
     assert out  # non-empty
+    assert bundle == "com.electron.lark"
+    assert outcome == "hit"
+    assert reason is None
     assert "会议" in out
     assert "沈砚舟" in out
     assert 'dir="sent"' in out  # XML message tag for an outgoing turn
@@ -641,26 +609,33 @@ def test_focus_structured_renders_feishu_fixture() -> None:
 
 
 def test_focus_structured_empty_for_unparsed_bundle() -> None:
-    """A capture whose app has no registered parser yields '' so the recognizer
+    """A capture whose app has no registered parser yields '' so modeling
     falls back to focus_excerpt (#258)."""
     data = {
         "ax_tree": {"apps": [{"bundle_id": "com.unknown.app", "windows": []}]},
         "window_meta": {"bundle_id": "com.unknown.app", "title": "Whatever"},
     }
-    assert aggregator._focus_structured([(Path("cap.json"), data)]) == ""
+    text, bundle, outcome, reason = aggregator._focus_structured_with_outcome(
+        [(Path("cap.json"), data)]
+    )
+    assert (text, bundle, outcome, reason) == ("", "com.unknown.app", "fallback", None)
 
 
 def test_focus_structured_empty_when_no_ax_tree() -> None:
     """A capture missing ax_tree is skipped (parser needs the tree)."""
     data = {"window_meta": {"bundle_id": "com.electron.lark", "title": "飞书"}}
-    assert aggregator._focus_structured([(Path("cap.json"), data)]) == ""
+    assert aggregator._focus_structured_with_outcome([(Path("cap.json"), data)]) == (
+        "",
+        None,
+        None,
+        None,
+    )
     assert aggregator._focus_excerpt([]) == ""
 
 
 # ---------------------------------------------------------------------------
 # _focus_structured_with_outcome — miss-reason breakdown (#548)
 # ---------------------------------------------------------------------------
-
 
 
 def _propagate_timeline_logs(monkeypatch) -> None:

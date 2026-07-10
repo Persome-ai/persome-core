@@ -28,9 +28,7 @@ def _llm(apex: str):
 
     def _call(_messages):
         content = json.dumps({"apex": apex}, ensure_ascii=False)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
-        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
     return _call
 
@@ -54,7 +52,9 @@ def _live_roots(conn):
 def test_upsert_root_singleton_chain_supersede(ac_root):
     with fts.cursor() as conn:
         r1 = faces.upsert_root(conn, signature="第一版 apex", members=["b1"], anchors=["张三"])
-        r2 = faces.upsert_root(conn, signature="第二版 apex", members=["b1", "b2"], anchors=["张三"])
+        r2 = faces.upsert_root(
+            conn, signature="第二版 apex", members=["b1", "b2"], anchors=["张三"]
+        )
         assert r1 != r2
         assert _live_roots(conn) == 1  # singleton: exactly one live level-3
         live = faces.resident_root(conn)
@@ -84,7 +84,10 @@ def test_synthesize_writes_root_born_active(ac_root):
         _seed_body(conn, "跨域体：他把工程严谨带进和张三的方案对齐")
         roster = Roster.build([("张三", [])])
         res = rs.synthesize_root(
-            _cfg(), conn, llm_call=_llm("这个人是工程师，核心在意严谨，常和张三对齐。"), roster=roster
+            _cfg(),
+            conn,
+            llm_call=_llm("这个人是工程师，核心在意严谨，常和张三对齐。"),
+            roster=roster,
         )
         assert res.reason == "written" and res.face_id
         root = faces.resident_root(conn)
@@ -129,9 +132,7 @@ def test_token_budget_truncates(ac_root):
     with fts.cursor() as conn:
         _seed_body(conn, "体")
         long_apex = "这是一句很长的话。" * 60  # ~540 CJK chars ≫ budget 50
-        res = rs.synthesize_root(
-            _cfg(budget=50), conn, llm_call=_llm(long_apex), roster=Roster()
-        )
+        res = rs.synthesize_root(_cfg(budget=50), conn, llm_call=_llm(long_apex), roster=Roster())
         assert res.reason == "written"
         root = faces.resident_root(conn)
         assert rs.estimate_tokens(root["signature"]) <= 50

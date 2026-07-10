@@ -1,11 +1,8 @@
 """Case extraction (慢回路 E2 / 问题→解法卡).
 
-A slow-loop stage that distills *reusable* ``error → resolution`` cards from the
-activity timeline. The慢回路 matrix already covers workflows / habits /
-automations / mental models (Dream · Pattern Detector · Consolidator ·
-SchemaMiner); ``procedure`` is deliberately out of scope (it is subsumed by
-Dream / Pattern Detector). What is still missing is "I hit a problem — here is
-how I solved it", a card the user can re-apply next time the same wall appears.
+A slow-loop stage that distills reusable ``error → resolution`` cards from the
+activity timeline. These cards preserve how the person solved a recurring
+problem without turning the Runtime into an automation engine.
 
 Pipeline (deterministic pre-filter → one LLM call per candidate):
 
@@ -17,7 +14,7 @@ Pipeline (deterministic pre-filter → one LLM call per candidate):
    mint half a card / hallucinate a fix). Plain log noise that matches neither
    signal never enters the candidate set.
 
-2. **LLM distillation** (one call per candidate, stage ``consolidator``) — turn
+2. **LLM distillation** (one call per candidate, stage ``case_extractor``) — turn
    the windowed error+resolution text into a ``{problem, solution}`` card. A
    throwing / unparseable / empty LLM reply drops *that* candidate only (the
    stage is fault-tolerant; one bad candidate never sinks the run).
@@ -28,7 +25,7 @@ Pipeline (deterministic pre-filter → one LLM call per candidate):
    only *import* evomem's public API — never edit it.
 
 The whole stage is behind ``getattr(cfg, "case_extraction_enabled", False)``
-(default OFF). The LLM call is an injectable seam (``llm_call``) so tests run
+(default on). The LLM call is an injectable seam (``llm_call``) so tests run
 with the ``fake_llm`` fixture / ``PERSOME_LLM_MOCK=1`` without a network.
 """
 
@@ -204,7 +201,7 @@ def _distill_one(
         {"role": "user", "content": candidate.to_prompt_block()},
     ]
     try:
-        resp = llm_call(cfg, "consolidator", messages)
+        resp = llm_call(cfg, "case_extractor", messages)
         text = llm_mod.extract_text(resp).strip()
     except Exception as exc:  # noqa: BLE001 — never let one candidate sink the run
         logger.warning("case_extractor: LLM call failed for a candidate: %s", exc)

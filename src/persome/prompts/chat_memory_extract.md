@@ -34,5 +34,5 @@ Rules:
 - project: ongoing work, architecture decisions, important files
 - reference: external resources, documentation links, important contacts
 
-{known_memory}Conversation:
+Conversation:
 {conversation}

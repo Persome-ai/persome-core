@@ -1,7 +1,6 @@
 """Integration test for the chat send_message SSE endpoint.
 
-Verifies the on-the-wire contract that the Dart client in `packages/acme-app`
-relies on:
+Verifies the on-the-wire contract that trusted local clients rely on:
 
   - frames are ``data: <json>\\n\\n``
   - reply tokens carry ``type=reply`` + ``content``
@@ -170,8 +169,7 @@ def test_send_message_emits_error_frame_on_failure(
     frames = _parse_sse(body)
     errors = [f for f in frames if isinstance(f, dict) and f["type"] == "error"]
     assert len(errors) == 1
-    # Contract: error events use ``message``, not ``content`` (Dart client
-    # commit 98d5eaa anchors on this field name).
+    # Contract: error events use ``message``, not ``content``.
     assert errors[0]["message"] == "rate limited"
     assert "content" not in errors[0]
     assert frames[-1] == "[DONE]"

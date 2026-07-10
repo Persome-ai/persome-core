@@ -17,7 +17,7 @@ dual-read machinery were retired in PR-7 — chain truth lives in evo_nodes):
   3. schema-tick output         — the daily 00:15 tick should have produced
      parseable schema-*.md files that the model schema reader can read.
 
-Plus a recall smoke test (assemble_background must not crash and should fold).
+Plus a smoke test through the same associative entrance used by MCP and Chat.
 
 Run against a live or sandbox data dir (real memory is at ~/.persome):
 
@@ -106,12 +106,11 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001 — surface, don't crash the probe
                 failures.append(f"active_schema_inferences raised on real schemas: {e!r}")
 
-        # ---- 4. retrieval smoke (fold + trail + schema prior must not crash) ----
+        # ---- 4. production retrieval smoke must not crash ----
         try:
             import re
 
-            from persome.model import schema_reader
-            from persome.retrieval import layered
+            from persome.mcp import server as mcp_server
 
             hint_row = conn.execute(
                 "SELECT content FROM entries WHERE superseded=0 LIMIT 1"
@@ -121,17 +120,13 @@ def main() -> int:
             # gracefully, but we don't need the noise in a smoke test).
             words = re.findall(r"[\w一-鿿]{2,}", hint_row[0]) if hint_row else []
             hint = words[0] if words else "用户"
-            bg = layered.assemble_background(
-                conn,
-                scope="timeline",
-                hints=[hint],
-                fold_superseded=True,
-                chain_trail=True,
-                schema_prior=schema_reader.active_schema_inferences(conn),
+            recall = mcp_server._search(conn, query=hint, top_k=5)
+            print(
+                f"✓ production associative retrieval ran "
+                f"(hint={hint!r}, {len(recall['results'])} hit(s))"
             )
-            print(f"✓ layered retrieval ran (hint={hint!r}, {len(bg)} chars)")
         except Exception as e:  # noqa: BLE001
-            failures.append(f"layered retrieval raised: {e!r}")
+            failures.append(f"production retrieval raised: {e!r}")
 
     print()
     if failures:

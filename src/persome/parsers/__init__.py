@@ -2,10 +2,9 @@
 
 Routes a capture's ``ax_tree`` to a deterministic, app-specific parser keyed by
 ``window_meta.bundle_id``. Each parser extracts structured
-``[sender / time / body / direction]`` messages so downstream stages can feed
-the recognizer faithful ``focus_structured`` text instead of the lossy LLM
-timeline normalization (which drops chat bodies — the root cause of Feishu
-meeting/schedule intents going unrecognized).
+``[sender / time / body / direction]`` messages so downstream stages receive
+faithful ``focus_structured`` text instead of relying only on lossy timeline
+normalization.
 
 Usage::
 
@@ -27,7 +26,6 @@ from ..capture import browser_detect
 from .base import Message, ParsedConversation, Parser, StructuredContent
 from .feishu import FeishuParser
 from .web import BrowserParser, WebItem, WebPage
-from .wechat import WeChatParser, conversation_from_structure
 
 # A registered parser only needs ``bundle_ids`` / ``version`` / ``parse`` (a
 # structural protocol). ``Parser`` (the ABC chat parsers subclass) and
@@ -55,7 +53,7 @@ def get_parser(bundle_id: str | None) -> Parser | None:
 def parser_for_capture(bundle_id: str | None, ax_tree: dict | None) -> Parser | None:
     """Dispatch a capture to its parser, generic-browser-aware.
 
-    First the bundle-id registry (Feishu / WeChat / known browsers — fast path).
+    First the bundle-id registry (Feishu / known browsers).
     On a miss, if the capture is a browser surface per ``browser_detect`` (a
     registered http handler showing web content, or the AX-chrome fallback), use
     the generic ``BrowserParser`` — so a niche/unlisted browser like Tabbit is
@@ -74,7 +72,6 @@ def parser_for_capture(bundle_id: str | None, ax_tree: dict | None) -> Parser | 
 register(FeishuParser())
 _BROWSER_PARSER = BrowserParser()
 register(_BROWSER_PARSER)
-register(WeChatParser())
 
 __all__ = [
     "Message",
@@ -83,8 +80,6 @@ __all__ = [
     "StructuredContent",
     "FeishuParser",
     "BrowserParser",
-    "WeChatParser",
-    "conversation_from_structure",
     "WebPage",
     "WebItem",
     "register",

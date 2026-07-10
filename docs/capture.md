@@ -2,6 +2,10 @@
 
 Capture is the only layer that touches the outside world. It produces one JSON file per observation into `~/.persome/capture-buffer/`; nothing above it ever talks to macOS directly.
 
+Live capture requires macOS Accessibility permission for the process that runs
+Persome. Screen Recording is additionally required when screenshots or OCR are
+enabled. OCR is bundled but **disabled by default**.
+
 ## Two signal sources
 
 **`mac-ax-watcher`** (primary, event-driven). A vendored Swift binary that subscribes to AX notifications across all running apps: window focus, value changes (typing), title changes, app activation. It emits one JSON object per event on stdout. The Python side reads that stream line-by-line in `capture/watcher.py` → `capture/event_dispatcher.py`.
@@ -13,14 +17,34 @@ Both funnel into `capture_once` in `capture/scheduler.py`, which runs:
 1. `ax_capture.capture_frontmost(focused_window_only=True)` — one-shot invocation of `mac-ax-helper` for the current window, pruned to `ax_depth` layers.
 2. `s1_parser.enrich()` — extracts `focused_element`, `visible_text`, and `url` from the AX tree (see [S1 fields](#s1-fields) below).
 3. `cmux_source.maybe_inject()` — when the frontmost bundle is cmux, appends the real terminal text read over cmux's local socket RPC (see [cmux signal source](#cmux-signal-source) below); a successful injection skips step 4's OCR fallback for this window.
-4. OCR fallback — when the AX render produced no usable content and `enable_ocr_fallback` is on, submit a focused-window screenshot for async OCR.
+4. OCR fallback — when the AX render produced no usable content and `enable_ocr_fallback` is on, submit a focused-window screenshot to an isolated local worker.
 5. `screenshot.grab()` — unless `include_screenshot = false`.
 6. `window_meta.active_window()` — app name, title, bundle_id via `NSRunningApplication`.
 7. Write `{iso8601_safe}.json` to the buffer.
 
 The filename is ISO-8601 with `:` → `-` and `+` → `p` / `-` → `m` for the TZ offset. Example: `2026-04-21T17-07-32p08-00.json`.
 
-The same capture scheduler also invokes `SessionManager.on_event` (wired as a `pre_capture_hook` in `daemon.py`), so the session cutter sees every capture-worthy event without a separate subscription path.
+The same capture scheduler also invokes `SessionManager.on_event` (wired as a `pre_capture_hook` in `daemon.py`), so the session cutter sees every written, non-duplicate observation without a separate subscription path.
+
+## Optional local OCR
+
+Set `enable_ocr_fallback = true` only when AX-poor applications matter. The
+focused screenshot is used locally and is never placed in an LLM prompt. The
+default OCR path is:
+
+```text
+focused screenshot bytes
+  -> local OCR worker subprocess
+  -> text + geometry
+  -> app-aware structuring when available
+  -> captures FTS backfill
+  -> timeline/modeling fallback when AX text is empty
+```
+
+The subprocess is the native-crash boundary: a Paddle fault fails the OCR call
+without killing the daemon. `PERSOME_DISABLE_OCR=1` prevents Paddle from being
+loaded at all. `PERSOME_OCR_IN_PROCESS=1` exists only for debugging and removes
+that isolation.
 
 ## Debounce / dedup / gap
 
@@ -115,7 +139,12 @@ Ported from Einsia-Partner's `s1_collector`. These are what downstream LLM stage
 - **`visible_text`** — a length-capped markdown rendering of the AX tree (up to ~10 k chars). What the user is currently reading on screen.
 - **`url`** — regex-extracted from `visible_text` when present; `null` otherwise.
 
-Screenshots live in the capture JSON but are **not** passed to the timeline / reducer / classifier prompts. They exist for future vision-model paths and for debugging.
+Persisted screenshots are **not** passed to timeline, reducer, memory-delta, or
+schema prompts. They support optional local provenance drill-down and debugging.
+When `encrypt_screenshots=true`, `PERSOME_SCREENSHOT_KEY` seals them with
+AES-256-GCM; if the key is absent, the current fail-open behavior warns and
+stores plaintext. Set `include_screenshot=false` for the strictest paper run;
+OCR can still take an ephemeral focused screenshot when enabled.
 
 ## Buffer hygiene — tiered retention
 
@@ -127,7 +156,9 @@ Captures are pruned by the timeline tick, not the writer. After each timeline sc
 | **Strip screenshot** | mtime older than `screenshot_retention_hours` (default **24**) | Rewrite JSON without `screenshot` field; sets `screenshot_stripped: true`. The AX tree, `visible_text`, `focused_element`, and `url` stay |
 | **Evict by size** | Total buffer > `buffer_max_mb` (default **2000**, i.e. 2 GB; `0` disables) | Delete oldest absorbed files until under the cap |
 
-Why tiered: the screenshot base64 is ~77% of each capture's bytes but nothing downstream consumes it today (it's kept for future vision stages + debugging). Stripping it at 24h drops each stale capture to ~20% of its original size, which is what makes a 7-day window affordable. Typical steady-state footprint is in the 100s of MB.
+Why tiered: the screenshot base64 is ~77% of each capture's bytes and is not
+needed to build the durable model. Stripping it at 24h drops each stale capture
+to ~20% of its original size while preserving AX/OCR evidence for local search.
 
 To wipe manually:
 

@@ -12,7 +12,6 @@ import queue
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -54,24 +53,10 @@ def _should_trigger_ocr(cfg: CaptureConfig, meta: dict[str, str]) -> bool:
     return True
 
 
-# Injected fast-path entry for AX-poor apps whose only structured signal is OCR
-# (WeChat). Their fast-path recognition can't run at capture time — OCR runs on a
-# background thread and isn't ready yet — so `_submit_ocr_async` re-triggers it here
-# once `ocr_structure` has produced a conversation. Wired by daemon.py to the same
-# post pool + on_capture every other app uses; None disables it.
-_ocr_ready_hook: Callable[[dict[str, Any]], None] | None = None
-
-
-def set_ocr_ready_hook(hook: Callable[[dict[str, Any]], None] | None) -> None:
-    """Inject (or clear) the OCR-ready fast-path entry. See `_ocr_ready_hook`."""
-    global _ocr_ready_hook
-    _ocr_ready_hook = hook
-
-
 # The live capture runner created by `run_forever`, exposed so the
 # `POST /captures/ingest` route (Swift-owned capture, `capture.source="ingest"`)
-# funnels pushed payloads through the SAME runner — identical content-dedup and
-# pre/post-capture hooks (the intent fast path) as the in-daemon capture loop.
+# funnels pushed payloads through the same content-dedup and session hook as the
+# in-daemon capture loop.
 # None when no capture task is running (CLI one-shots / tests / capture disabled).
 _active_runner: _CaptureRunner | None = None
 
@@ -87,8 +72,6 @@ def _submit_ocr_async(
     tier: str,
     window_meta: dict[str, str] | None = None,
     structured: bool = False,
-    collect_training_data: bool = False,
-    capture_out: dict[str, Any] | None = None,
 ) -> None:
     """Fire-and-forget local OCR + geometry structuring. Runs on a daemon thread.
 
@@ -99,9 +82,7 @@ def _submit_ocr_async(
 
     When `structured`, the raw OCR lines are reconstructed into field-labeled text via
     the per-app geometry structurer (`ocr_structure`) before backfill — fail-open to the
-    raw join if structuring yields nothing. When `collect_training_data`, a local-only
-    JSON sample (OCR geometry + structured result, NEVER the screenshot) is written for
-    future model training.
+    raw join if structuring yields nothing.
     """
     from ..store import fts as fts_store
 
@@ -134,23 +115,6 @@ def _submit_ocr_async(
     except Exception as exc:  # noqa: BLE001
         logger.warning("ocr backfill failed for %s: %s", capture_id, exc)
 
-    if collect_training_data:
-        _write_ocr_training_sample(capture_id, meta, texts, boxes, scores, struct)
-
-    # WeChat (AX-poor): OCR is its only structured signal, so the fast path could not
-    # run at capture time. Now that structuring is ready, re-trigger it with a
-    # capture-like dict (original fields + the structured result) — routed to the same
-    # post pool + on_capture as every other app. Only for a real WeChat conversation.
-    if (
-        struct.get("layout") == "wechat-desktop"
-        and capture_out is not None
-        and _ocr_ready_hook is not None
-    ):
-        try:
-            _ocr_ready_hook({**capture_out, "_ocr_structured_result": struct})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("ocr_ready_hook failed for %s: %s", capture_id, exc)
-
 
 def _image_width(image_bytes: bytes) -> int:
     """Decode just the image width for the structurer's column scaling. 960 on failure."""
@@ -163,48 +127,6 @@ def _image_width(image_bytes: bytes) -> int:
             return im.width
     except Exception:  # noqa: BLE001
         return 960
-
-
-def _write_ocr_training_sample(
-    capture_id: str,
-    meta: dict[str, str],
-    texts: list[str],
-    boxes: list[list[int]],
-    scores: list[float],
-    struct: dict,
-) -> None:
-    """Write one local-only OCR training sample to `paths.ocr_samples_dir()`.
-
-    PRIVACY: stores ONLY the OCR geometry (boxes/scores), the recognized text (which is
-    already what lands in `visible_text`), and the geometry-structured result — NEVER the
-    screenshot or any raw image. This keeps the #119 invariant ("screenshots never leave
-    the machine"); the samples also never leave the machine (no upload path exists).
-    Best-effort: a write failure never perturbs capture.
-    """
-    try:
-        d = paths.ocr_samples_dir()
-        d.mkdir(parents=True, exist_ok=True)
-        sample = {
-            "capture_id": capture_id,
-            "bundle_id": meta.get("bundle_id", ""),
-            "app_name": meta.get("app_name", ""),
-            "window_title": meta.get("title", ""),
-            "ocr": {"texts": texts, "boxes": boxes, "scores": scores},
-            "structured": struct,
-            "geom_version": ocr_structure.GEOM_VERSION,
-        }
-        (d / f"{capture_id}.json").write_text(json.dumps(sample, ensure_ascii=False))
-        _prune_ocr_samples(d)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("ocr training sample write failed for %s: %s", capture_id, exc)
-
-
-def _prune_ocr_samples(d: Path, keep: int = 5000) -> None:
-    """Bound the local sample dir: keep the newest `keep` JSON files, delete older."""
-    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for p in files[keep:]:
-        with contextlib.suppress(Exception):
-            p.unlink()
 
 
 def _now_iso() -> str:
@@ -227,7 +149,7 @@ def _should_skip_capture(cfg: CaptureConfig) -> bool:
         logger.info("capture skipped (paused)")
         return True
     # Privacy guardrail (spec E7): don't collect behind the lock screen / asleep.
-    if getattr(cfg, "capture_pause_on_lock", True) and screen_state.is_screen_locked():
+    if cfg.pause_on_lock and screen_state.is_screen_locked():
         logger.info("capture skipped (screen locked / asleep)")
         return True
     return False
@@ -250,15 +172,14 @@ def _attach_screenshot(
     ``PERSOME_SCREENSHOT_KEY`` ⇒ warn + store plaintext, never drop the screenshot.
     """
     screenshot_enc = False
-    if getattr(cfg, "capture_encrypt_screenshots", False):
+    if cfg.encrypt_screenshots:
         key = screenshot_crypto.load_key()
         if key is not None:
             image_base64 = screenshot_crypto.encrypt(image_base64, key)
             screenshot_enc = True
         else:
             logger.warning(
-                "capture_encrypt_screenshots is on but %s is unavailable; "
-                "writing plaintext screenshot",
+                "encrypt_screenshots is on but %s is unavailable; writing plaintext screenshot",
                 screenshot_crypto.KEY_ENV,
             )
     out["screenshot"] = {
@@ -292,9 +213,7 @@ def _finalize_capture(
     # fallback runs. Read from the already-captured AX info (`out["ax_tree"]`),
     # so this is read-only. Fail-conservative — a positive secure signal wins.
     # Default on.
-    if getattr(cfg, "capture_suppress_secure_input", True) and screen_state.is_secure_input_active(
-        out
-    ):
+    if cfg.suppress_secure_input and screen_state.is_secure_input_active(out):
         meta_for_log = out.get("window_meta") or {}
         logger.info(
             "capture suppressed screenshot+AX (secure input focused): app=%r",
@@ -333,7 +252,6 @@ def _finalize_capture(
                 out["_ocr_pending_jpeg"] = jpeg
                 out["_ocr_tier"] = cfg.ocr_tier
                 out["_ocr_structured"] = cfg.ocr_structured
-                out["_ocr_collect_training_data"] = cfg.ocr_collect_training_data
                 # Clear the no-content AX header so the deferred OCR backfill
                 # (writes only when visible_text is empty) takes over.
                 out["visible_text"] = ""
@@ -490,11 +408,11 @@ def build_ingest_capture(cfg: CaptureConfig, payload: dict[str, Any]) -> dict[st
 
 
 def ingest_capture(cfg: Config, payload: dict[str, Any]) -> dict[str, Any]:
-    """Ingest one Swift-pushed capture: enrich → persist → fire hooks.
+    """Ingest one trusted local capture: enrich, persist, and update sessions.
 
     Routes through the live `_active_runner` when a capture task is running (so the
-    content-dedup and pre/post-capture hooks — the intent fast path — fire exactly
-    as for in-daemon captures). Falls back to a direct, hookless write when no
+    content-dedup and session hook behave exactly as for in-daemon captures).
+    Falls back to a direct, hookless write when no
     capture task is up (CLI one-shots / tests). Returns ``{id, deduped, skipped}``.
     """
     out = build_ingest_capture(cfg.capture, payload)
@@ -517,7 +435,6 @@ def _write_capture(out: dict[str, Any]) -> Path:
     ocr_jpeg = out.pop("_ocr_pending_jpeg", None)
     ocr_tier = out.pop("_ocr_tier", "tiny")
     ocr_structured = out.pop("_ocr_structured", False)
-    ocr_collect = out.pop("_ocr_collect_training_data", False)
     if ocr_jpeg is not None:
         out["ocr_submitted"] = True
 
@@ -540,7 +457,7 @@ def _write_capture(out: dict[str, Any]) -> Path:
     if ocr_jpeg is not None:
         thread = threading.Thread(
             target=_submit_ocr_async,
-            args=(ocr_jpeg, path.stem, ocr_tier, meta, ocr_structured, ocr_collect, dict(out)),
+            args=(ocr_jpeg, path.stem, ocr_tier, meta, ocr_structured),
             name=f"ocr-submit-{path.stem}",
             daemon=True,
         )
@@ -645,24 +562,13 @@ class _CaptureRunner:
     def __init__(
         self,
         cfg: CaptureConfig,
-        provider: ax_capture.AXProvider,
+        provider: ax_capture.AXProvider | None,
         *,
         pre_capture_hook: Callable[[dict[str, Any]], None] | None = None,
-        post_capture_hook: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._cfg = cfg
         self._provider = provider
         self._pre_capture_hook = pre_capture_hook
-        # ``post_capture_hook`` fires with the *enriched capture dict* after a
-        # new-content write, on a separate bounded single-worker pool so the
-        # capture worker never blocks on the fast path's parse/LLM I/O. Like
-        # ``pre_capture_hook`` it is NOT fired for content-deduped captures.
-        self._post_capture_hook = post_capture_hook
-        self._post_pool: ThreadPoolExecutor | None = (
-            ThreadPoolExecutor(max_workers=1, thread_name_prefix="post-capture")
-            if post_capture_hook is not None
-            else None
-        )
         self._lock = threading.Lock()
         self._last_fingerprint: str | None = None
         self._queue: queue.Queue[Any] = queue.Queue(maxsize=self._MAX_PENDING)
@@ -689,9 +595,6 @@ class _CaptureRunner:
         if self._worker.is_alive():
             logger.warning("capture worker did not exit within %.1fs", timeout)
         self._worker = None
-        if self._post_pool is not None:
-            # Don't block daemon shutdown on an in-flight fast-path LLM call.
-            self._post_pool.shutdown(wait=False, cancel_futures=True)
 
     def _worker_loop(self) -> None:
         while True:
@@ -704,6 +607,9 @@ class _CaptureRunner:
         # Serialize so two near-simultaneous triggers don't double-capture.
         with self._lock:
             try:
+                if self._provider is None:
+                    logger.debug("OS capture skipped: runner is ingest-only")
+                    return
                 out = _build_capture(self._cfg, self._provider, trigger)
                 if out is None:
                     return
@@ -714,14 +620,13 @@ class _CaptureRunner:
     def commit_prebuilt(self, out: dict[str, Any]) -> str | None:
         """Persist a capture built elsewhere (the ingest path) through this runner.
 
-        Same content-dedup + pre/post-capture hooks as `run`, minus the OS
+        Same content-dedup + session hook as `run`, minus the OS
         `_build_capture` step. Returns the written capture stem, or None **only** when
         the push was a genuine content-duplicate of the previous capture (no-op). A real
         write/index failure (full disk, serialization error, …) PROPAGATES — it must not
         be reported to the caller as a dedup, so the ingest route turns it into a non-2xx
         and the client can drop/retry the frame. Synchronous (runs on the route's
-        threadpool); the post-capture hook dispatches to the bounded post pool, so it
-        never blocks the HTTP response.
+        threadpool).
         """
         with self._lock:
             path = self._commit(out, out.get("trigger"))
@@ -731,8 +636,8 @@ class _CaptureRunner:
         """Content-dedup → write → fire hooks. Caller must hold ``self._lock``.
 
         Returns the written capture path, or None when content-deduped against the
-        previous capture (the pre/post hooks do NOT fire for a dedup, so a static
-        screen doesn't refresh the session idle timer or re-run the fast path).
+        previous capture (the session hook does not fire for a duplicate, so a
+        static screen does not refresh the session idle timer).
         """
         fingerprint = _content_fingerprint(out)
         if fingerprint == self._last_fingerprint:
@@ -751,30 +656,7 @@ class _CaptureRunner:
                 self._pre_capture_hook(trigger)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("pre_capture_hook failed: %s", exc)
-        self._fire_post_capture_hook(out)
         return path
-
-    def _fire_post_capture_hook(self, out: dict[str, Any]) -> None:
-        """Submit the enriched capture to the post-capture pool (non-blocking).
-
-        Errors inside the hook are swallowed with a warning so a fast-path
-        hiccup never kills the capture worker. A full/refused submission (pool
-        shutting down) is logged and dropped, never raised.
-        """
-        if self._post_capture_hook is None or self._post_pool is None:
-            return
-
-        def _run() -> None:
-            try:
-                self._post_capture_hook(out)  # type: ignore[misc]
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("post_capture_hook failed: %s", exc)
-
-        try:
-            self._post_pool.submit(_run)
-        except RuntimeError:
-            # Pool already shut down (daemon stopping) — drop silently.
-            logger.debug("post_capture_hook skipped: pool shut down")
 
     def run_threaded(self, trigger: dict[str, Any] | None) -> None:
         """Enqueue a capture for the worker thread; drop with a warning if full."""
@@ -792,7 +674,6 @@ async def run_forever(
     cfg: CaptureConfig,
     *,
     pre_capture_hook: Callable[[dict[str, Any]], None] | None = None,
-    post_capture_hook: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
     """Run the capture pipeline until cancelled.
 
@@ -806,17 +687,12 @@ async def run_forever(
     timer isn't refreshed by a screen that isn't changing (e.g. the lock
     screen overnight).
 
-    ``post_capture_hook`` (optional) fires with the *enriched capture dict*
-    (window_meta / ax_tree / visible_text / trigger) for the same new-content
-    writes, but on a separate bounded single-worker pool so the capture worker
-    never blocks on the hook's work. This is the mount point for the
-    event-driven intent fast path (Phase A / K1).
     """
     # capture.source = "ingest": the Swift "Persome" app owns OS capture and pushes
     # frames via POST /captures/ingest; the daemon spawns no watcher and grabs no
     # screenshots, so it needs NO Accessibility / Screen-Recording permission. We
-    # still build the runner (+ hooks) so ingested captures dedup + fire the intent
-    # fast path identically; the ingest route reaches it via `_active_runner`.
+    # still build the runner so ingested captures dedup + update session state
+    # identically; the ingest route reaches it via `_active_runner`.
     ingest_only = cfg.source == "ingest"
 
     provider: ax_capture.AXProvider | None = None
@@ -831,13 +707,8 @@ async def run_forever(
         cfg,
         provider,
         pre_capture_hook=pre_capture_hook,
-        post_capture_hook=post_capture_hook,
     )
     runner.start_worker()
-    # WeChat (OCR-only) fast-path: route the OCR-ready re-trigger through the SAME
-    # bounded post pool + hook as every other app, so it shares the fast path's
-    # concurrency cap and on_capture logic (see `_ocr_ready_hook`).
-    set_ocr_ready_hook(runner._fire_post_capture_hook if post_capture_hook is not None else None)
     _set_active_runner(runner)
     watcher: AXWatcherProcess | None = None
     dispatcher: EventDispatcher | None = None
@@ -909,8 +780,8 @@ async def run_forever(
 
 
 # Capture trigger event type treated as an "Enter-anchored" frame (spec E5): a
-# keyboard-committed input is a strong actionable signal even before the
-# recognizer has run, so it earns extended retention too. There is no distinct
+# keyboard-committed input is a strong evidence signal, so it earns extended
+# retention. There is no distinct
 # "Return key" watcher event today — UserTextInput is the keyboard-commit
 # trigger the dispatcher fires — so it is the marker. Read from the capture's
 # own ``trigger`` metadata, so this needs no DB.
@@ -1178,15 +1049,17 @@ def _thumbnail_screenshot_inplace(path: Path) -> bool:
         width, height = img.size
         if width > _THUMBNAIL_MAX_WIDTH:
             new_h = max(1, round(height * _THUMBNAIL_MAX_WIDTH / width))
-            img = img.convert("RGB").resize((_THUMBNAIL_MAX_WIDTH, new_h))
+            resized = img.convert("RGB").resize((_THUMBNAIL_MAX_WIDTH, new_h))
             buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=_THUMBNAIL_JPEG_QUALITY)
+            resized.save(buf, format="JPEG", quality=_THUMBNAIL_JPEG_QUALITY)
             shot["width"], shot["height"] = _THUMBNAIL_MAX_WIDTH, new_h
             shot["mime_type"] = "image/jpeg"
             out_b64 = base64.b64encode(buf.getvalue()).decode()
-            shot["image_base64"] = (
-                screenshot_crypto.encrypt(out_b64, key) if was_encrypted else out_b64
-            )
+            if was_encrypted:
+                assert key is not None
+                shot["image_base64"] = screenshot_crypto.encrypt(out_b64, key)
+            else:
+                shot["image_base64"] = out_b64
         # already ≤ max width: no re-encode — just mark, so the nightly pass
         # never re-reads (and never re-decrypts) this capture again
     except Exception:  # noqa: BLE001 — a corrupt image never breaks buffer hygiene

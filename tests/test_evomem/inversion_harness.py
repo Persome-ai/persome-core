@@ -155,7 +155,6 @@ def run_in_both_modes(
             mp.setenv("PERSOME_ROOT", str(root))
             paths.ensure_dirs()
             (root / "config.toml").write_text(f'[evomem]\nwrite_authority = "{mode}"\n')
-            mp.setattr("persome.events.publish", lambda *a, **k: None)
             _patch_deterministic(mp)
             evo_shadow.reset_misses()
             evo_inversion.reset_misses()

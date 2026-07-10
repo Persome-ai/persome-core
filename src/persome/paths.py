@@ -44,17 +44,13 @@ def model_build_lock() -> Path:
     return root() / "model-build.lock"
 
 
+def session_model_lock() -> Path:
+    """Cross-process lock for terminal session modeling/finalization."""
+    return root() / "session-model.lock"
+
+
 def model_build_manifest() -> Path:
     return root() / "model-build.json"
-
-
-def ocr_samples_dir() -> Path:
-    """Local-only OCR training samples (geometry + structured result, NEVER screenshots).
-
-    Written when `[capture] ocr_collect_training_data` is on; bounded by a keep-newest
-    prune. No upload path exists — these stay on the user's machine.
-    """
-    return root() / "ocr-samples"
 
 
 def config_file() -> Path:
@@ -62,9 +58,7 @@ def config_file() -> Path:
 
 
 def env_file() -> Path:
-    """Dotenv-format secret store. Written by Mens.app (single SoT), sourced
-    by `persome start` before forking the daemon so business code can
-    just `os.environ.get(...)`. CLI users may edit it directly."""
+    """Owner-only dotenv secret store sourced before the daemon forks."""
     return root() / "env"
 
 
@@ -87,9 +81,8 @@ def writer_state() -> Path:
 
 def integrity_recovery_marker() -> Path:
     """One-time marker written by the startup integrity check when it had to
-    quarantine a corrupt DB / config (#202). Mens.app reads it to show a
-    single recovery notice, then deletes it. JSON payload, see
-    ``integrity.py``."""
+    quarantine a corrupt DB / config (#202). Operators and embedding clients
+    may surface and acknowledge its JSON payload; see ``integrity.py``."""
     return root() / ".integrity-recovery.json"
 
 

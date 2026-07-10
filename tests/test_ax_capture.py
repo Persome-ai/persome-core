@@ -58,8 +58,6 @@ def test_unavailable_provider_is_unavailable_and_returns_none() -> None:
     assert p.available is False
     assert p.reason == "no helper"
     assert p.capture_frontmost() is None
-    assert p.capture_all_visible() is None
-    assert p.capture_app("Safari") is None
 
 
 # --- MacAXHelperProvider._run (subprocess mocked) -------------------------------
@@ -92,29 +90,6 @@ def test_run_success_builds_capture_result(monkeypatch: pytest.MonkeyPatch) -> N
     # _strip_frame_fields ran over the payload
     assert "frame" not in result.apps[0]
     assert result.metadata == {"mode": "frontmost", "depth": 8, "platform": "macos", "raw": False}
-
-
-def test_run_all_visible_sets_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _fake_run_returning(json.dumps({"timestamp": "t", "apps": []}))
-    monkeypatch.setattr(ax_capture.subprocess, "run", fake)
-    result = _provider().capture_all_visible()
-    assert result is not None
-    assert result.metadata["mode"] == "all-visible"
-    assert "--all-visible" in fake.captured_args
-
-
-def test_run_app_name_args(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _fake_run_returning(json.dumps({"timestamp": "t", "apps": []}))
-    monkeypatch.setattr(ax_capture.subprocess, "run", fake)
-    _provider().capture_app("Zoom", focused_window_only=True)
-    args = fake.captured_args
-    assert args[0] == "/fake/mac-ax-helper"
-    assert "--app-name" in args and "Zoom" in args
-    assert "--focused-window-only" in args
-    assert "--depth" in args and "8" in args
-    assert "--timeout" in args and "3" in args
-    # app_name path must NOT also pass --all-visible
-    assert "--all-visible" not in args
 
 
 def test_run_permission_denied_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:

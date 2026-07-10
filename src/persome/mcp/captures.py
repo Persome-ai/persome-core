@@ -234,11 +234,25 @@ def read_recent_capture(
     """Return the capture that best matches the given time + filters.
 
     ``at`` None → newest matching capture overall.
-    ``at`` set → nearest-in-time match, bounded by ``max_age_minutes`` on either side.
+    ``at`` set to a returned ``file_stem`` → that exact capture.
+    Other ``at`` values → nearest-in-time match, bounded by
+    ``max_age_minutes`` on either side.
     """
     buf = paths.capture_buffer_dir()
     if not buf.exists():
         return None
+
+    if at and "/" not in at and "\\" not in at and ".." not in at:
+        exact = buf / f"{at}.json"
+        if exact.is_file() and _parse_stem(at) is not None:
+            data = _load_capture(exact)
+            if data is None or not _matches(data, app_name, window_title_substring):
+                return None
+            return _resolve_text(
+                _format_response(exact, data, include_screenshot, include_ax_tree),
+                data,
+                exact.stem,
+            )
 
     target: datetime | None = _parse_at(at) if at else None
 
@@ -278,32 +292,6 @@ def read_recent_capture(
     if best is None:
         return None
     _, path, data = best
-    return _resolve_text(
-        _format_response(path, data, include_screenshot, include_ax_tree), data, path.stem
-    )
-
-
-def read_capture_by_stem(
-    stem: str,
-    *,
-    include_screenshot: bool = False,
-    include_ax_tree: bool = False,
-) -> dict[str, Any] | None:
-    """Exact capture lookup by file stem (the ``file_stem`` headlines carry).
-
-    The HH:MM ``at`` path only resolves to the *nearest* capture for an app
-    within a tolerance window, so two captures in the same minute (or a shared
-    cwd) can mis-resolve. The caller already knows the exact stem, so this
-    avoids that whole class of cross-attribution.
-    """
-    if not stem or "/" in stem or "\\" in stem or ".." in stem:
-        return None
-    path = paths.capture_buffer_dir() / f"{stem}.json"
-    if not path.is_file():
-        return None
-    data = _load_capture(path)
-    if data is None:
-        return None
     return _resolve_text(
         _format_response(path, data, include_screenshot, include_ax_tree), data, path.stem
     )

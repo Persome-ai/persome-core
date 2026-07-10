@@ -315,73 +315,13 @@ class NodeStore:
                 (str(MemoryStatus.SHADOW), valid_until, node_id, self.user_id, self.agent_id),
             )
 
-    def link_supersede(self, new_id: str, old_id: str) -> None:
-        """建立双向指针并把 old 收进链尾：
-
-        - old.superseded_by 追加 new_id、status=shadow、is_latest=0
-        - new.supersedes 追加 old_id、is_latest=1
-
-        一个事务内完成，避免半更新留下悬空指针。
-        """
-        integrity.ensure_writes_allowed()
-        with fts.cursor() as conn:
-            old = conn.execute(
-                "SELECT supersedes, superseded_by FROM evo_nodes "
-                "WHERE node_id=? AND user_id=? AND agent_id=?",
-                (old_id, self.user_id, self.agent_id),
-            ).fetchone()
-            new = conn.execute(
-                "SELECT supersedes, superseded_by FROM evo_nodes "
-                "WHERE node_id=? AND user_id=? AND agent_id=?",
-                (new_id, self.user_id, self.agent_id),
-            ).fetchone()
-            if old is None or new is None:
-                raise KeyError(f"link_supersede: missing node(s) old={old_id!r} new={new_id!r}")
-
-            old_superseded_by = json.loads(old["superseded_by"] or "[]")
-            if new_id not in old_superseded_by:
-                old_superseded_by.append(new_id)
-            new_supersedes = json.loads(new["supersedes"] or "[]")
-            if old_id not in new_supersedes:
-                new_supersedes.append(old_id)
-
-            conn.execute("BEGIN")
-            try:
-                conn.execute(
-                    "UPDATE evo_nodes SET superseded_by=?, status=?, is_latest=0 "
-                    "WHERE node_id=? AND user_id=? AND agent_id=?",
-                    (
-                        json.dumps(old_superseded_by, ensure_ascii=False),
-                        str(MemoryStatus.SHADOW),
-                        old_id,
-                        self.user_id,
-                        self.agent_id,
-                    ),
-                )
-                conn.execute(
-                    "UPDATE evo_nodes SET supersedes=?, is_latest=1, status=? "
-                    "WHERE node_id=? AND user_id=? AND agent_id=?",
-                    (
-                        json.dumps(new_supersedes, ensure_ascii=False),
-                        str(MemoryStatus.ACTIVE),
-                        new_id,
-                        self.user_id,
-                        self.agent_id,
-                    ),
-                )
-                conn.execute("COMMIT")
-            except Exception:
-                conn.execute("ROLLBACK")
-                raise
-
     def save_and_supersede(
         self, node: MemoryNode, *, old_id: str, old_valid_until: str | None = None
     ) -> None:
         """原子地落盘新链头并 shadow 旧节点：INSERT(new) + UPDATE(old) 同一事务。
 
-        取代「``save(new)`` 自动提交 → 另开 ``link_supersede`` 事务」这条两步序列——两步
-        之间崩溃 / 被 kill 会同时留下新旧两个 ``is_latest=1 status=active`` 节点，破坏
-        「每条演化链唯一活跃链头」不变量（issue #427）。这里把：
+        新节点与旧节点在同一事务内更新，避免留下两个
+        ``is_latest=1 status=active`` 节点（issue #427）。这里把：
 
         - 新节点带 ``supersedes=[old_id]`` 落盘（``is_latest=1 status=active``）
         - 旧节点 ``superseded_by`` 追加 new_id、``status=shadow``、``is_latest=0``
@@ -463,64 +403,6 @@ class NodeStore:
                         "UPDATE evo_nodes SET status=?, is_latest=0 "
                         "WHERE node_id=? AND user_id=? AND agent_id=?",
                         (str(MemoryStatus.SHADOW), sid, self.user_id, self.agent_id),
-                    )
-                conn.execute("COMMIT")
-            except Exception:
-                conn.execute("ROLLBACK")
-                raise
-
-    def save_and_abstract(self, node: MemoryNode, *, source_ids: list[str]) -> None:
-        """原子地落盘 N→1 合成链头并收编(shadow)所有源节点：INSERT(new) + UPDATE×N 同一事务。
-
-        .. note:: PR-6a 起 engine 的 ABSTRACT 分支已改走
-           :meth:`save_and_retire_sources`（链语义②：provenance 走 ``abstracted_from``
-           列，源不写单指针）。本方法保留为「指针式合成」原语——现存 evo_nodes 数据
-           里由它写下的双向指针仍由 ``expand_evolution_chains`` 正常追溯，不回写迁移。
-
-        ABSTRACT（WRITE-02）把 N(≥2) 个源节点吸收进一个新合成节点。若分两步（``save``
-        自动提交 → 逐个 ``shadow``），崩在中间会同时留下新节点与部分源节点
-        ``is_latest=1``，破坏「每条演化链唯一活跃链头」不变量（同 #427 根因）。这里把
-        INSERT(new) + 每个源「``superseded_by`` 追加 new_id、``status=shadow``、
-        ``is_latest=0``」合进一个 ``BEGIN...COMMIT``。
-
-        合成节点的 ``supersedes`` 只指回**真实存在**的源（避免悬空指针）；缺失的源 id
-        跳过（防御铁律外的异常形态），不阻断收敛。
-        """
-        integrity.ensure_writes_allowed()
-        new_id = node.node_id
-        with fts.cursor() as conn:
-            # 读每个真实存在的源的 superseded_by；缺失的源直接略过。
-            existing: dict[str, list] = {}
-            for sid in source_ids:
-                if not sid:
-                    continue
-                row = conn.execute(
-                    "SELECT superseded_by FROM evo_nodes "
-                    "WHERE node_id=? AND user_id=? AND agent_id=?",
-                    (sid, self.user_id, self.agent_id),
-                ).fetchone()
-                if row is not None:
-                    existing[sid] = json.loads(row["superseded_by"] or "[]")
-            for sid in existing:
-                if sid not in node.supersedes:
-                    node.supersedes.append(sid)
-
-            conn.execute("BEGIN")
-            try:
-                self._upsert_node(conn, node)
-                for sid, old_superseded_by in existing.items():
-                    if new_id not in old_superseded_by:
-                        old_superseded_by.append(new_id)
-                    conn.execute(
-                        "UPDATE evo_nodes SET superseded_by=?, status=?, is_latest=0 "
-                        "WHERE node_id=? AND user_id=? AND agent_id=?",
-                        (
-                            json.dumps(old_superseded_by, ensure_ascii=False),
-                            str(MemoryStatus.SHADOW),
-                            sid,
-                            self.user_id,
-                            self.agent_id,
-                        ),
                     )
                 conn.execute("COMMIT")
             except Exception:

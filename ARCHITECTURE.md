@@ -9,16 +9,17 @@ task dashboards, and benchmark scoring are outside this repository.
 
 ```text
 macOS AX watcher ─┐
-local OCR fallback├─> capture buffer -> timeline blocks -> sessions
+optional local OCR├─> capture buffer -> timeline blocks -> sessions
 trusted ingest API┘                              |
                                                    v
                                       reducer -> event memory
                                                    |
                                                    v
-                                      classifier -> durable facts
+                                        terminal finalizer
+                          classifier + pattern + memory_delta/apply
                                                    |
                                                    v
-                 evomem + relations + schema miner + cross-domain + root
+                   Points/Lines -> schema Faces -> Volumes -> Root
                                                    |
                             ┌──────────────────────┼──────────────────────┐
                             v                      v                      v
@@ -30,14 +31,15 @@ tests can run on Linux with macOS-marked tests deselected.
 
 ## State formation
 
-1. `capture/` receives Accessibility events. AX-poor apps can use bundled,
-   on-device PP-OCRv6; screenshots are not required for the durable model.
+1. `capture/` receives Accessibility events. AX-poor apps can opt into bundled,
+   subprocess-isolated PP-OCRv6; the default is AX-only.
 2. `parsers/` normalizes app-specific structures into capture records.
 3. `timeline/` groups records into one-minute blocks and preserves authored
    evidence.
 4. `session/` cuts bounded work sessions using deterministic rules.
-5. `writer/` reduces sessions and classifies durable facts into Markdown and
-   the SQLite projection.
+5. `writer/` reduces sessions, detects repeated behavior, and converts one
+   evidence-gated memory delta into durable model state. The shared terminal
+   finalizer is idempotent across daemon, retry, CLI, and build callers.
 
 The detailed stage behavior lives in
 [`docs/capture.md`](docs/capture.md),
@@ -56,16 +58,18 @@ The coordinator runs, in order:
 
 1. pending state formation;
 2. evomem baseline/backfill;
-3. entity and relation enrichment;
+3. entity, reusable-case, and relation enrichment;
 4. level-1 schema mining;
 5. level-2 cross-domain synthesis;
 6. level-3 root synthesis;
 7. vector backfill;
 8. semantic layout generation.
 
-Each stage records completion, skip, or failure. Missing geometry marks the
-build degraded and never overwrites an existing good Root with an empty result.
-The manifest is written atomically with owner-only permissions.
+Each stage records completion, skip, or failure. Enrichment runs every enabled
+substage before surfacing a partial failure, so the manifest cannot call a
+partially failed stage complete. Missing geometry marks the build degraded and
+never overwrites an existing good Root with an empty result. The manifest is
+written atomically with owner-only permissions.
 
 ## Storage
 
@@ -89,7 +93,8 @@ legacy completed activity can be read through a neutral adapter.
 
 - CLI: capture/daemon lifecycle plus `model build|status|export`.
 - REST: health, permissions, status, trusted capture ingest, model viewer, and
-  optional Chat. See [`docs/api.md`](docs/api.md).
+  Chat API. The shipped interactive Chat UI is the `persome chat` terminal
+  client; `/model` is the browser viewer. See [`docs/api.md`](docs/api.md).
 - MCP: model retrieval, provenance, recent context, and explicit correction.
   See [MCP.md](MCP.md).
 - Snapshot: versioned Point/Line/Face/Volume/Root JSON. See

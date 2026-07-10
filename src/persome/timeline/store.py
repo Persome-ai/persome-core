@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS timeline_blocks (
     apps_used TEXT NOT NULL,
     capture_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    helpful_intent_tags TEXT NOT NULL DEFAULT '[]',
     skill_hints TEXT NOT NULL DEFAULT '[]',
     action_trace TEXT NOT NULL DEFAULT '[]',
     focus_excerpt TEXT NOT NULL DEFAULT '',
@@ -42,10 +41,6 @@ CREATE INDEX IF NOT EXISTS idx_tlb_end ON timeline_blocks(end_time);
 def _migrate(conn: sqlite3.Connection) -> None:
     """Backfill columns added after initial schema."""
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(timeline_blocks)")}
-    if "helpful_intent_tags" not in cols:
-        conn.execute(
-            "ALTER TABLE timeline_blocks ADD COLUMN helpful_intent_tags TEXT NOT NULL DEFAULT '[]'"
-        )
     if "skill_hints" not in cols:
         conn.execute(
             "ALTER TABLE timeline_blocks ADD COLUMN skill_hints TEXT NOT NULL DEFAULT '[]'"
@@ -86,21 +81,20 @@ class TimelineBlock:
     capture_count: int = 0
     id: str = ""
     created_at: datetime | None = None
-    helpful_intent_tags: list[dict] = field(default_factory=list)
     skill_hints: list[dict] = field(default_factory=list)
     action_trace: list[dict] = field(default_factory=list)
     # Raw visible_text excerpt of the window's last capture — a lossless backstop
     # for the lossy LLM-normalized ``entries`` (chat apps especially summarize
-    # message bodies away). The session intent recognizer reads this for the
-    # focus block so a verbatim message (e.g. a counterpart's proposed time) is
+    # message bodies away). Session modeling reads this for the focus block so
+    # a verbatim message (e.g. a counterpart's proposed time) is
     # never lost to normalization.
     focus_excerpt: str = ""
     # Structured conversation produced by a per-app parser (parsers.get_parser),
     # rendered to ``[收到|发送者|时间] 正文`` lines. When non-empty it is preferred
-    # over the raw ``focus_excerpt`` as the recognizer's focus input — the parser
+    # over the raw ``focus_excerpt`` as the modeler's focus input — the parser
     # has already split sender/time/body deterministically, so it is cleaner than
     # the verbatim AX dump. Empty when no parser handles the focused app (the
-    # recognizer then falls back to ``focus_excerpt``).
+    # modeler then falls back to ``focus_excerpt``).
     focus_structured: str = ""
     # Attention-locus summary for the window's dominant locus (Step 1 of the
     # attention-locus design). ``surface`` = the window/pane attended; ``rung``
@@ -143,9 +137,9 @@ def insert(conn: sqlite3.Connection, block: TimelineBlock) -> None:
         """
         INSERT OR IGNORE INTO timeline_blocks
             (id, start_time, end_time, timezone, entries, apps_used, capture_count,
-             created_at, helpful_intent_tags, skill_hints, action_trace, focus_excerpt,
+             created_at, skill_hints, action_trace, focus_excerpt,
              focus_structured, attention_surface, attention_confidence, attention_rung)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             block.id,
@@ -156,7 +150,6 @@ def insert(conn: sqlite3.Connection, block: TimelineBlock) -> None:
             json.dumps(block.apps_used, ensure_ascii=False),
             block.capture_count,
             (block.created_at or datetime.now().astimezone()).isoformat(),
-            json.dumps(block.helpful_intent_tags, ensure_ascii=False),
             json.dumps(block.skill_hints, ensure_ascii=False),
             json.dumps(block.action_trace, ensure_ascii=False),
             block.focus_excerpt,
@@ -228,10 +221,6 @@ def _row_to_block(row: sqlite3.Row | tuple) -> TimelineBlock:
     # Row indexing works for both sqlite3.Row and tuple
     get = row.__getitem__
     try:
-        tags_raw = get("helpful_intent_tags")  # type: ignore[call-overload]
-    except (IndexError, KeyError):
-        tags_raw = "[]"
-    try:
         skill_hints_raw = get("skill_hints")  # type: ignore[call-overload]
     except (IndexError, KeyError):
         skill_hints_raw = "[]"
@@ -268,7 +257,6 @@ def _row_to_block(row: sqlite3.Row | tuple) -> TimelineBlock:
         apps_used=json.loads(get("apps_used") or "[]"),  # type: ignore[call-overload]
         capture_count=get("capture_count") or 0,  # type: ignore[call-overload]
         created_at=datetime.fromisoformat(get("created_at")) if get("created_at") else None,  # type: ignore[call-overload]
-        helpful_intent_tags=json.loads(tags_raw or "[]"),
         skill_hints=json.loads(skill_hints_raw or "[]"),
         action_trace=json.loads(action_trace_raw or "[]"),
         focus_excerpt=focus_excerpt,

@@ -14,6 +14,7 @@ from persome.config import (
     CaptureConfig,
     Config,
     MCPConfig,
+    ReducerConfig,
     SchemaConfig,
     SearchConfig,
 )
@@ -55,10 +56,10 @@ class TestRegistryEnabledPredicates:
         assert _enabled_names(_base_cfg()) == {
             "capture",
             "session",
+            "reducer-retry",
             "daily-safety-net",
             "timeline",
             "flush",
-            "classifier-tick",
             "mcp",
         }
 
@@ -66,6 +67,7 @@ class TestRegistryEnabledPredicates:
         assert _enabled_names(_base_cfg(), capture_only=True) == {
             "capture",
             "session",
+            "reducer-retry",
             "daily-safety-net",
             "mcp",
         }
@@ -84,6 +86,12 @@ class TestRegistryEnabledPredicates:
             Config(search=SearchConfig(hybrid_enabled=False))
         )
 
+    def test_classifier_tick_only_runs_for_legacy_classifier_mode(self) -> None:
+        cfg = _base_cfg()
+        assert "classifier-tick" not in _enabled_names(cfg)
+        cfg.memory_delta.apply_enabled = False
+        assert "classifier-tick" in _enabled_names(cfg)
+
     def test_mcp_disabled_when_auto_start_false(self) -> None:
         assert "mcp" not in _enabled_names(Config(mcp=MCPConfig(auto_start=False)))
 
@@ -95,6 +103,12 @@ class TestRegistryEnabledPredicates:
 
     def test_mcp_not_gated_by_capture_only(self) -> None:
         assert "mcp" in _enabled_names(Config(), capture_only=True)
+
+    def test_reducer_retry_requires_reducer(self) -> None:
+        assert "reducer-retry" in _enabled_names(Config(), capture_only=True)
+        assert "reducer-retry" not in _enabled_names(
+            Config(reducer=ReducerConfig(enabled=False)), capture_only=True
+        )
 
 
 class TestCreateTasksFromRegistry:

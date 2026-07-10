@@ -163,7 +163,7 @@ def find_decay_clusters(
 
 def _build_llm_call(cfg: Config) -> Callable[[list[dict]], Any]:
     def _call(messages: list[dict]) -> Any:
-        return llm_mod.call_llm(cfg, _STAGE, cfg.model_for(_STAGE), messages)
+        return llm_mod.call_llm(cfg, _STAGE, messages=messages)
 
     return _call
 

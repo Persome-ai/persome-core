@@ -165,8 +165,18 @@ def test_fact_rows_not_treated_as_entities(ac_root):
         "relations": [],  # 李四无 ② 边 → 是孤儿实体
         "events": [],
         "assertions": [  # 关于李四的多条事实（content=事实句）
-            {"subject": {"ref": "李四"}, "text": "李四负责后端服务", "quote": "q", "confidence": 0.9},
-            {"subject": {"ref": "李四"}, "text": "李四昨天改了 inspector.py", "quote": "q", "confidence": 0.9},
+            {
+                "subject": {"ref": "李四"},
+                "text": "李四负责后端服务",
+                "quote": "q",
+                "confidence": 0.9,
+            },
+            {
+                "subject": {"ref": "李四"},
+                "text": "李四昨天改了 inspector.py",
+                "quote": "q",
+                "confidence": 0.9,
+            },
         ],
     }
     with fts.cursor() as conn:

@@ -1,7 +1,7 @@
 """Covers the sidebar-preview contract on ``GET /chat/sessions``.
 
-The Dart sidebar in ``packages/acme-app`` shows ``preview`` (first user
-message, ≤80 chars) instead of a raw timestamp. These tests pin:
+Trusted local clients can show ``preview`` (first user message, ≤80 chars)
+instead of a raw timestamp. These tests pin:
 
 * ``_first_user_preview`` normalization (Anthropic block content,
   whitespace, truncation, empty cases).

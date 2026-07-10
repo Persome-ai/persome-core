@@ -1,7 +1,7 @@
-"""Session-count consolidation cadence (issue #49).
+"""Session-count compaction cadence (issue #49).
 
 Verifies:
-- `_check_and_trigger_consolidation` increments a persistent counter and
+- `_check_and_trigger_compaction` increments a persistent counter and
   fires the placeholder consolidation exactly at every Nth call.
 - The counter survives SQLite re-open (i.e., "restart").
 """
@@ -33,26 +33,26 @@ def test_cadence_triggers_every_n_sessions(ac_root: Path, monkeypatch: pytest.Mo
     calls: list[int] = []
     monkeypatch.setattr(
         classifier_mod,
-        "_trigger_placeholder_consolidation",
+        "_trigger_pending_compaction",
         lambda _cfg: calls.append(1),
     )
 
     for _ in range(7):
-        classifier_mod._check_and_trigger_consolidation(cfg)
+        classifier_mod._check_and_trigger_compaction(cfg)
     assert calls == []
     assert _counter() == 7
 
-    classifier_mod._check_and_trigger_consolidation(cfg)  # 8th
+    classifier_mod._check_and_trigger_compaction(cfg)  # 8th
     assert len(calls) == 1
     assert _counter() == 8
 
     # Sessions 9..15 — still 1 trigger.
     for _ in range(7):
-        classifier_mod._check_and_trigger_consolidation(cfg)
+        classifier_mod._check_and_trigger_compaction(cfg)
     assert len(calls) == 1
     assert _counter() == 15
 
-    classifier_mod._check_and_trigger_consolidation(cfg)  # 16th
+    classifier_mod._check_and_trigger_compaction(cfg)  # 16th
     assert len(calls) == 2
     assert _counter() == 16
 
@@ -64,12 +64,12 @@ def test_counter_persists_across_reopen(ac_root: Path, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(
         classifier_mod,
-        "_trigger_placeholder_consolidation",
+        "_trigger_pending_compaction",
         lambda _cfg: None,
     )
 
     for _ in range(3):
-        classifier_mod._check_and_trigger_consolidation(cfg)
+        classifier_mod._check_and_trigger_compaction(cfg)
     assert _counter() == 3
 
     # Force a fresh connection by opening a new cursor — emulates restart.
@@ -88,11 +88,11 @@ def test_cadence_one_triggers_every_session(ac_root: Path, monkeypatch: pytest.M
     calls: list[int] = []
     monkeypatch.setattr(
         classifier_mod,
-        "_trigger_placeholder_consolidation",
+        "_trigger_pending_compaction",
         lambda _cfg: calls.append(1),
     )
 
     for _ in range(3):
-        classifier_mod._check_and_trigger_consolidation(cfg)
+        classifier_mod._check_and_trigger_compaction(cfg)
     assert len(calls) == 3
     assert _counter() == 3

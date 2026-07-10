@@ -13,7 +13,7 @@ When a capture's frontmost bundle is cmux, :func:`maybe_inject` reads the
 visible terminal surfaces over the socket and appends their text to the
 capture's ``visible_text``. Downstream (timeline ``_format_events``,
 ``focus_excerpt``, captures FTS) consumes ``visible_text`` as-is, so no
-cmux-specific recognition path exists anywhere else.
+cmux-specific modeling path exists anywhere else.
 
 Hot-path discipline:
   * the whole socket conversation runs under one sub-second deadline;

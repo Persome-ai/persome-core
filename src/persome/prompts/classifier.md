@@ -168,9 +168,9 @@ two facts cohere.
 ## Reliability metadata (confidence / conflicted / occurred_at)
 
 Every `append` and `supersede` carries optional meta-cognition fields. They cost
-nothing to set and let the downstream intent layer down-weight shaky memories
+nothing to set and let downstream model consumers down-weight shaky memories
 instead of treating every fact as equally certain — a low-confidence guess must
-never drive the same proactive action a hard fact would.
+never carry the same weight as a hard fact.
 
 - **`confidence`** — set on every write:
   - `high` — the user **explicitly did or said** it (you can point to the exact

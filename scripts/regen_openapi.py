@@ -4,9 +4,9 @@ Run after touching any FastAPI route, Pydantic response model, or SSE schema:
 
     uv run python scripts/regen_openapi.py
 
-The committed ``openapi.json`` is the contract consumed by ``Mens.app``. The
-CI guard in ``tests/test_openapi_drift.py`` fails the build if the file
-falls out of sync with the code.
+The committed ``openapi.json`` is the contract consumed by trusted local
+clients. The CI guard in ``tests/test_openapi_drift.py`` fails the build if the
+file falls out of sync with the code.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from persome.api import render_openapi_json  # noqa: E402
 def main() -> int:
     rendered = render_openapi_json()
     OUT.write_text(rendered, encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT.parent.parent)} ({len(rendered)} bytes)")
+    print(f"wrote {OUT.relative_to(ROOT)} ({len(rendered)} bytes)")
     return 0
 
 

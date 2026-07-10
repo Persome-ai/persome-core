@@ -8,7 +8,6 @@ re-run or re-schedule. Runs as an asyncio task inside the daemon.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
@@ -94,24 +93,14 @@ def _cleanup_buffer_once(cfg: Config) -> dict[str, int]:
         screenshot_retention_hours=cfg.capture.screenshot_retention_hours,
         screenshot_thumbnail_hours=cfg.capture.screenshot_thumbnail_hours,
         max_mb=cfg.capture.buffer_max_mb,
-        # #7 (E5): keep the actionable subset's screenshots past the strip cutoff for
-        # grounding/Rewind, when the user opts in. Flat top-level Config flags.
-        extended_retention_enabled=cfg.capture_extended_retention_enabled,
-        actionable_retention_days=cfg.capture_actionable_retention_days,
+        # Keep actionable screenshots past the normal strip cutoff when enabled.
+        extended_retention_enabled=cfg.capture.extended_retention_enabled,
+        actionable_retention_days=cfg.capture.actionable_retention_days,
     )
 
 
-async def run_forever(
-    cfg: Config,
-    on_blocks_produced: Callable[[int], Awaitable[None]] | None = None,
-) -> None:
-    """Daemon task: every minute, materialise any closed windows.
-
-    ``on_blocks_produced`` (optional) is awaited each tick that materialises one
-    or more new blocks. This is the block-flush trigger for the session-level
-    intent recognizer — recognition fires exactly when fresh trajectory lands,
-    instead of on a fixed timer.
-    """
+async def run_forever(cfg: Config) -> None:
+    """Daemon task: every minute, materialise any closed windows."""
     logger.info(
         "timeline loop started (window=%d min, tick=%d s)",
         cfg.timeline.window_minutes,
@@ -122,13 +111,6 @@ async def run_forever(
             produced = await asyncio.to_thread(_run_once, cfg)
             if produced:
                 logger.info("timeline: produced %d block(s) this tick", produced)
-                if on_blocks_produced is not None:
-                    try:
-                        await on_blocks_produced(produced)
-                    except Exception as exc:  # noqa: BLE001 - hook must not kill the loop
-                        logger.error(
-                            "timeline: on_blocks_produced hook failed: %s", exc, exc_info=True
-                        )
             # Clean buffer files once the aggregator has absorbed them —
             # safe cutoff is the newest block's end_time.
             try:

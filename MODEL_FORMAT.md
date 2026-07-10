@@ -1,9 +1,10 @@
 # Personal model format
 
 The paper-facing model is a versioned, read-only JSON projection of local
-Runtime state. CLI export, MCP `get_model_snapshot`, and `/model/graph` expose
-the same contract; consumers must not import internal DAOs or query SQLite
-tables directly.
+Runtime state. CLI export, MCP `get_model_snapshot`, and the `model` object
+inside `/model/graph` expose the same schema; consumers must not import internal
+DAOs or query SQLite tables directly. Redaction policy differs: export and MCP
+redact by default, while the owner-only loopback viewer uses raw local content.
 
 ## Top-level schema
 

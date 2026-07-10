@@ -97,11 +97,6 @@ def scan(text: str) -> ScrubResult:
     return ScrubResult(clean=not hits, hits=hits, redacted=redacted)
 
 
-def is_clean(text: str) -> bool:
-    """True iff ``text`` carries no detectable secret or PII."""
-    return scan(text).clean
-
-
 def redact(text: str) -> str:
     """Masked copy of ``text`` (for callers that prefer masking to dropping)."""
     return scan(text).redacted

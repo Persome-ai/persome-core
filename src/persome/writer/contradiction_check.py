@@ -7,7 +7,7 @@ timers): it pairs candidate facts deterministically, asks one bounded LLM judge
 per pair, and — on a contradiction verdict — **marks, never resolves**:
 
 - both entries get ``entry_metadata.conflicted = 1`` → recall's existing
-  meta-cognition layer renders ``⚠(冲突未裁决)`` and the recognizer
+  meta-cognition layer renders ``⚠(冲突未裁决)`` and model consumers
   down-weights them (the production consumer already in place);
 - the pair lands in ``memory_contradictions`` (``store/contradictions.py``) —
   the human adjudication queue (``persome contradictions`` /
@@ -142,8 +142,7 @@ def find_candidate_pairs(
 
 def _build_llm_call(cfg: Config) -> Callable[[list[dict]], Any]:
     def _call(messages: list[dict]) -> Any:
-        model_cfg = cfg.model_for(_STAGE)
-        return llm_mod.call_llm(cfg, _STAGE, model_cfg, messages)
+        return llm_mod.call_llm(cfg, _STAGE, messages=messages)
 
     return _call
 

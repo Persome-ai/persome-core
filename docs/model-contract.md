@@ -48,13 +48,17 @@ sweeper resamples. This preserves the two-observation bar without inventing a se
 
 Relation edges may carry the nullable triplet `source_kind`, `source_id`, and `source_receipt`.
 The triplet is atomic: callers either provide all three fields or none. Activity-derived edges use
-stable IDs such as `event:intent:<id>`, `event:entry:<id>`, or `event:session:<id>`.
+new stable IDs `event:entry:<id>` or `event:session:<id>`. `event:intent:<id>`
+is read-only compatibility for an old store.
 
 ## Privacy and reproducibility
 
 `export_snapshot` redacts deterministic secret/PII categories by default and writes atomically with
 mode `0600`. Callers must opt out explicitly with `redact=False`. A fixed `generated_at` and fixed
 `build_metadata` produce byte-equivalent model data, assuming the underlying database is unchanged.
+
+The `model` object in loopback `/model/graph` uses the same schema but raw local
+content so the owner can inspect the real model. It is not a publication export.
 
 The synthetic contract fixture lives at
 [`tests/fixtures/paper_model/model_seed.json`](../tests/fixtures/paper_model/model_seed.json). It

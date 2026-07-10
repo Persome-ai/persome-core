@@ -1,12 +1,15 @@
 # Memory Format
 
-Memory files are plain Markdown under `~/.persome/memory/`. Three rules:
+Under the default Markdown write authority, memory files are plain Markdown
+under `~/.persome/memory/`. Three rules:
 
 1. One file per entity. Filename encodes the entity type and name.
 2. Each file is YAML frontmatter + a list of append-only entries.
 3. When information changes, the *old entry* is struck through in place; new content is appended.
 
-A human can read, grep, diff, and hand-edit these files. The SQLite FTS index (`index.db`) is a derived mirror — rebuild it from the files any time with `persome rebuild-index`.
+A human can read, grep, and diff these files. Under Markdown authority the
+SQLite FTS index (`index.db`) is a derived mirror and `persome rebuild-index`
+replays it. Under evomem authority, Markdown itself is a projection.
 
 ## File prefixes
 
@@ -19,7 +22,7 @@ A human can read, grep, diff, and hand-edit these files. The SQLite FTS index (`
 | `person-` | Another person the user interacts with | `person-alice.md` |
 | `org-` | A company, team, or institution | `org-anthropic.md` |
 | `event-` | Per-day session-level activity log (written by the S2 reducer) | `event-2026-04-22.md` |
-| `workflow-` | Detected repetitive behavior patterns that could be scripted | `workflow-morning-routine.md` |
+| `skills/skill-` | Repeated, evidence-backed behavioral memory | `skills/skill-morning-routine.md` |
 
 `user-profile.md` and `user-preferences.md` are preseeded on first install; everything else is created by the writer on demand. See `prompts/schema.md` for the full decision tree (also available via MCP `get_schema`).
 
@@ -54,7 +57,7 @@ User joined Acme Corp as a senior engineer.
 |---|---|---|
 | `description` | create | One-line summary shown in `list_memories`. |
 | `tags` | create / append | File-level topical tags (not entry tags). |
-| `status` | create / index_md / schema-miner | `active` / `dormant` / `archived` (manual). `dormant` = untouched > `auto_dormant_days` (`index_md.auto_dormant`, DB-only) **or** a still-`forming` schema born hidden (schema miner — written to both frontmatter + files table, so it survives `rebuild_index`). |
+| `status` | create / schema-miner / explicit maintenance | `active` / `dormant` / `archived`. Forming schemas are born dormant so they remain outside the active model. Ordinary files are not auto-dormanted by age. |
 | `created` | create | ISO-8601 with TZ. |
 | `updated` | any write | Refreshed on every entry. |
 | `entry_count` | any write | Cached count; kept in sync by store. |
@@ -97,25 +100,29 @@ Trigger knobs live in `[writer]`:
 
 ```toml
 soft_limit_tokens = 20000    # suggest compaction above this
-hard_limit_tokens = 50000    # emergency: always flag
+consolidation_cadence = 8    # drain flagged files every N completed passes
 ```
 
 ## Reading & writing from the outside
 
 **Reading.** Any tool that can read Markdown works. `grep -r user- ~/.persome/memory/` is a valid first pass.
 
-**Writing.** Don't. The FTS index and frontmatter counters will drift. Either:
+**Writing.** Use `persome correct`, MCP `remember` / `correct_memory`, or Chat's
+explicit memory tools. Direct editing depends on write authority:
 
-- Let the writer do it (normal path), or
-- Edit the Markdown, then run `uv run persome rebuild-index` to resync.
+- Under default `write_authority="markdown"`, edit Markdown only when you intend
+  to own the correction, then run `persome rebuild-index`.
+- Under `write_authority="evomem"`, Markdown is a projection and direct edits
+  are overwritten. Use `persome evomem-import-markdown <file>` for an explicit
+  import.
 
 The rebuild is safe and idempotent — it parses every file and rebuilds the `entries`, `files`, and `entries_fts` tables from scratch.
 
 ## Wiping memory
 
 ```bash
-uv run persome clean memory       # asks to confirm; empties memory/ and the FTS tables
-uv run persome clean all          # ...plus captures, timeline blocks, writer state
+persome clean memory       # asks to confirm; empties memory/ and the FTS tables
+persome clean all          # ...plus captures, timeline blocks, writer state
 ```
 
 Config (`config.toml`) is never touched by `clean` commands.

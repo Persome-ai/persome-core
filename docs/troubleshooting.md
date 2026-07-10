@@ -30,8 +30,9 @@ persome start --foreground
 Read the console output. Common culprits:
 
 - `OSError: [Errno 48] Address already in use` → another process holds port 8742. `lsof -i :8742` to find it.
-- Missing `OPENAI_API_KEY` → set it or put `api_key = "..."` in `[models.default]`.
-- `mac-ax-helper` / `mac-ax-watcher` binary missing → run `bash resources/build-mac-ax-helper.sh && bash resources/build-mac-ax-watcher.sh`.
+- Missing `ANTHROPIC_API_KEY` does not prevent capture startup; it degrades LLM
+  stages. Put provider secrets in `~/.persome/env`, never `config.toml`.
+- `mac-ax-helper` / `mac-ax-watcher` binary missing → run `bash install.sh`.
 
 ## Captures are empty / tree has no content
 
@@ -45,6 +46,17 @@ cat ~/.persome/capture-buffer/*.json | jq '.ax_tree | length' | head
 If the tree is `{}` or tiny across the board, open System Settings → Privacy & Security → Accessibility and enable your terminal (Terminal, iTerm2, Warp, VS Code…) plus `persome` itself if it appears. Restart the daemon.
 
 Second most common cause: **`ax_depth` too shallow for Electron apps.** See [capture.md](capture.md#ax-depth-the-1-footgun).
+
+For an AX-poor app, enable local OCR explicitly and grant Screen Recording:
+
+```toml
+[capture]
+enable_ocr_fallback = true
+```
+
+Then restart and run `persome ocr-selftest <image>`. OCR worker failures should
+leave the daemon alive. `PERSOME_DISABLE_OCR=1` disables inference entirely;
+remove it if self-test reports OCR disabled.
 
 ## No event-daily entries appearing
 
@@ -85,6 +97,10 @@ tail -50 ~/.persome/logs/writer.log
 
 Look for `reducer failed (retry N/5)` lines. After 5 failed attempts the reducer writes a heuristic entry tagged `heuristic` and marks the session `reduced` — you should *never* see a permanently-stuck session.
 
+The `reducer-retry` task checks due rows every minute using the persisted
+5/15/30/60/120 minute schedule. If it is absent from startup logs, confirm
+`[reducer] enabled = true` and restart.
+
 Force a catch-up pass:
 
 ```bash
@@ -93,9 +109,27 @@ persome writer run
 
 This runs the same code path the daily 23:55 cron uses.
 
-## Classifier never writes durable facts
+## Personal model has no Points or Lines
 
-This is often correct behavior — the classifier's default action is an empty commit. It should only write when it sees a fact that would still matter in six months.
+The shipped terminal writer is `memory_delta`, not the classifier. First close
+a real session, then inspect:
+
+```bash
+persome writer run
+persome delta-report
+persome model status
+tail -80 ~/.persome/logs/writer.log
+```
+
+Look for `memory_delta` skip/failure reasons. Unsupported quotes, unknown
+identity references, off-vocabulary predicates, and confidence below the floor
+are deliberately dropped. An LLM/store failure leaves `modeled_at` empty so
+recovery can retry. An `apply_status=failed` row is resumed without a second
+LLM extraction.
+
+Under the default `[memory_delta] apply_enabled = true`, the classifier reports
+`classifier retired (delta apply)` and its periodic daemon task is not started.
+The following diagnostics apply only if you explicitly set apply off:
 
 Signs it's misbehaving rather than doing its job:
 
@@ -145,11 +179,12 @@ Symptom: Claude Code / Cursor reports the server unreachable.
 
 If `mcp.auto_start = false`, the daemon intentionally won't host a server; use stdio instead.
 
-## ChatGPT Desktop can't see the server
+## A remote MCP client cannot see localhost
 
-Symptom: you pasted `http://127.0.0.1:8742/mcp` into ChatGPT's Create Connector dialog and got "could not reach server" or "invalid URL."
-
-ChatGPT's MCP client runs in OpenAI's cloud, not on your Mac — **localhost is unreachable from its side**. You need a public HTTPS URL via a tunnel (ngrok / Cloudflare Tunnel). See [mcp.md → ChatGPT Desktop](mcp.md#chatgpt-desktop) for the full setup, including the data-egress trade-offs. No amount of local config can make this work directly; the tunnel is mandatory. If you want a ChatGPT-style client that speaks to the local endpoint, Codex CLI works natively.
+The paper Runtime supports loopback HTTP and local stdio. A cloud-hosted MCP
+client cannot reach `127.0.0.1`; exposing Persome through a tunnel changes the
+privacy boundary and is not a supported reproduction requirement. Use a local
+MCP client or `persome chat`.
 
 ## MCP client connects but doesn't use the memory
 
@@ -214,7 +249,24 @@ Fix:
 persome rebuild-index
 ```
 
-Rewrites `entries`, `files`, and `entries_fts` from the Markdown on disk. Idempotent.
+Under default Markdown authority this rewrites `entries`, `files`, and
+`entries_fts` from disk. Under evomem authority, project from evomem instead;
+direct Markdown edits are not truth.
+
+## `/model` is empty or incomplete
+
+The viewer only exists while the daemon's HTTP MCP task is active. Confirm
+`[mcp] auto_start = true`, open `http://127.0.0.1:8742/model`, then run:
+
+```bash
+persome model build
+persome model status
+```
+
+A new store can truthfully have Points but no Face, Volume, or Root. Those
+levels require repeated stable evidence and model status should remain
+`degraded`; the viewer does not invent missing geometry. Check
+`model-build.json` for failed stages and `sem_facts.json` for generated layout.
 
 ## Resetting
 

@@ -29,15 +29,11 @@ import collections
 from typing import Any
 
 # Folded out of the body, counted into the digest.
-_CHROME_ROLES = frozenset(
-    {"AXToolbar", "AXTabGroup", "AXMenuBar", "AXMenuButton", "AXScrollBar"}
-)
+_CHROME_ROLES = frozenset({"AXToolbar", "AXTabGroup", "AXMenuBar", "AXMenuButton", "AXScrollBar"})
 # Semantic-free containers: skipped (children promoted) when they carry no text.
 _CONTAINER_ROLES = frozenset({"AXGroup", "AXScrollArea", "AXSplitGroup", "AXSplitter"})
 # Content roles: render as bare text, no [Role] scaffolding label.
-_CONTENT_ROLES = frozenset(
-    {"AXStaticText", "AXLink", "AXHeading", "AXCell", "AXRow", "AXText"}
-)
+_CONTENT_ROLES = frozenset({"AXStaticText", "AXLink", "AXHeading", "AXCell", "AXRow", "AXText"})
 # Roles counted in the chrome digest, with a human label.
 _CHROME_COUNT = {
     "AXButton": "按钮",
@@ -87,7 +83,9 @@ def _flatten_text(el: dict[str, Any]) -> str:
     return line[:_MAX_LINE_CHARS]
 
 
-def _walk(elements: list[dict[str, Any]], out: list[str], digest: dict[str, int], depth: int) -> None:
+def _walk(
+    elements: list[dict[str, Any]], out: list[str], digest: dict[str, int], depth: int
+) -> None:
     indent = "  " * min(depth, 8)
     shapes = collections.Counter(_shape(e) for e in elements if isinstance(e, dict))
     for el in elements or []:
@@ -115,7 +113,11 @@ def _walk(elements: list[dict[str, Any]], out: list[str], digest: dict[str, int]
             continue
         txt = _node_text(el)
         if txt:
-            label = "" if role in _CONTENT_ROLES or role in _CONTAINER_ROLES else f"[{role.replace('AX', '')}] "
+            label = (
+                ""
+                if role in _CONTENT_ROLES or role in _CONTAINER_ROLES
+                else f"[{role.replace('AX', '')}] "
+            )
             # No per-line cap on a real content node (long paragraph / code) —
             # the caller's global budget bounds it; only repeated *rows* are
             # capped (above), where a long line would be scaffolding noise.

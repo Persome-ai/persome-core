@@ -200,7 +200,11 @@ class LoadedSkills:
     handlers: dict[str, Callable[[dict[str, Any]], Any]]
 
 
-def load_all_skills(builtin_names: set[str] | None = None) -> LoadedSkills:
+def load_all_skills(
+    builtin_names: set[str] | None = None,
+    *,
+    allow_executable_tools: bool = False,
+) -> LoadedSkills:
     """Discover and load all skills.
 
     Returns a LoadedSkills with:
@@ -224,11 +228,13 @@ def load_all_skills(builtin_names: set[str] | None = None) -> LoadedSkills:
             continue
         entries[skill.name] = skill
 
-    # Load tool modules
-    seen_names: set[str] = set(builtin_names or ())
-    seen_names.add("load_skill")
-    for skill in entries.values():
-        _load_tools_py(skill, seen_names)
+    # A skill's Markdown is data; tools.py is executable local code. Loading it
+    # belongs behind Chat's explicit unsafe-tools opt-in.
+    if allow_executable_tools:
+        seen_names: set[str] = set(builtin_names or ())
+        seen_names.add("load_skill")
+        for skill in entries.values():
+            _load_tools_py(skill, seen_names)
 
     # Build index prompt
     lines: list[str] = [

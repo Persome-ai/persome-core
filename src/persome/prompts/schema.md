@@ -18,8 +18,7 @@
 | `person-` | Another person the user mentions or interacts with | person-alice.md |
 | `org-` | A company, team, or institution | org-anthropic.md |
 | `event-` | **Session-level activity log.** One file per day: `event-YYYY-MM-DD.md`. Each entry is a time-ranged sub-task list written by the S2 reducer (the Classifier never writes here). Scheduled events / appointments / interviews belong in the non-event file for whichever entity anchors them (person-/org-/project-) when they represent a durable fact; transient occurrences stay in the event log only. | event-2026-04-22.md |
-| `workflow-` | **Detected repetitive behavior patterns.** Stores sequences of actions, app launch routines, or cross-project habits that could be scripted or automated. Written by the pattern detector, not the classifier. | workflow-morning-routine.md, workflow-code-review.md |
-| `intent-` | **Recognized-intent projection.** One file per day: `intent-YYYY-MM-DD.md`. FTS-searchable mirror of the unified intent stream (the canonical record is the `intents` SQLite table), written by the intent sink — **never by the classifier.** You do not write here. | intent-2026-05-31.md |
+| `skills/skill-` | **Observed behavioral patterns.** Stores repeated, evidence-backed sequences and context-dependent habits. Written by the pattern detector and readable by Chat as personalization guidance. | skills/skill-morning-routine.md |
 
 `event-YYYY-MM-DD.md` is **owned by the S2 reducer, not the classifier.** You never write there. Transient one-off activity ("had a 1:1 with Alice on Tuesday") is already in that file — do not mirror it into a durable file just because it has a date. Only durable facts with lasting value belong in the non-event files.
 
@@ -37,7 +36,7 @@ Ask in this order:
 
 1. **Is it a durable property of the user themselves?** (new job title, relocation, "I prefer X over Y", always uses dark mode…) → `user-profile.md` or `user-preferences.md`.
 2. **Is it a durable property of a project/tool/topic/person/org?** (Project X uses DB Y; Tool Z's new v4 API; Alice joined Acme) → the corresponding entity file.
-3. **It has a specific date but nothing durable attached** (one-off meeting, routine appointment, a task you finished today) → **SKIP**. The event-daily log already has it.
+3. **It has a specific date but nothing durable attached** (one-off event or a task finished today) → **SKIP**. The event-daily log already has it.
 4. **It has a specific date *and* durable context** (interview XAI on 2026-04-24 → XAI is an org the user is actively engaging with) → append the *durable* part to `org-XAI.md` (that they are in an interview loop there), NOT a restated copy of the time-bounded event.
 
 ### Step 3: append / create / supersede?

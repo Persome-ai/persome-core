@@ -275,8 +275,7 @@ def _behavior_patterns(conn) -> dict[str, Any]:  # type: ignore[no-untyped-def]
 
     The learned behavior model — the level-3 root apex ("who is this person")
     plus the promoted (both-provenance + resampling-stable) schema faces — used
-    to reach ONLY the app-side grounding digest and the recognizer's
-    schema_prior seam. Per the 满血版 principle, MCP-side callers get the same
+    to reach only the app-side grounding digest. MCP-side callers get the same
     resident layer: these live in the ``schema_faces`` table, NOT in the
     ``entries`` retrieval unit, so ``search`` can never surface them.
     """
@@ -1271,8 +1270,8 @@ def build_server(cfg: Config | None = None):  # type: ignore[no-untyped-def]
 
     @server.tool()
     def remember(content: str, tags: str = "", run_id: str = "") -> str:
-        """Write a durable finding back into Persome memory so the NEXT agent / the recognizer /
-        the supervisor can reuse it — the Agent-Native feedback loop. Call this when you learn
+        """Write a durable finding back into Persome memory so later agents and Chat
+        can reuse it. Call this when you learn
         something durable about the user, their project, a tool, or a decision while running.
 
         Your entry is force-tagged `source:agent-run` (so it stays distinguishable from the

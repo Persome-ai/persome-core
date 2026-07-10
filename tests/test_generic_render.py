@@ -11,8 +11,12 @@ from persome.capture import generic_render as gr
 
 
 def _app(elements, name="App", bundle="com.x.app"):
-    return {"name": name, "bundle_id": bundle, "is_frontmost": True,
-            "windows": [{"title": "Win", "elements": elements}]}
+    return {
+        "name": name,
+        "bundle_id": bundle,
+        "is_frontmost": True,
+        "windows": [{"title": "Win", "elements": elements}],
+    }
 
 
 def test_fail_open_when_too_thin():
@@ -22,35 +26,64 @@ def test_fail_open_when_too_thin():
 
 
 def test_chrome_folded_to_digest_not_dumped():
-    md = gr.resolve_app(_app([
-        {"role": "AXToolbar", "children": [
-            {"role": "AXButton", "title": "Bookmark A"},
-            {"role": "AXButton", "title": "Bookmark B"},
-        ]},
-        {"role": "AXTabGroup", "children": [
-            {"role": "AXRadioButton", "title": "Tab 1"},
-            {"role": "AXRadioButton", "title": "Tab 2"},
-            {"role": "AXRadioButton", "title": "Tab 3"},
-        ]},
-        {"role": "AXWebArea", "children": [
-            {"role": "AXStaticText", "value": "Real page content the user reads here, long enough."},
-        ]},
-    ]))
+    md = gr.resolve_app(
+        _app(
+            [
+                {
+                    "role": "AXToolbar",
+                    "children": [
+                        {"role": "AXButton", "title": "Bookmark A"},
+                        {"role": "AXButton", "title": "Bookmark B"},
+                    ],
+                },
+                {
+                    "role": "AXTabGroup",
+                    "children": [
+                        {"role": "AXRadioButton", "title": "Tab 1"},
+                        {"role": "AXRadioButton", "title": "Tab 2"},
+                        {"role": "AXRadioButton", "title": "Tab 3"},
+                    ],
+                },
+                {
+                    "role": "AXWebArea",
+                    "children": [
+                        {
+                            "role": "AXStaticText",
+                            "value": "Real page content the user reads here, long enough.",
+                        },
+                    ],
+                },
+            ]
+        )
+    )
     assert md is not None
-    assert "外壳已折叠" in md          # chrome digest line present
-    assert "Bookmark A" not in md      # chrome detail NOT inlined
+    assert "外壳已折叠" in md  # chrome digest line present
+    assert "Bookmark A" not in md  # chrome detail NOT inlined
     assert "Tab 1" not in md
     assert "Real page content the user reads here" in md  # content kept
 
 
 def test_container_collapse_promotes_children():
-    md = gr.resolve_app(_app([
-        {"role": "AXGroup", "children": [
-            {"role": "AXGroup", "children": [
-                {"role": "AXStaticText", "value": "Buried but meaningful text content here."},
-            ]},
-        ]},
-    ]))
+    md = gr.resolve_app(
+        _app(
+            [
+                {
+                    "role": "AXGroup",
+                    "children": [
+                        {
+                            "role": "AXGroup",
+                            "children": [
+                                {
+                                    "role": "AXStaticText",
+                                    "value": "Buried but meaningful text content here.",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        )
+    )
     assert md is not None
     assert "Buried but meaningful text content here." in md
     # no empty [Group] scaffolding lines
@@ -59,10 +92,13 @@ def test_container_collapse_promotes_children():
 
 def test_repeated_rows_flattened_no_per_cell_scaffolding():
     rows = [
-        {"role": "AXRow", "children": [
-            {"role": "AXCell", "value": f"Name {i}"},
-            {"role": "AXCell", "value": f"value-{i}"},
-        ]}
+        {
+            "role": "AXRow",
+            "children": [
+                {"role": "AXCell", "value": f"Name {i}"},
+                {"role": "AXCell", "value": f"value-{i}"},
+            ],
+        }
         for i in range(5)
     ]
     md = gr.resolve_app(_app([{"role": "AXTable", "children": rows}]))
@@ -74,15 +110,19 @@ def test_repeated_rows_flattened_no_per_cell_scaffolding():
 
 
 def test_content_bare_buttons_folded_to_digest():
-    md = gr.resolve_app(_app([
-        {"role": "AXHeading", "value": "An Article Heading That Is Clearly Content"},
-        {"role": "AXStaticText", "value": "A paragraph of body text, plainly content too."},
-        {"role": "AXButton", "title": "Submit Order Now Please"},
-        {"role": "AXButton", "title": "Cancel"},
-    ]))
+    md = gr.resolve_app(
+        _app(
+            [
+                {"role": "AXHeading", "value": "An Article Heading That Is Clearly Content"},
+                {"role": "AXStaticText", "value": "A paragraph of body text, plainly content too."},
+                {"role": "AXButton", "title": "Submit Order Now Please"},
+                {"role": "AXButton", "title": "Cancel"},
+            ]
+        )
+    )
     assert md is not None
     assert "An Article Heading That Is Clearly Content" in md
-    assert "[Heading]" not in md and "[StaticText]" not in md   # content = bare
+    assert "[Heading]" not in md and "[StaticText]" not in md  # content = bare
     # buttons are affordances → folded into the digest, NOT emitted as content
     # lines (else the LLM reads nav as to-dos — measured in the eval).
     assert "Submit Order Now Please" not in md

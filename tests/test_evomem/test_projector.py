@@ -27,12 +27,6 @@ from persome.store import files as files_mod
 from persome.writer.schema_miner_stage import render_schema_body
 
 
-@pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """backfill 的变更前快照验证走报警通路；测试里只静音 SSE 侧。"""
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
-
-
 def _node(node_id: str, content: str, *, ts: str, **kw) -> MemoryNode:
     d = datetime.fromisoformat(ts)
     kw.setdefault("file_name", "project-rt.md")
@@ -223,7 +217,7 @@ def test_projection_idempotent(ac_root: Path, tmp_path: Path) -> None:
 
 
 def test_unrouted_nodes_skipped_and_counted(ac_root: Path, tmp_path: Path) -> None:
-    """file_name='' 的节点（如 run_system2 直写）不投影，计入 skipped_unrouted。"""
+    """file_name='' 的未路由节点不投影，计入 skipped_unrouted。"""
     store = NodeStore()
     store.save(_node("20260601-1200-unr001", "unrouted", ts="2026-06-01T12:00", file_name=""))
     with fts.cursor() as conn:

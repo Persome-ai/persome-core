@@ -69,7 +69,12 @@ PATTERNS = [
     ("token-b64", re.compile(r"eyJ[A-Za-z0-9_-]{40,}")),
     # Feishu doc/wiki/slides/base path tokens — resolvable pointers to private docs.
     # Redacted captures use the literal REDACTED_TOKEN, so a real token still flags.
-    ("feishu-doc-token", re.compile(r"feishu\.cn/(?:wiki|docx|slides|base|file|sheets|mindnotes)/(?!REDACTED_TOKEN)[A-Za-z0-9]{16,}")),
+    (
+        "feishu-doc-token",
+        re.compile(
+            r"feishu\.cn/(?:wiki|docx|slides|base|file|sheets|mindnotes)/(?!REDACTED_TOKEN)[A-Za-z0-9]{16,}"
+        ),
+    ),
 ]
 # Embedded screenshots (image_base64) carry rendered PIXELS that the text
 # anonymization + these text patterns are structurally blind to — real names,
@@ -103,7 +108,15 @@ def _scan_files(root: str) -> list[str]:
         files += glob.glob(os.path.join(root, pat), recursive=True)
     # gate_models: third-party tokenizer vocab legitimately contains English words
     # ("candy") that collide with the username check — model assets, never PII-bearing prose.
-    skip = ("pii_scan", "__pycache__", ".venv", ".ruff_cache", ".pytest_cache", "uv.lock", "gate_models")
+    skip = (
+        "pii_scan",
+        "__pycache__",
+        ".venv",
+        ".ruff_cache",
+        ".pytest_cache",
+        "uv.lock",
+        "gate_models",
+    )
     return sorted(f for f in set(files) if not any(s in f for s in skip))
 
 

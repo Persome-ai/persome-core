@@ -205,9 +205,9 @@ def _render_chat_content(app_data: dict[str, Any], bundle: str) -> str | None:
     """Chat/IM apps (Feishu/Lark, …): render the conversation WITH direction (sent/received) + sender
     via the per-app parser, so ``visible_text`` preserves who-said-what.
 
-    A flat AX dump drops direction, so every downstream consumer that reads ``visible_text`` (the slow
-    trajectory recognizer, ``current_context``, the voice-context preamble) can't tell the user's own
-    messages from the counterpart's — and the LLM mis-attributes them (the reported "把我发的信息检测成
+    A flat AX dump drops direction, so downstream consumers of ``visible_text``
+    (session modeling and ``current_context``) cannot tell the user's own
+    messages from the counterpart's, and the LLM mis-attributes them (the reported "把我发的信息检测成
     对方发给我的" bug). The fast path already builds this structured view
     (``ParsedConversation.render()`` → ``<message dir="sent|received" sender=…>``); reuse it so the
     capture-level text carries the same direction. Returns None for a non-chat app or an empty parse →
@@ -265,8 +265,7 @@ def _extract_url(app_data: dict[str, Any]) -> str | None:
     """
     bundle = app_data.get("bundle_id", "")
     if not (
-        browser_detect.is_browser_app(bundle)
-        or browser_detect.looks_like_browser(app_data, bundle)
+        browser_detect.is_browser_app(bundle) or browser_detect.looks_like_browser(app_data, bundle)
     ):
         return None
     return browser_detect.address_bar_url(app_data, bundle)

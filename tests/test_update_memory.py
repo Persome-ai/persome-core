@@ -62,7 +62,9 @@ def test_correction_supersedes_via_delta_apply(ac_root):
             source="user",
             llm_call=_llm(
                 {
-                    "supersede": [{"file": "user-profile.md", "entry_id": eid, "reason": "桃子是同事"}],
+                    "supersede": [
+                        {"file": "user-profile.md", "entry_id": eid, "reason": "桃子是同事"}
+                    ],
                     "entity_op": None,
                     "reason": "桃子非用户",
                 }
@@ -85,7 +87,12 @@ def test_replace_writes_corrected_fact(ac_root):
             llm_call=_llm(
                 {
                     "supersede": [
-                        {"file": "user-profile.md", "entry_id": eid, "replacement": "User lives in Shanghai", "reason": "moved"}
+                        {
+                            "file": "user-profile.md",
+                            "entry_id": eid,
+                            "replacement": "User lives in Shanghai",
+                            "reason": "moved",
+                        }
                     ],
                     "entity_op": None,
                     "reason": "moved to Shanghai",
@@ -112,7 +119,11 @@ def test_entity_op_routes_to_retype(ac_root, monkeypatch):
             conn,
             "小张就是张三",
             llm_call=_llm(
-                {"supersede": [], "entity_op": {"op": "merge", "entity": "小张", "keeper": "张三"}, "reason": "same person"}
+                {
+                    "supersede": [],
+                    "entity_op": {"op": "merge", "entity": "小张", "keeper": "张三"},
+                    "reason": "same person",
+                }
             ),
         )
     assert res.ok and calls.get("merge") == ("小张", "张三")
@@ -121,7 +132,10 @@ def test_entity_op_routes_to_retype(ac_root, monkeypatch):
 def test_noop_when_nothing_to_update(ac_root):
     with fts.cursor() as conn:
         res = C.update_memory(
-            _cfg(), conn, "随便说说", llm_call=_llm({"supersede": [], "entity_op": None, "reason": "无对应源"})
+            _cfg(),
+            conn,
+            "随便说说",
+            llm_call=_llm({"supersede": [], "entity_op": None, "reason": "无对应源"}),
         )
     assert res.kind == "noop" and not res.ok
 
@@ -134,7 +148,13 @@ def test_dry_run_previews_without_applying(ac_root):
             conn,
             "桃子不是我",
             dry_run=True,
-            llm_call=_llm({"supersede": [{"file": "user-profile.md", "entry_id": eid}], "entity_op": None, "reason": "x"}),
+            llm_call=_llm(
+                {
+                    "supersede": [{"file": "user-profile.md", "entry_id": eid}],
+                    "entity_op": None,
+                    "reason": "x",
+                }
+            ),
         )
         assert not res.ok and any("would retire" in a for a in res.applied)
         # NOT applied — body intact
@@ -149,7 +169,13 @@ def test_update_logged_as_feedback_signal(ac_root):
             conn,
             "那条错了",
             source="user",
-            llm_call=_llm({"supersede": [{"file": "user-profile.md", "entry_id": eid, "reason": "r"}], "entity_op": None, "reason": "r"}),
+            llm_call=_llm(
+                {
+                    "supersede": [{"file": "user-profile.md", "entry_id": eid, "reason": "r"}],
+                    "entity_op": None,
+                    "reason": "r",
+                }
+            ),
         )
     log = Path(ac_root) / "logs" / "memory-updates.jsonl"
     assert log.exists()

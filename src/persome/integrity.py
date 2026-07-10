@@ -7,8 +7,8 @@ cheap check at startup, and when it finds damage it:
   1. renames the bad file to ``<name>.corrupt.<timestamp>`` (kept for analysis),
   2. lets the normal code path rebuild a fresh file from defaults
      (config: rewritten here; DB: recreated lazily by ``fts.connect``),
-  3. records a one-time recovery marker (``.integrity-recovery.json``) that
-     Mens.app surfaces to the user, then deletes,
+  3. records an inspectable recovery marker (``.integrity-recovery.json``)
+     that an embedding client or operator can surface and acknowledge,
   4. logs the check result + every quarantine as a JSON line.
 
 It is intentionally conservative: a *missing* file is NOT corruption (it is a

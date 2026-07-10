@@ -101,8 +101,8 @@ CREATE TABLE sessions (
     flush_end TEXT,
     classified_end TEXT,
     pattern_detected_end TEXT,
-    active_tick_bookmark TEXT
-, total_cost_usd REAL, recognized_final_at TEXT);
+    modeled_at TEXT
+);
 
 CREATE TABLE sqlite_sequence(name,seq);
 
@@ -120,7 +120,6 @@ CREATE TABLE timeline_blocks (
     apps_used TEXT NOT NULL,
     capture_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    helpful_intent_tags TEXT NOT NULL DEFAULT '[]',
     skill_hints TEXT NOT NULL DEFAULT '[]',
     action_trace TEXT NOT NULL DEFAULT '[]',
     focus_excerpt TEXT NOT NULL DEFAULT '',
@@ -221,7 +220,8 @@ CREATE TABLE memory_deltas (
     model TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'shadow',
     payload TEXT NOT NULL DEFAULT '{}',  -- post-gate delta JSON
-    dropped INTEGER NOT NULL DEFAULT 0   -- items removed by the deterministic gates
+    dropped INTEGER NOT NULL DEFAULT 0,  -- items removed by the deterministic gates
+    apply_status TEXT NOT NULL DEFAULT 'unknown'
 );
 
 CREATE INDEX idx_memory_deltas_created ON memory_deltas(created_at DESC);

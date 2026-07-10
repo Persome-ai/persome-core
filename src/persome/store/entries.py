@@ -753,7 +753,7 @@ def _rebuild_from_evo_nodes(conn: sqlite3.Connection) -> tuple[int, int]:
     ).fetchall():
         node = _row_to_node(r)
         if not node.file_name:
-            continue  # 未路由节点（如 run_system2 直写的 demo 节点）不投影
+            continue  # 未路由节点不投影
         groups.setdefault(node.file_name, []).append(node)
 
     file_count = 0

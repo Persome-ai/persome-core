@@ -49,7 +49,7 @@ Example stdio client configuration:
 |---|---|
 | `current_context` | Return recent capture headlines, full text, and timeline blocks. |
 | `search_captures` | Search the local capture index. |
-| `read_recent_capture` | Read the nearest recent capture, with screenshot opt-in. |
+| `read_recent_capture` | Read an exact returned `file_stem` or nearest recent capture, with screenshot opt-in. |
 | `attention_trajectory` | Read the derived attention path used by state formation. |
 | `get_schema` | Return the Markdown memory schema. |
 
@@ -75,3 +75,6 @@ port = 8742
 - `get_model_snapshot` redacts detectable secrets and local paths by default.
 - Write tools are explicit and auditable; the removed computer-use tools are
   not part of this server.
+
+The same loopback ASGI app serves `/model` and the Chat REST routes. The Runtime
+does not ship a browser Chat page; `persome chat` is its interactive client.

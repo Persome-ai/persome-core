@@ -4,9 +4,8 @@
 - compact（markdown 主写模式）LLM 整文件重写 + ``rebuild_index`` 绕过三条写路，
   给条目换新 id；
 - 旧行为只 ``note_out_of_band_rewrite`` 记 alert-only miss，daemon 无自动修复；
-- ``recall_fold_superseded`` 主读默认走 ``_EVO_FOLD_SQL``，要求非 event 条目在
-  evo_nodes 且 ``is_latest=1 AND status='active'``——compact 后新 id 不在 evo_nodes，
-  从折叠 recall 的行为/事实/关键词层直接消失。
+- production associative recall and the evo_nodes authority must agree after
+  compact changes entry ids.
 
 修复：``run_pending`` accept 后同步调用 ``restore.import_from_markdown``，从 markdown
 SSOT 整库重建 evo_nodes（清掉换 id 留下的孤儿 head），折叠 recall 当场恢复。
@@ -18,7 +17,7 @@ import re
 
 from persome import config as config_mod
 from persome.evomem import backfill
-from persome.retrieval import layered as recall
+from persome.retrieval import associative as recall
 from persome.store import entries as entries_mod
 from persome.store import files as files_mod
 from persome.store import fts
@@ -54,11 +53,10 @@ def _seed_and_backfill() -> None:
     assert report.ok
 
 
-def _fold_recall() -> str:
+def _production_recall() -> str:
     with fts.cursor() as conn:
-        return recall.assemble_background(
-            conn, scope="", hints=[_HINT], per_hint=10, fold_superseded=True
-        )
+        hits = recall.associative_read(conn, query=_HINT, top_k=10)
+        return "\n".join(hit.content for hit in hits)
 
 
 def _evo_node_ids() -> set[str]:
@@ -84,14 +82,13 @@ def _run_compact_with_id_churn(monkeypatch) -> None:
 
 def test_compact_repairs_evomem_synchronously(ac_root, monkeypatch) -> None:
     """compact 换 id 后同步从 markdown 重建 evo_nodes，折叠 recall 不留坏窗口。"""
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
     _seed_and_backfill()
     old_ids = _evo_node_ids()
-    assert "widget 项目" in _fold_recall(), "backfill 后折叠 recall 应能看到记忆"
+    assert "widget 项目" in _production_recall(), "backfill 后 production recall 应能看到记忆"
 
     _run_compact_with_id_churn(monkeypatch)
 
-    assert "widget 项目" in _fold_recall(), "同步 repair 后折叠 recall 应立即恢复记忆"
+    assert "widget 项目" in _production_recall(), "同步 repair 后 production recall 应立即恢复记忆"
     new_ids = _evo_node_ids()
     assert new_ids and not (old_ids & new_ids), (
         "restore 应清掉换 id 前的旧 head 孤儿，evo_nodes 只剩 compact 后的新链头"

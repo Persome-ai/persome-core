@@ -48,11 +48,11 @@ class _Cfg:
     ocr_min_gap_seconds = 0
     ocr_tier = "tiny"
     ocr_structured = False
-    ocr_collect_training_data = False
     cmux_source_enabled = False
     # privacy toggles (default on); flipped per test
-    capture_pause_on_lock = True
-    capture_suppress_secure_input = True
+    pause_on_lock = True
+    suppress_secure_input = True
+    encrypt_screenshots = False
 
 
 def _normal_ax_tree() -> dict[str, Any]:
@@ -142,7 +142,7 @@ def test_locked_toggle_off_does_not_suppress(
 ) -> None:
     monkeypatch.setattr(screen_state, "is_screen_locked", lambda: True)
     cfg = _Cfg()
-    cfg.capture_pause_on_lock = False
+    cfg.pause_on_lock = False
     out = scheduler_mod._build_capture(cfg, _FakeProvider(), None)
     assert out is not None
     assert "ax_tree" in out
@@ -182,7 +182,7 @@ def test_secure_input_toggle_off_keeps_content(
 ) -> None:
     monkeypatch.setattr(screen_state, "is_screen_locked", lambda: False)
     cfg = _Cfg()
-    cfg.capture_suppress_secure_input = False
+    cfg.suppress_secure_input = False
     provider = _FakeProvider(_secure_ax_tree())
     out = scheduler_mod._build_capture(cfg, provider, None)
     assert out is not None

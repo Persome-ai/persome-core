@@ -18,12 +18,6 @@ from persome.evomem import store as evo_store
 from persome.store import entries, fts
 
 
-@pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """快照验证/报警走 SSE 通路；测试里只静音发布侧，不改判定逻辑。"""
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
-
-
 def _dump_evo(conn) -> list[tuple]:
     """evo_nodes 全表逐字段 dump（稳定排序），供不变式全等断言。"""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(evo_nodes)")]

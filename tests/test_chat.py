@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from persome.chat.handler import (
-    _exec_tool,
     _maybe_away_summary,
     _microcompact,
     _microcompact_on_resume,
@@ -394,51 +391,6 @@ def test_microcompact_on_resume_exactly_two_tools() -> None:
     assert result[1]["content"] == "result 2"
 
 
-# ─── _exec_tool registry tests ──────────────────────────────────────────────
-
-
-def test_exec_tool_unknown_returns_error() -> None:
-    result = _exec_tool("nope", {})
-    parsed = json.loads(result)
-    assert "error" in parsed
-    assert "unknown tool" in parsed["error"]
-    assert "nope" in parsed["error"]
-
-
-def test_exec_tool_read_memory_missing_path(ac_root: Path) -> None:
-    result = _exec_tool("read_memory", {"path": "nonexistent.md"})
-    parsed = json.loads(result)
-    assert "error" in parsed
-    assert "file not found" in parsed["error"]
-
-
-def test_exec_tool_list_dir_filters_hidden(tmp_path: Path) -> None:
-    d = tmp_path / "test_dir"
-    d.mkdir()
-    (d / "visible.txt").write_text("hello")
-    (d / ".hidden").write_text("secret")
-    result = _exec_tool("list_dir", {"path": str(d)})
-    parsed = json.loads(result)
-    assert parsed["path"] == str(d)
-    names = {e["name"] for e in parsed["entries"]}
-    assert "visible.txt" in names
-    assert ".hidden" not in names
-
-
-def test_exec_tool_handler_exception_wrapped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from persome.chat.tool_handlers import TOOL_HANDLERS
-
-    def _boom(args: dict[str, Any]) -> Any:
-        raise RuntimeError("boom")
-
-    monkeypatch.setitem(TOOL_HANDLERS, "search_memory", _boom)
-    result = _exec_tool("search_memory", {"query": "x"})
-    parsed = json.loads(result)
-    assert parsed["error"] == "RuntimeError: boom"
-
-
 # ─── write_file / edit_file handler tests ───────────────────────────────────
 
 
@@ -481,83 +433,3 @@ def test_tool_edit_file_duplicate_old_string(tmp_path: Path) -> None:
     result = tool_edit_file({"path": str(target), "old_string": "abc", "new_string": "x"})
     assert "error" in result
     assert "2 times" in result["error"]
-
-
-# ─── _exec_tool serialization fallback (ensure_ascii=False, default=str) ────
-#
-# These tests inject a synthetic handler into TOOL_HANDLERS for the duration
-# of a single test. They exist to lock in two silent fallbacks in _exec_tool:
-#   - ensure_ascii=False  → keep CJK / emoji legible in LLM context
-#   - default=str         → stringify datetime, Path, UUID, dataclasses, ...
-# If a future maintainer flips either knob, these tests turn red.
-
-
-def test_exec_tool_preserves_non_ascii(monkeypatch: pytest.MonkeyPatch) -> None:
-    from persome.chat.tool_handlers import TOOL_HANDLERS
-
-    def fake_handler(_args: dict[str, Any]) -> dict[str, Any]:
-        return {"msg": "你好 🌍"}
-
-    monkeypatch.setitem(TOOL_HANDLERS, "_test_non_ascii", fake_handler)
-    out = _exec_tool("_test_non_ascii", {})
-    # If ensure_ascii flipped to True we would see escape sequences instead.
-    assert "你好" in out
-    assert "🌍" in out
-    assert "\\u" not in out
-    # And it must still be valid JSON.
-    assert json.loads(out) == {"msg": "你好 🌍"}
-
-
-def test_exec_tool_serializes_datetime_via_default_str(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from persome.chat.tool_handlers import TOOL_HANDLERS
-
-    ts = datetime(2026, 5, 19, 12, 0, 0)
-
-    def fake_handler(_args: dict[str, Any]) -> dict[str, Any]:
-        return {"when": ts}
-
-    monkeypatch.setitem(TOOL_HANDLERS, "_test_datetime", fake_handler)
-    out = _exec_tool("_test_datetime", {})
-    # Without default=str this raises TypeError and the handler would
-    # surface as {"error": "TypeError: ..."} — assert that did NOT happen.
-    parsed = json.loads(out)
-    assert "error" not in parsed
-    assert parsed["when"] == str(ts)
-
-
-def test_exec_tool_serializes_path_via_default_str(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from persome.chat.tool_handlers import TOOL_HANDLERS
-
-    p = Path("/tmp/persome/x.md")
-
-    def fake_handler(_args: dict[str, Any]) -> dict[str, Any]:
-        return {"file": p}
-
-    monkeypatch.setitem(TOOL_HANDLERS, "_test_path", fake_handler)
-    out = _exec_tool("_test_path", {})
-    parsed = json.loads(out)
-    assert "error" not in parsed
-    assert parsed["file"] == str(p)
-
-
-def test_exec_tool_default_str_rescues_arbitrary_objects(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from persome.chat.tool_handlers import TOOL_HANDLERS
-
-    class Opaque:
-        def __str__(self) -> str:
-            return "opaque-token"
-
-    def fake_handler(_args: dict[str, Any]) -> dict[str, Any]:
-        return {"obj": Opaque()}
-
-    monkeypatch.setitem(TOOL_HANDLERS, "_test_opaque", fake_handler)
-    out = _exec_tool("_test_opaque", {})
-    parsed = json.loads(out)
-    assert "error" not in parsed
-    assert parsed["obj"] == "opaque-token"

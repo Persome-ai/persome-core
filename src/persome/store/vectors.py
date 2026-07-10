@@ -169,7 +169,9 @@ def _validity_token(conn: sqlite3.Connection) -> str:
         if r["name"] == "main":
             dbfile = r["file"] or ""
             break
-    row = conn.execute("SELECT COUNT(*), COALESCE(MAX(embedded_at), '') FROM entry_vectors").fetchone()
+    row = conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(embedded_at), '') FROM entry_vectors"
+    ).fetchone()
     return f"{dbfile}|{int(row[0])}|{row[1]}"
 
 

@@ -33,9 +33,12 @@ logging.getLogger("httpx").setLevel(logging.ERROR)
 console = Console()
 
 
-def _load_skills() -> LoadedSkills:
+def _load_skills(*, allow_executable_tools: bool = False) -> LoadedSkills:
     """Load all skills and return the LoadedSkills object."""
-    return load_all_skills(builtin_names=CHAT_SCHEMA_NAMES)
+    return load_all_skills(
+        builtin_names=CHAT_SCHEMA_NAMES,
+        allow_executable_tools=allow_executable_tools,
+    )
 
 
 def _load_system_prompt(loaded: LoadedSkills | None = None) -> str:
@@ -50,28 +53,6 @@ def _load_system_prompt(loaded: LoadedSkills | None = None) -> str:
 
 
 # ─── tool execution ───────────────────────────────────────────────────────
-
-
-def _exec_tool(
-    name: str,
-    args: dict[str, Any],
-    extra_handlers: dict[str, Any] | None = None,
-) -> str:
-    """Synchronous tool dispatcher kept for tests and the API helper.
-
-    The streaming ChatAgent has its own async dispatcher with timing /
-    callbacks; this one is the bare logic both share.
-    """
-    handler = TOOL_HANDLERS.get(name)
-    if handler is None and extra_handlers:
-        handler = extra_handlers.get(name)
-    if handler is None:
-        return json.dumps({"error": f"unknown tool: {name}"})
-    try:
-        result = handler(args)
-        return json.dumps(result, ensure_ascii=False, default=str)
-    except Exception as exc:
-        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
 
 
 # ─── conversation compression ─────────────────────────────────────────────
@@ -487,7 +468,7 @@ class TurnResult:
 
 def _build_agent(cfg: config_mod.Config) -> ChatAgent:
     """Construct a fresh ChatAgent with the current skill set merged in."""
-    loaded = _load_skills()
+    loaded = _load_skills(allow_executable_tools=cfg.chat.unsafe_local_tools_enabled)
     enabled_names = (
         CHAT_SCHEMA_NAMES if cfg.chat.unsafe_local_tools_enabled else SAFE_CHAT_SCHEMA_NAMES
     )

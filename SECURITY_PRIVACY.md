@@ -18,8 +18,16 @@ The default data root is `~/.persome` and can be redirected with
 | exported model | `exports/*.json` | redacted by default, mode `0600` |
 
 Default capture retention is seven days. Screenshot payloads are stripped
-earlier by the configured screenshot retention window. OCR inference is local
-and uses bundled PP-OCRv6 weights.
+earlier by the configured screenshot retention window, except explicitly
+actionable captures covered by extended retention. OCR is disabled by default;
+when enabled, inference is local, subprocess-isolated, and uses bundled
+PP-OCRv6 weights.
+
+`encrypt_screenshots=true` encrypts pixels only when
+`PERSOME_SCREENSHOT_KEY` is available. The current missing-key behavior is a
+warning plus plaintext fallback, so operators requiring encrypted-at-rest
+pixels must provision the key or set `include_screenshot=false`. OCR can still
+use an ephemeral screenshot when persistent screenshot storage is off.
 
 ## Network egress
 
@@ -48,6 +56,8 @@ model stages report degradation rather than silently claiming success.
   connect to the port should be treated as able to read `~/.persome`.
 - `/captures/ingest` is a trusted local producer interface, not a public upload
   endpoint.
+- `/model/graph` is a raw owner-local inspection surface. Default CLI/MCP model
+  export is redacted; the browser viewer is not a safe publication artifact.
 - Exposing the server through a tunnel changes the privacy boundary and is not
   a supported paper-reproduction requirement.
 
@@ -61,7 +71,9 @@ in a capture or memory result.
 The Runtime exposes no click, type, takeover, meeting-audio, notification, or
 task-execution tools. Its MCP writes are limited to explicit `remember` and
 `correct_memory` operations. Chat shell, arbitrary filesystem, and Web tools
-require the explicit unsafe opt-in described above.
+require the explicit unsafe opt-in described above. Skill Markdown is always
+model guidance; executable `skills/*/tools.py` is also blocked unless that
+unsafe opt-in is enabled.
 
 ## Corrections and revocation
 

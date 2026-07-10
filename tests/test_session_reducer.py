@@ -15,6 +15,12 @@ _TZ = timezone(timedelta(hours=8))
 _SID = "sess_test0000"
 
 
+def test_reducer_prompt_describes_current_terminal_modeling_stage() -> None:
+    prompt = session_reducer.load_prompt("session_reduce.system.md")
+    assert "terminal modeling stage" in prompt
+    assert "downstream classifier" not in prompt
+
+
 def test_attach_drill_down_breadcrumb_unit() -> None:
     """Direct unit test of the breadcrumb post-processor."""
     f = session_reducer._attach_drill_down_breadcrumb

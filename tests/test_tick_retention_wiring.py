@@ -1,9 +1,8 @@
-"""#7 wiring — `timeline.tick` forwards the config retention flags into `cleanup_buffer`.
+"""Timeline cleanup forwards capture retention controls into `cleanup_buffer`.
 
 The actionable extended-retention feature (capture/scheduler.py) only activates because
-`tick._cleanup_buffer_once` forwards `cfg.capture_extended_retention_enabled` /
-`capture_actionable_retention_days`. Before this wiring the flags were inert — a dead
-toggle that did nothing when set. These tests pin the forwarding so it can't regress.
+`tick._cleanup_buffer_once` forwards the nested capture settings. These tests
+pin the forwarding so it cannot regress.
 """
 
 from __future__ import annotations
@@ -27,8 +26,8 @@ def test_cleanup_once_forwards_retention_flags(ac_root, monkeypatch) -> None:
     monkeypatch.setattr(tick.capture_scheduler, "cleanup_buffer", _capturing_cleanup(captured))
 
     cfg = config_mod.load()
-    cfg.capture_extended_retention_enabled = True
-    cfg.capture_actionable_retention_days = 14
+    cfg.capture.extended_retention_enabled = True
+    cfg.capture.actionable_retention_days = 14
 
     tick._cleanup_buffer_once(cfg)
 
@@ -57,7 +56,7 @@ def test_cleanup_once_honors_explicit_off(ac_root, monkeypatch) -> None:
     monkeypatch.setattr(tick.capture_scheduler, "cleanup_buffer", _capturing_cleanup(captured))
 
     cfg = config_mod.load()
-    cfg.capture_extended_retention_enabled = False
+    cfg.capture.extended_retention_enabled = False
     tick._cleanup_buffer_once(cfg)
 
     assert captured["extended_retention_enabled"] is False

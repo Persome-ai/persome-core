@@ -4,7 +4,7 @@ The seam between LLM free strings ("张总") and canonical graph identities
 (person_graph canonical names). §4.3 discipline:
 
 - **Single implementation**: every SURVIVING read/write path resolves mentions
-  through THIS module — the consolidator's delta gates today, the associative
+  through THIS module — the session memory-delta gates and the associative
   Q construction (§3.2) and the MCP pull tomorrow. A fork is drift, and drift
   is a miss (§5 red line). The legacy ``relation_extractor`` keeps its local
   alias map on purpose: it is on the §6.4 retirement list — migrating doomed
@@ -24,7 +24,7 @@ Deliberately NOT here yet (honest deferral, added when data demands):
 - embedding fallback — reuses the semantic head's index once the §3 read path
   lands;
 - alias write-back (miss = training data) — belongs to the delta APPLY path
-  (Phase 1, when the consolidator becomes a real write path), not the gate.
+  (the deterministic apply path), not the gate.
 
 Normalization matches ``person_graph._norm`` byte-for-byte (NFKC + whitespace
 fold + casefold) so identities resolved here agree with what the graph stored.

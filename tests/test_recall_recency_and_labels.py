@@ -1,7 +1,7 @@
 """Issue #557 — stale-memory recall fixes, pinned by axis.
 
 轴A 匹配面: the FTS5 ``entries`` table indexes ``tags``, so classification labels
-(#intent #kind:meeting …) used to be matchable text — recognizer CANDIDATE rows
+(#intent #kind:meeting …) used to be matchable text — legacy label-only rows
 were recalled by their label, not their content. Default now matches the content
 column only (``{content}:`` filter); ``[search] tags_matchable`` is the kill-switch.
 

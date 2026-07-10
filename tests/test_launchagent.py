@@ -18,8 +18,7 @@ from typer.testing import CliRunner
 from persome import cli, launchagent, paths
 
 
-def test_label_matches_dart_contract() -> None:
-    # The Dart side hardcodes this same string in embedded_daemon_service.dart.
+def test_label_matches_runtime_contract() -> None:
     assert launchagent.LABEL == "com.persome.runtime"
 
 
@@ -142,21 +141,6 @@ def test_uninstall_boots_out_and_removes_plist(
     assert calls[0][1] == "bootout"
 
 
-def test_kickstart_restart_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: list[list[str]] = []
-
-    def fake_run(args: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        captured.append(args)
-        return subprocess.CompletedProcess(args, 0, "", "")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    launchagent.kickstart(restart=True)
-    assert "-k" in captured[0]
-    launchagent.kickstart(restart=False)
-    assert "-k" not in captured[1]
-
-
 # ── CLI surface ───────────────────────────────────────────────────────────
 
 
@@ -168,9 +152,7 @@ def test_cli_install_invokes_module(ac_root: Path, monkeypatch: pytest.MonkeyPat
         return Path("/tmp/x.plist")
 
     monkeypatch.setattr(launchagent, "install", fake_install)
-    result = CliRunner().invoke(
-        cli.app, ["launchagent", "install", "--binary", "/opt/oc/persome"]
-    )
+    result = CliRunner().invoke(cli.app, ["launchagent", "install", "--binary", "/opt/oc/persome"])
     assert result.exit_code == 0, result.output
     assert seen["binary"] == "/opt/oc/persome"
     assert "LaunchAgent installed" in result.output

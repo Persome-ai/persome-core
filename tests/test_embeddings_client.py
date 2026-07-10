@@ -11,7 +11,11 @@ from persome.writer import embeddings_client as ec
     "base, want_url, want_header",
     [
         # relay: append /embeddings, JWT in x-api-key
-        ("https://persome-web.vercel.app/api/llm", "https://persome-web.vercel.app/api/llm/embeddings", "x-api-key"),
+        (
+            "https://persome-web.vercel.app/api/llm",
+            "https://persome-web.vercel.app/api/llm/embeddings",
+            "x-api-key",
+        ),
         ("https://web/api/llm/", "https://web/api/llm/embeddings", "x-api-key"),
         # Azure OpenAI: full route used verbatim, key in api-key
         (

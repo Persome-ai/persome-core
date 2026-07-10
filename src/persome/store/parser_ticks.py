@@ -8,17 +8,16 @@ records exactly one row here describing the outcome:
 - ``miss``     — the app had a parser but it declined (``parse`` → ``None``),
                  rendered empty, or raised.
 - ``fallback`` — no capture in the window belonged to an app with a registered
-                 parser (the recognizer fell back to the raw ``focus_excerpt``).
+                 parser (modeling falls back to the raw ``focus_excerpt``).
 
 This is the **general observability layer**: it answers "are the parsers
 actually firing, and for which apps?" bucketed by ``bundle_id``. A drift in the
 hit rate for a given bundle (e.g. 飞书 ships a UI revision that breaks the
 semantic classes ``FeishuParser`` keys on) shows up here as ``hit`` decaying
-into ``miss`` early — long before anyone notices the recognizer lost signal.
+into ``miss`` early, before modeled memory loses that signal.
 
-Mirrors the ``recognition_ticks`` audit-table pattern; canonical parser output
-still lives on the timeline block's ``focus_structured`` column — this table is
-telemetry only.
+Canonical parser output still lives on the timeline block's
+``focus_structured`` column; this table is telemetry only.
 """
 
 from __future__ import annotations

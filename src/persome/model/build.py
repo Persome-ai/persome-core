@@ -24,6 +24,7 @@ _MODEL_STAGES = (
     "reducer",
     "classifier",
     "pattern_detector",
+    "case_extractor",
     "evomem_baseline",
     "relation_extraction",
     "schema_miner",
@@ -157,8 +158,7 @@ def _run_pipeline(cfg: Any) -> PipelineOutcome:
     _run_stage(outcome, "evomem_baseline", run_evomem_baseline)
 
     def run_enrichment() -> dict[str, Any]:
-        _run_evomem_enrichment_once(cfg)
-        return {"mode": "existing-enrichment-service"}
+        return _run_evomem_enrichment_once(cfg, raise_on_error=True)
 
     enrichment_enabled = bool(
         getattr(cfg, "person_graph_enabled", False)

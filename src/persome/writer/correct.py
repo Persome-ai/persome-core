@@ -3,7 +3,7 @@
 **First principles (model mindset — manage Memory like weights):** "correcting a memory" is
 not a special operation — it is an UPDATE. Memory = weights; there is one update mechanism
 (input → delta → apply). Observation is the *self-supervised* update (pre-training: the pipeline
-watches the screen → the consolidator emits a delta → ``delta_apply``). A user saying "this is
+watches the screen → memory-delta modeling → ``delta_apply``). A user saying "this is
 wrong" is the *supervised* update (post-training / SFT: the user's statement is the ground-truth
 label — authoritative, no quote-gate). So a "correction" is just a **directed update**, reusing
 the same executor (``delta_apply``, now with a ⊖ supersede leg → a delta is a complete update =
@@ -261,19 +261,3 @@ def update_memory(
     except Exception:  # noqa: BLE001 — a bad update never crashes the caller
         logger.exception("update_memory failed")
         return UpdateResult("error", ok=False)
-
-
-# The user-facing verb "correct" is just a directed update sourced from the user (SFT label).
-def correct_memory(
-    cfg: Any,
-    conn: sqlite3.Connection,
-    correction: str,
-    *,
-    requested_by: str = "user",
-    dry_run: bool = False,
-    llm_call: Callable[[list[dict]], Any] | None = None,
-) -> UpdateResult:
-    """Thin alias: a user correction IS a directed update (supervised, authoritative)."""
-    return update_memory(
-        cfg, conn, correction, source=requested_by, dry_run=dry_run, llm_call=llm_call
-    )

@@ -1,15 +1,15 @@
 """Per-app message parser contract.
 
 A *parser* turns one app's raw AX tree into a small, structured value that
-downstream stages (timeline aggregator, trajectory recognizer) feed to the LLM
+downstream timeline and modeling stages feed to the LLM
 as ``focus_structured`` text instead of the lossy normalized timeline blob.
 
 The only thing the callers need from that value is ``render() -> str`` — the
 :class:`StructuredContent` protocol. A chat app produces a
 :class:`ParsedConversation` (sender / time / body / direction per message); a
 browser produces a ``WebPage`` (clean body blocks). Both satisfy the protocol,
-so ``Parser.parse`` returns ``StructuredContent | None`` and the aggregator /
-recognizer only ever call ``.render()`` — they never branch on the concrete
+so ``Parser.parse`` returns ``StructuredContent | None`` and downstream code
+only ever calls ``.render()`` — it never branches on the concrete
 type.
 
 This module defines only the contract. Concrete parsers live in sibling
@@ -44,7 +44,7 @@ class StructuredContent(Protocol):
 
 
 # ``dir`` attribute values on a <message>. English keeps the structured markup
-# code-like and unambiguous; the recognizer prompt explains them.
+# code-like and unambiguous for downstream prompts.
 _DIRECTION_ATTR: dict[str, str] = {
     "incoming": "received",
     "outgoing": "sent",
@@ -70,7 +70,7 @@ class Message:
     ``timestamp_text`` are best-effort: ``None`` when the AX tree does not
     expose them. ``timestamp_text`` is the *verbatim* on-screen label
     (e.g. ``"12:20"``, ``"昨天"``, ``"5月27日"``) — parsers do not normalize it
-    to an absolute time, that is the recognizer's job if it ever needs it.
+    to an absolute time; downstream stages decide whether they need it.
     """
 
     sender: str | None
@@ -87,7 +87,7 @@ class ParsedConversation:
     (oldest → newest). ``previews`` is **other conversations**: one entry per
     *different* chat, carrying only its latest message (e.g. the unread rows of
     a sidebar conversation list). Keeping them in separate fields is what lets
-    ``render`` label them distinctly, so the recognizer never reads N unrelated
+    ``render`` label them distinctly, so the model never reads N unrelated
     conversations' previews as one continuous thread.
 
     ``parser_version`` lets downstream stages and analytics attribute a result
@@ -101,7 +101,7 @@ class ParsedConversation:
     previews: list[Message] = field(default_factory=list)
 
     def render(self) -> str:
-        """Render to the ``focus_structured`` text fed to the recognizer.
+        """Render to the ``focus_structured`` text fed to session modeling.
 
         Emits **XML** (Anthropic's recommended way to give a model structured
         context — explicit tag boundaries beat ad-hoc delimiters). Two distinct

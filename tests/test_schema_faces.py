@@ -242,7 +242,7 @@ class TestProductionHooks:
             entries_mod.create_file(c, name="project-tooling.md", description="d", tags=["t"])
             for f in facts:
                 entries_mod.append_entry(c, name="project-tooling.md", content=f, tags=["fact"])
-            result = stage.run_schema_mining(cfg, c, llm_call=fake_llm)
+            result = stage.mine_schemas_for_user(cfg, c, llm_call=fake_llm)
             assert result.written_count == 1  # the mine itself is unperturbed
             c.row_factory = sqlite3.Row
             rows = c.execute("SELECT * FROM schema_faces").fetchall()

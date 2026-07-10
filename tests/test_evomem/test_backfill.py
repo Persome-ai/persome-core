@@ -20,12 +20,6 @@ from persome.store import entries, fts
 from persome.writer.schema_miner_stage import render_schema_body
 
 
-@pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """快照验证走报警通路；测试里只静音 SSE 侧，不改判定逻辑。"""
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
-
-
 @pytest.fixture
 def memory_fixture(ac_root: Path) -> dict[str, str]:
     """真实写口（append/supersede/mark_deleted）铺一座覆盖全部映射形态的库。"""

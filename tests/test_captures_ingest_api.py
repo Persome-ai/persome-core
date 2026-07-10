@@ -7,9 +7,10 @@ capture loop. These tests pin the contract:
 
   * the posted AX tree is re-enriched BYTE-COMPATIBLY with the daemon's own
     capture path (focused_element / visible_text / url),
-  * the capture lands in the buffer and is readable via /captures/recent,
-  * routed through a live capture runner it fires the post-capture (intent
-    fast-path) hook and content-dedups identical consecutive pushes.
+  * the capture lands in the buffer and is readable through the production
+    capture reader used by MCP,
+  * a live capture runner updates session activity and content-dedups identical
+    consecutive pushes.
 """
 
 from __future__ import annotations
@@ -72,21 +73,24 @@ def test_ingest_writes_and_enriches_byte_compatibly(ac_root, load_capture_fixtur
 
 
 def test_ingest_readable_via_recent(ac_root, load_capture_fixture) -> None:
+    from persome.mcp.captures import read_recent_capture
+
     _, payload = _payload(load_capture_fixture)
     client = _client()
     assert client.post("/captures/ingest", json=payload).status_code == 200
-    rec = client.get("/captures/recent").json()["data"]
+    rec = read_recent_capture()
+    assert rec is not None
     assert rec["app_name"] == payload["window_meta"]["app_name"]
 
 
-def test_ingest_through_runner_fires_hook_and_dedups(ac_root, load_capture_fixture) -> None:
+def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root, load_capture_fixture) -> None:
     from persome.capture import scheduler
 
     seen: list[dict] = []
     runner = scheduler._CaptureRunner(
         load_config().capture,
         provider=None,  # ingest never builds via the provider
-        post_capture_hook=lambda cap: seen.append(cap),
+        pre_capture_hook=lambda trigger: seen.append(trigger),
     )
     scheduler._set_active_runner(runner)
     try:
@@ -98,10 +102,9 @@ def test_ingest_through_runner_fires_hook_and_dedups(ac_root, load_capture_fixtu
         assert first.get("id")
         assert second.get("deduped") is True
         assert len(list(paths.capture_buffer_dir().glob("*.json"))) == 1
-        # The post-capture (intent fast-path) hook fired once, with the enriched capture.
-        runner._post_pool.shutdown(wait=True)  # drain the bounded post pool
+        # The session hook fires once; a duplicate does not refresh activity.
         assert len(seen) == 1
-        assert seen[0]["visible_text"]
+        assert seen[0]["event_type"] == "ingest"
     finally:
         scheduler._set_active_runner(None)
 

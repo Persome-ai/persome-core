@@ -498,7 +498,7 @@ def test_knows_edges_carry_first_evidence_time(ac_root):
     assert vf[("Alice", "Bob", "knows")] == str(_ts(22).isoformat())[:16]
 
 
-def test_activity_edges_carry_intent_recognition_time(ac_root):
+def test_activity_edges_carry_source_event_time(ac_root):
     mem = _mem()
     _ingest(
         mem,

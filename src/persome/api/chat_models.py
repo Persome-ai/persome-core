@@ -96,25 +96,6 @@ class SendMessageRequest(BaseModel):
     content: str = Field(..., description="用户消息内容")
 
 
-class ToolCallExecuted(BaseModel):
-    name: str = Field(description="工具调用名称")
-    arguments: dict = Field(description="工具调用参数")
-
-
-class SendMessageResponse(BaseModel):
-    message: ChatMessage = Field(description="assistant 回复消息")
-    tool_calls_executed: list[ToolCallExecuted] | None = Field(
-        default=None, description="执行的工具调用列表"
-    )
-    usage: dict[str, int] | None = Field(
-        default=None, description="token 使用量，如 {'input_tokens': 100, 'output_tokens': 50}"
-    )
-    did_compress: bool = Field(default=False, description="是否进行了对话历史压缩")
-    did_microcompact: bool = Field(default=False, description="是否进行了微压缩")
-    reasoning: str | None = Field(default=None, description="推理内容（如果模型支持 reasoning）")
-    error: str | None = Field(default=None, description="错误信息（如果本轮出现错误）")
-
-
 class ChatSessionDetail(BaseModel):
     session: ChatSessionInfo = Field(description="会话信息")
     messages: list[ChatMessage] = Field(description="消息列表")

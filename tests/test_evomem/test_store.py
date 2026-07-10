@@ -24,16 +24,6 @@ def test_search_returns_hits_with_node(store):
     assert hits[0]["node"].content == "用户喜欢科幻电影"
 
 
-def test_link_supersede_sets_bidirectional_pointers_and_shadows_old(store):
-    store.save(MemoryNode(node_id="a", content="喝咖啡", layer=MemoryLayer.L2_FACT))
-    store.save(MemoryNode(node_id="b", content="喝茶", layer=MemoryLayer.L2_FACT, supersedes=["a"]))
-    store.link_supersede(new_id="b", old_id="a")
-    old, new = store.get("a"), store.get("b")
-    assert old.status is MemoryStatus.SHADOW and old.is_latest is False
-    assert old.superseded_by == ["b"]
-    assert new.supersedes == ["a"] and new.is_latest is True
-
-
 def test_save_and_supersede_atomic_single_active_head(store):
     # issue #427：新链头落盘 + 旧节点 shadow 必须原子完成，结束后整条演化链
     # 只能有一个 is_latest=1 status=active 的活跃链头。
@@ -63,33 +53,6 @@ def test_save_and_supersede_missing_old_raises(store):
     new = MemoryNode(node_id="b", content="喝茶", layer=MemoryLayer.L2_FACT)
     with pytest.raises(KeyError):
         store.save_and_supersede(new, old_id="does-not-exist")
-
-
-def test_save_and_abstract_retires_all_sources_single_head(store):
-    # issue #416：N→1 合成必须收编(shadow)所有源节点，结束后只剩合成节点一个活跃链头。
-    for nid, content in [("a", "喝美式"), ("b", "喝拿铁"), ("c", "喝手冲")]:
-        store.save(MemoryNode(node_id=nid, content=content, layer=MemoryLayer.L2_FACT))
-    syn = MemoryNode(node_id="s", content="爱喝咖啡", layer=MemoryLayer.L3_SUMMARY)
-    store.save_and_abstract(syn, source_ids=["a", "b", "c"])
-
-    for nid in ("a", "b", "c"):
-        src = store.get(nid)
-        assert src.status is MemoryStatus.SHADOW and src.is_latest is False
-        assert src.superseded_by == ["s"]
-    head = store.get("s")
-    assert head.status is MemoryStatus.ACTIVE and head.is_latest is True
-    assert sorted(head.supersedes) == ["a", "b", "c"]
-    actives = store.all_latest()
-    assert len(actives) == 1 and actives[0].node_id == "s"
-
-
-def test_save_and_abstract_skips_missing_source(store):
-    # 缺失的源 id 跳过（不阻断收敛），合成节点 supersedes 只含真实存在的源。
-    store.save(MemoryNode(node_id="a", content="喝美式", layer=MemoryLayer.L2_FACT))
-    syn = MemoryNode(node_id="s", content="爱喝咖啡", layer=MemoryLayer.L3_SUMMARY)
-    store.save_and_abstract(syn, source_ids=["a", "missing"])
-    assert store.get("a").is_latest is False
-    assert store.get("s").supersedes == ["a"]
 
 
 def test_save_and_shadow_single_active_head_no_chain_link(store):

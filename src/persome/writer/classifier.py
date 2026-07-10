@@ -1,4 +1,4 @@
-"""Classifier stage: event-daily → user-/project-/topic-/tool-/person-/org-.
+"""Legacy classifier stage: event-daily → durable Markdown files.
 
 Runs after the S2 reducer successfully appends a session summary to
 ``event-YYYY-MM-DD.md``. Reads that entry plus a small window of the
@@ -7,8 +7,9 @@ and lets it drive the same tool-call loop the old routing stage used
 (read_memory / search_memory / append / create / supersede / commit).
 
 The prompt forbids writing back to ``event-*.md`` — event-daily is owned
-by the reducer. The classifier's *only* job is to distill durable
-facts into the non-event files.
+by the reducer. With default ``memory_delta.apply_enabled=true`` this stage is
+retired and returns a deliberate no-op; memory delta owns terminal Point/Line
+formation. Disabling delta apply reactivates this compatibility writer.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from . import llm as llm_mod
 from . import tools as tools_mod
 
 logger = get("persome.writer")
-_consolidation_logger = get("persome.consolidation")
+_compaction_logger = get("persome.compaction")
 
 _COMPLETED_SESSION_COUNT_KEY = "completed_session_count"
 
@@ -158,7 +159,7 @@ def classify_after_reduce(
             on_event=on_event,
         )
         if result.committed:
-            _check_and_trigger_consolidation(cfg)
+            _check_and_trigger_compaction(cfg)
         return result
 
     effective_start = window_start or session_start
@@ -183,7 +184,7 @@ def classify_after_reduce(
         on_event=on_event,
     )
     if result.committed:
-        _check_and_trigger_consolidation(cfg)
+        _check_and_trigger_compaction(cfg)
     return result
 
 
@@ -537,15 +538,13 @@ def _run_tool_loop(
     )
 
 
-def _check_and_trigger_consolidation(cfg: Config) -> None:
-    """Increment the completed-session counter; trigger consolidation at cadence.
+def _check_and_trigger_compaction(cfg: Config) -> None:
+    """Increment the completed-session counter; trigger compaction at cadence.
 
     Called after every successful classifier commit. The counter lives in
     ``session_store.system_state`` so it survives daemon restarts. When the
     counter hits a multiple of ``cfg.writer.consolidation_cadence``, a
-    placeholder consolidation runs (per-file ``compact.run_pending`` over
-    files flagged ``needs_compact``). PRD-4 will swap this for a cross-file
-    consolidator.
+    per-file ``compact.run_pending`` processes files flagged ``needs_compact``.
     """
     cadence = max(1, int(cfg.writer.consolidation_cadence))
     try:
@@ -553,38 +552,22 @@ def _check_and_trigger_consolidation(cfg: Config) -> None:
             count = int(session_store.get_system_state(conn, _COMPLETED_SESSION_COUNT_KEY, "0")) + 1
             session_store.set_system_state(conn, _COMPLETED_SESSION_COUNT_KEY, str(count))
     except Exception as exc:  # noqa: BLE001
-        _consolidation_logger.warning("consolidation counter update failed: %s", exc)
+        _compaction_logger.warning("compaction counter update failed: %s", exc)
         return
 
     if count % cadence != 0:
         return
 
-    _consolidation_logger.info("consolidation cadence reached (%d sessions) — triggering", count)
+    _compaction_logger.info("compaction cadence reached (%d sessions) — triggering", count)
     try:
-        _trigger_placeholder_consolidation(cfg)
+        _trigger_pending_compaction(cfg)
     except Exception as exc:  # noqa: BLE001
-        _consolidation_logger.warning("consolidation trigger failed: %s", exc, exc_info=True)
+        _compaction_logger.warning("compaction trigger failed: %s", exc, exc_info=True)
 
 
-def _trigger_placeholder_consolidation(cfg: Config) -> None:
-    """Placeholder: run per-file compaction on flagged files.
-
-    Will be replaced by the PRD-4 cross-file consolidator. Kept as a thin
-    indirection so the cadence hook and the manual API endpoint share an
-    identical entry point.
-    """
+def _trigger_pending_compaction(cfg: Config) -> None:
+    """Run per-file compaction on files marked ``needs_compact``."""
     from . import compact as compact_mod
 
     with fts.cursor() as conn:
         compact_mod.run_pending(cfg, conn)
-
-
-def trigger_consolidation_now(cfg: Config) -> int:
-    """Manual entry point (HTTP API): run consolidation immediately.
-
-    Returns the current completed-session counter for reporting. The counter
-    is *not* incremented here — manual triggers are out-of-band.
-    """
-    _trigger_placeholder_consolidation(cfg)
-    with fts.cursor() as conn:
-        return int(session_store.get_system_state(conn, _COMPLETED_SESSION_COUNT_KEY, "0"))

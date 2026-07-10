@@ -6,15 +6,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 from persome.evomem import integrity
 from persome.store import fts
-
-
-@pytest.fixture(autouse=True)
-def _quiet_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("persome.events.publish", lambda *a, **k: None)
 
 
 def test_check_and_handle_records_a_run(ac_root) -> None:

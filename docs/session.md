@@ -1,100 +1,118 @@
-# Session
+# Sessions and terminal finalization
 
-A "session" is a bounded chunk of focused work. Persome's writer pipeline is driven by session boundaries — the reducer writes incremental *flush* entries every 5 min while the session is active, the classifier fires every 30 min over whatever entries landed since its last pass, and when the session closes a final reducer pass + terminal classifier catch-up cover any trailing window. Each stage advances its own bookmark on the sessions row (`flush_end`, `classified_end`) so entries are never double-processed.
+A session is a bounded stretch of one person's focused activity. It is the
+atomic unit for reduction and terminal personal modeling. Rows live in
+`index.db.sessions`; capture dedup ensures an unchanged screen does not keep a
+session alive.
 
-## Three cut rules
+## Boundary rules
 
-Implemented in `session/manager.py`, enforced in `check_cuts()` and on every `on_event()`. All times are local.
+`session/manager.py` applies three deterministic rules on every written capture
+and every `session.tick_seconds` check:
 
-### 1. Hard cut (idle gap)
+1. **Idle gap:** no meaningful capture for `gap_minutes` (default 5) closes at
+   the last event time.
+2. **Single-app soft cut:** one unrelated app holds focus for
+   `soft_cut_minutes` (default 3), unless at least two apps appeared in the
+   preceding two minutes.
+3. **Maximum duration:** `max_session_hours` (default 2) force-cuts a runaway
+   session.
 
-If no capture-worthy event has arrived for `session.gap_minutes` (default **5**), the session ends at the last event's timestamp.
+Shutdown and the 23:55 daily safety net also force-end an open session.
 
-> Rationale: lunch / phone call / real break. The gap itself isn't work, so the session ends *where* work paused, not *when* you came back.
-
-### 2. Soft cut (single unrelated app)
-
-If one unrelated app has held focus for `session.soft_cut_minutes` (default **3**) *and* frequent-switching is **not** active, the session ends.
-
-> "Frequent-switching" = ≥2 distinct apps were focused in the last 2 minutes. Prevents the soft cut from firing during fast multi-app work (e.g. IDE + terminal + browser reference).
-
-### 3. Timeout
-
-A session older than `session.max_session_hours` (default **2**) is force-cut regardless of activity. Safety net against runaway sessions.
-
-## Session state machine
+## State machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> active: on_session_start
-
-    active --> active: flush tick (every flush_minutes)<br/>flush_end advanced, [flush] entry appended
-    active --> active: classifier tick (every interval_minutes)<br/>classified_end advanced, durable facts maybe written
-
-    active --> ended: on_session_end<br/>(idle-gap / soft-cut / timeout /<br/>daemon-shutdown / 23:55 safety-net)
-
-    ended --> reduced: reducer OK<br/>+ terminal classifier (trailing window)
-    ended --> failed: reducer fail
-
-    failed --> reduced: retry schedule (5/15/30/60/120 min)<br/>or daily safety-net
-    failed --> failed: retry still fails<br/>(retry_count++ up to MAX_RETRIES=5)
-
-    reduced --> [*]
+    [*] --> active: first capture
+    active --> active: flush event memory
+    active --> ended: cut or force-end
+    ended --> failed: terminal reducer failed
+    failed --> failed: persisted 5/15/30/60/120 minute retry
+    ended --> reduced: terminal reduce/no-new-block
+    failed --> reduced: recovered or heuristic fallback
+    reduced --> reduced: terminal finalizer retry
+    reduced --> modeled: classifier/pattern/delta complete
+    modeled --> [*]
 ```
 
-Rows live in the `sessions` table (see [writer.md](writer.md#sessions-table)). `flush_end` tracks the last reduced window boundary so the next flush (or the terminal reduce) only covers *new* timeline blocks; `classified_end` plays the same role for the classifier.
+`status` remains `reduced` after modeling; `modeled_at` is the durable terminal
+marker shown separately in the diagram.
 
-## Flush tick (incremental reduce)
+## Incremental flush
 
-While a session is still `active`, a daemon task wakes every `session.flush_minutes` (default **5**, clamped to a 5-min floor to keep LLM cost bounded) and:
+Every `session.flush_minutes` (default 5, minimum 5), `run_flush_tick` reads
+closed timeline blocks since `flush_end`, reduces them, and appends a
+`[flush]` entry to `event-YYYY-MM-DD.md`. It advances `flush_end`; a failed flush
+waits for the next, larger window. The terminal reduce only covers the trailing
+range not already flushed.
 
-1. Snapshots the active `(session_id, session_start)` atomically.
-2. Queries closed timeline blocks in `[flush_end or session_start, now)`.
-3. If any new blocks exist, runs the reducer with `is_final=False` and appends a `[flush]`-tagged entry to today's `event-YYYY-MM-DD.md`.
-4. Advances `flush_end` to the newest block boundary.
+Under the default memory-delta model path there is no active classifier tick.
+If an operator sets `memory_delta.apply_enabled=false`, the legacy classifier
+task runs every `classifier.interval_minutes` and advances `classified_end`.
 
-The classifier does **not** fire per flush — it runs on its own separate cadence (every `classifier.interval_minutes`, default 30; see [writer.md](writer.md#stage-2--classifier)) and again at the terminal reduce for the trailing window. Flush failures are logged but not retried — the next tick covers a bigger window, and the terminal reduce is the authoritative one.
+## Reducer recovery
 
-Why 5-min minimum: the timeline stage is a verbatim-preserving normalizer, not a summarizer, so its blocks are narrow (default 1 min). A sub-5-min flush would mean many LLM calls over tiny block batches; at 5 min the flush consumes ~5 timeline blocks per call.
+Terminal reducer failures set `status=failed`, increment `retry_count`, retain
+`last_error`, and write `next_retry_at`. The `reducer-retry` daemon task checks
+once per minute. The retry schedule is 5, 15, 30, 60, and 120 minutes.
 
-## Wiring
+After the fifth failed attempt, the reducer writes an auditable `heuristic`
+event entry and marks the session reduced. This is degraded state formation,
+not a silent loss. The same result still enters terminal modeling.
 
-`session/tick.py::build_manager` returns a `SessionManager` with two callbacks wired:
+The 23:55 safety net ignores backoff and catches every stranded `ended` or
+`failed` row. `persome writer run` is the same manual recovery entrance.
 
-- **`on_session_start`** — persists an `active` row immediately. A crash mid-session leaves a recoverable trace.
-- **`on_session_end`** — marks the row `ended`, then spawns `reduce_session_async`. On terminal-reduce success, the reducer's `on_done` callback fires the classifier over `[classified_end or session_start, now)` — the trailing window the 30-min tick did not reach — and then runs the pattern detector. Each stage is best-effort and advances its own durable bookmark.
+## Shared terminal finalizer
 
-Four daemon tasks back this up:
+`writer.agent.finalize_session` is the only terminal model entrance. It is used
+by:
 
-- **`run_check_cuts`** — every `session.tick_seconds` (default 30s), calls `check_cuts()` so idle-gap and timeout cuts fire even when no events are arriving.
-- **`run_flush_tick`** — every `session.flush_minutes` (default 5), runs the reducer over the active session's new blocks and advances `flush_end`.
-- **`run_classifier_tick`** — every `classifier.interval_minutes` (default 30), classifies event-daily entries that landed since `classified_end` and advances it.
-- **`run_daily_safety_net`** — at local `reducer.daily_tick_hour:minute` (default 23:55), force-ends the currently-open session and runs `reduce_all_pending` to catch anything stranded at `ended`/`failed`. It then performs evomem survivability maintenance. Each maintenance step logs and continues on failure.
+- the asynchronous session-end callback;
+- the one-minute reducer retry task;
+- the daily safety net;
+- `persome writer run`;
+- `persome model build`.
 
-## CLI
+It re-reads the session under a cross-process `flock`, skips a non-reduced row,
+and returns success immediately when `modeled_at` already exists. It then runs
+the enabled classifier compatibility path, pattern detector, and
+`memory_delta.ensure_after_session`.
 
-```bash
-persome writer run        # catch up any pending sessions + classify
-```
+The finalizer runs even when the terminal reducer wrote no new entry, because a
+long session may already be fully represented by flush entries. It also runs
+after heuristic reducer exhaustion. Only a complete/benign result from every
+enabled stage sets `modeled_at`.
 
-This is the same code path the safety-net cron uses. Safe to run any time — idempotent via the session status check inside the reducer.
+The memory-delta audit row is the retry boundary. A later finalizer reuses its
+post-gate payload and retries only deterministic apply; it does not pay for a
+second LLM extraction or reinforce successful edges twice.
+
+## Session columns
+
+| Column | Meaning |
+|---|---|
+| `status` | `active`, `ended`, `failed`, or `reduced`. |
+| `start_time`, `end_time` | Bounded activity window. |
+| `flush_end` | End of the latest reduced subwindow. |
+| `classified_end` | Legacy classifier bookmark. |
+| `pattern_detected_end` | Pattern detector bookmark. |
+| `retry_count`, `next_retry_at`, `last_error` | Persisted reducer recovery. |
+| `modeled_at` | All terminal modeling stages completed. |
+
+Fresh schema is generated in `docs/db-schema.sql`; upgrades add new columns
+without dropping old product-era columns.
 
 ## Tuning
 
-Almost every session-boundary complaint is one of these:
-
-| Symptom | Knob |
+| Symptom | Setting |
 |---|---|
-| Sessions cut too eagerly during real focused work across multiple apps | `session.soft_cut_minutes` up (3 → 5), or leave it — the frequent-switching exception already handles most of these. |
-| Sessions cut too late after idle (event-daily entries span more than the actual work) | `session.gap_minutes` down (5 → 3). |
-| A single deep-work session grew past 2h and got chopped in half | `session.max_session_hours` up (2 → 4). You rarely want to disable this. |
-| `check_cuts` feels laggy | `session.tick_seconds` down (30 → 10). Cost is negligible — the check is just arithmetic. |
+| Focused sessions split too often | Raise `soft_cut_minutes`; multi-app work already has an exception. |
+| Thinking pauses end sessions | Raise `gap_minutes`. |
+| Normal deep work reaches timeout | Raise `max_session_hours`, but keep a finite bound. |
+| Event memory is too delayed | Keep `flush_minutes` at 5; lower values are clamped. |
 
-## Why not write per-capture?
-
-V1 did. Two production failure modes pushed v2 to session-level:
-
-1. **Long sessions under-reported.** Once the writer had appended an entry about app X, every subsequent capture of app X triaged to "already recorded" — a 28-minute session would land as a 3-minute "user played a few minutes" entry. The dedup layer saved on tokens but lost the tail.
-2. **Event files conflated days.** The old weekly rollup accumulated a whole week of user-stated facts + activity. A "what did I do today?" query had to scan 7 days.
-
-Session-level writes make long work correct by construction (the reducer sees every timeline block in the range and prints an explicit time range), and `event-YYYY-MM-DD.md` is a one-file-per-day boundary that trivially answers day-scope queries.
+Session boundaries are not paper labels or benchmark ground truth. They are a
+deterministic Runtime compression boundary that `persome-bench` may replay and
+evaluate separately.

@@ -314,21 +314,6 @@ def render_heading(*, timestamp: str, entry_id: str, tags: list[str]) -> str:
     return f"## [{timestamp}] {{id: {entry_id}}}{tag_part}"
 
 
-def render_file(
-    *, fm: dict[str, Any], entries: list[ParsedEntry], header_lines: list[str] | None = None
-) -> str:
-    parts: list[str] = []
-    if header_lines:
-        parts.extend(header_lines)
-        parts.append("")
-    for e in entries:
-        parts.append(e.heading_line)
-        if e.body:
-            parts.append(e.body)
-        parts.append("")
-    return "\n".join(parts).rstrip() + "\n"
-
-
 def update_frontmatter(path: Path, updates: dict[str, Any]) -> None:
     with file_lock(path):
         post = frontmatter.load(path)

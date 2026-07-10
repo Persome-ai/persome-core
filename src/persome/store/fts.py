@@ -403,21 +403,12 @@ def mark_superseded(conn: sqlite3.Connection, entry_id: str) -> None:
     conn.execute("UPDATE entries SET superseded=1 WHERE id=?", (entry_id,))
 
 
-def delete_entries_for(conn: sqlite3.Connection, path: str) -> None:
-    conn.execute("DELETE FROM entries WHERE path=?", (path,))
-
-
-def delete_file_row(conn: sqlite3.Connection, path: str) -> None:
-    conn.execute("DELETE FROM files WHERE path=?", (path,))
-
-
 _FTS5_SPECIALS = set('":*()^+-')
 
 # 轴A 匹配面 (issue #557): the FTS5 ``entries`` table indexes the ``tags`` column, so a
 # bare MATCH also hits classification LABELS (#intent #kind:meeting schema fact entity …).
-# On the real store, 251 live hits for the token 'intent' contained it ONLY in their tags —
-# recognizer CANDIDATE rows recalled by their label, not their content (47 of them have an
-# EMPTY content and are reachable through no other route). Default False restricts matching
+# Old stores can contain label-only rows that should not be recalled as content.
+# Default False restricts matching
 # to the content column via an FTS5 ``{content}:`` filter — zero migration, read-side only;
 # True is the kill-switch back to label-matchable. Wired from ``[search] tags_matchable``.
 _MATCH: dict[str, Any] = {"tags_matchable": False}
@@ -431,11 +422,12 @@ def _safe_fts_query(query: str, *, restrict_to_content: bool = False) -> str:
     """Turn a (possibly LLM- or question-shaped) query into a safe FTS5 MATCH expr.
 
     FTS5 treats ``col:value``, quotes, parens, etc. as syntax. An LLM that
-    writes ``"interview 20:00"`` otherwise crashes the search. We tokenize on
-    whitespace, strip special chars from each token, wrap every surviving token
-    as a quoted phrase, and join them with **OR** so ``bm25()`` ranking decides
-    relevance (best-matching entries first), instead of requiring EVERY token to
-    appear.
+    writes ``"interview 20:00"`` otherwise crashes the search. We turn special
+    characters into token boundaries, wrap every surviving token as a quoted
+    phrase, and join them with **OR** so ``bm25()`` ranking decides relevance
+    (best-matching entries first), instead of requiring EVERY token to appear.
+    Boundaries matter: deleting punctuation would incorrectly glue ``18:00``
+    into ``1800`` and ``用户说"好"`` into ``用户说好``.
 
     Why OR, not the old implicit-AND: AND demands every token be present, so a
     natural-language query ("What breed is my dog Mochi?") returns NOTHING when
@@ -449,9 +441,8 @@ def _safe_fts_query(query: str, *, restrict_to_content: bool = False) -> str:
     """
     tokens: list[str] = []
     for raw in query.split():
-        cleaned = "".join(c for c in raw if c not in _FTS5_SPECIALS)
-        if cleaned:
-            tokens.append(f'"{cleaned}"')
+        cleaned = "".join(" " if c in _FTS5_SPECIALS else c for c in raw)
+        tokens.extend(f'"{part}"' for part in cleaned.split() if part)
     if not tokens:
         return '""'
     expr = " OR ".join(tokens)
@@ -749,8 +740,8 @@ def _dense_pool(
 
     ``min_sim`` is a STRICT floor (default 0.0 → sim must be positive): a zero/negative
     cosine is not a candidate — in production te3 space this is a no-op, but it keeps
-    tiny-corpus evals honest (no zero-tier lottery seats in the RRF). The recognizer's
-    standalone semantic layer passes a higher floor to drop sim≈0 noise entirely.
+    tiny-corpus evals honest (no zero-tier lottery seats in the RRF). Callers
+    may pass a higher floor to drop sim≈0 noise entirely.
 
     Fail-open to ``[]`` (→ pure BM25) on any miss: dense disabled, embedding unavailable,
     no vectors yet, or a dim mismatch (stale vectors from a different model)."""
@@ -1134,7 +1125,11 @@ def search_associative(
     # ever run. Adaptive computation: certainty buys latency.
     entity_ids = _contains_pool(conn, entities, top_k=recall_n, since=since, until=until)
     scene_ids = _contains_pool(conn, scene_terms, top_k=recall_n, since=since, until=until)
-    window_ids = _window_pool(conn, since=since, until=until, top_k=recall_n) if has_window else []
+    if has_window:
+        assert since is not None and until is not None
+        window_ids = _window_pool(conn, since=since, until=until, top_k=recall_n)
+    else:
+        window_ids = []
     # WHY/HOW relation head (§3.3) is a HARD head too: graph expansion is a
     # zero-LLM, zero-embedding SQLite hop — classifying it as soft was a
     # cost-model error that made the entrance relationally BLIND whenever the

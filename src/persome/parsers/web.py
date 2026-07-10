@@ -5,7 +5,7 @@ Electron client does — every site renders a different tree. So this parser is
 deliberately **site-agnostic**: it never special-cases claude.ai or GitHub. It
 turns the rendered page into a clean, *structured* ``WebPage`` (page identity +
 grouped content items) purely from generic accessibility semantics, raising the
-quality of the ``focus_structured`` text the recognizer reads instead of the raw
+quality of the ``focus_structured`` text session modeling reads instead of the raw
 10k-char flattened ``visible_text`` DOM dump (navigation + body + browser chrome
 mashed together, every line split into a separate fragment).
 
@@ -182,7 +182,7 @@ class WebPage:
     parser_version: str = "browser-2"
 
     def render(self) -> str:
-        """Render to the ``focus_structured`` XML fed to the recognizer.
+        """Render to the ``focus_structured`` XML fed to session modeling.
 
         Emits a single ``<web_page>`` element (XML — explicit boundaries beat
         ad-hoc delimiters for an LLM). ``app`` is always present; ``url`` and
@@ -237,7 +237,7 @@ class BrowserParser(Parser):
 
     # Budget: a page must never produce an unbounded blob. Roughly the timeline
     # aggregator's per-window scale — enough to recognize what the page is about,
-    # capped so a 2500-node page can't blow the recognizer's context.
+    # capped so a 2500-node page cannot blow the modeling context.
     MAX_ITEMS = 40
     MAX_LINES_PER_ITEM = 30
     MAX_TOTAL_CHARS = 6000

@@ -350,8 +350,18 @@ def test_assertions_land_as_fact_entries(ac_root):
         "relations": [],
         "events": [],
         "assertions": [
-            {"subject": {"ref": "温子墨"}, "text": "温子墨拿了腾讯 offer", "quote": "q", "confidence": 0.95},
-            {"subject": {"ref": "温子墨"}, "text": "温子墨改了 inspector.py", "quote": "q", "confidence": 0.9},
+            {
+                "subject": {"ref": "温子墨"},
+                "text": "温子墨拿了腾讯 offer",
+                "quote": "q",
+                "confidence": 0.95,
+            },
+            {
+                "subject": {"ref": "温子墨"},
+                "text": "温子墨改了 inspector.py",
+                "quote": "q",
+                "confidence": 0.9,
+            },
         ],
     }
     r = _apply_cfg(clean, apply_assertions=True)
@@ -374,7 +384,9 @@ def test_assertions_gated_off_by_default(ac_root):
         "entities": [{"ref": "王五", "kind": "person", "ended": False, "quote": "x"}],
         "relations": [],
         "events": [],
-        "assertions": [{"subject": {"ref": "王五"}, "text": "王五负责X", "quote": "q", "confidence": 0.9}],
+        "assertions": [
+            {"subject": {"ref": "王五"}, "text": "王五负责X", "quote": "q", "confidence": 0.9}
+        ],
     }
     r = _apply(clean)  # cfg=None → apply_assertions 关
     assert r.assertions_minted == 0
@@ -386,7 +398,14 @@ def test_assertions_unroutable_subject_skipped(ac_root):
         "entities": [],
         "relations": [],
         "events": [],
-        "assertions": [{"subject": {"new_entity": "陌生人"}, "text": "陌生人做了X", "quote": "q", "confidence": 0.9}],
+        "assertions": [
+            {
+                "subject": {"new_entity": "陌生人"},
+                "text": "陌生人做了X",
+                "quote": "q",
+                "confidence": 0.9,
+            }
+        ],
     }
     r = _apply_cfg(clean, apply_assertions=True)
     assert r.assertions_minted == 0
@@ -398,7 +417,9 @@ def test_assertions_idempotent_across_sessions(ac_root):
         "entities": [{"ref": "赵六", "kind": "person", "ended": False, "quote": "x"}],
         "relations": [],
         "events": [],
-        "assertions": [{"subject": {"ref": "赵六"}, "text": "赵六是架构师", "quote": "q", "confidence": 0.9}],
+        "assertions": [
+            {"subject": {"ref": "赵六"}, "text": "赵六是架构师", "quote": "q", "confidence": 0.9}
+        ],
     }
     _apply_cfg(clean, apply_assertions=True)
     r2 = _apply_cfg(clean, apply_assertions=True)  # 独立 conn（第二场会话）

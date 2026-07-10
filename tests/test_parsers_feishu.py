@@ -244,7 +244,7 @@ def test_feishu_extracts_sender_and_timestamp(feed_meeting):
 
 def test_feishu_thread_title_is_the_open_conversation_name(feed_meeting):
     """thread_title comes from chatWindow_chatName (the open conversation's
-    name), not the generic window title — so the recognizer knows *which*
+    name), not the generic window title — so the model knows *which*
     conversation is open, and render() labels the current-conversation section
     with it.
     """
@@ -384,7 +384,7 @@ def test_feishu_open_thread_direction_and_sender_from_structure():
 
 def test_s1_enrich_feishu_visible_text_carries_direction():
     """The capture's visible_text must keep who-said-what for chat apps — the user's own messages
-    labelled dir="sent"/我, the counterpart's dir="received" — so downstream LLMs (slow recognizer,
+    labelled dir="sent"/我, the counterpart's dir="received" — so downstream LLMs (session modeling,
     current_context, voice preamble) don't attribute the user's messages to the other party. Before
     the chat-aware render, visible_text was a flat dump with no direction (the reported bug)."""
     from persome.capture import s1_parser
@@ -398,7 +398,9 @@ def test_s1_enrich_feishu_visible_text_carries_direction():
                     "bundle_id": _LARK_BUNDLE,
                     "name": "飞书",
                     "is_frontmost": True,
-                    "windows": [{"title": "对方", "focused": True, "elements": [incoming, outgoing]}],
+                    "windows": [
+                        {"title": "对方", "focused": True, "elements": [incoming, outgoing]}
+                    ],
                 }
             ]
         }
@@ -408,7 +410,7 @@ def test_s1_enrich_feishu_visible_text_carries_direction():
     assert '<message dir="received" sender="对方">对方发的</message>' in vt
     assert '<message dir="sent" sender="我">我自己发的</message>' in vt
     # the user's own message is NOT rendered as received / from the counterpart
-    assert '我自己发的</message>' in vt and 'dir="received" sender="对方">我自己发的' not in vt
+    assert "我自己发的</message>" in vt and 'dir="received" sender="对方">我自己发的' not in vt
 
 
 def test_feishu_open_thread_image_bubble_gets_placeholder():

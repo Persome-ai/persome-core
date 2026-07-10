@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     flush_end TEXT,
     classified_end TEXT,
     pattern_detected_end TEXT,
-    active_tick_bookmark TEXT
+    modeled_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_start ON sessions(start_time);
@@ -52,12 +52,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN classified_end TEXT")
     if "pattern_detected_end" not in cols:
         conn.execute("ALTER TABLE sessions ADD COLUMN pattern_detected_end TEXT")
-    if "active_tick_bookmark" not in cols:
-        conn.execute("ALTER TABLE sessions ADD COLUMN active_tick_bookmark TEXT")
-    if "total_cost_usd" not in cols:
-        conn.execute("ALTER TABLE sessions ADD COLUMN total_cost_usd REAL")
-    if "recognized_final_at" not in cols:
-        conn.execute("ALTER TABLE sessions ADD COLUMN recognized_final_at TEXT")
+    if "modeled_at" not in cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN modeled_at TEXT")
+        # Existing reduced sessions were finalized by the pre-column callback.
+        # Do not replay a user's whole history merely because they upgraded.
+        conn.execute(
+            "UPDATE sessions SET modeled_at=updated_at"
+            " WHERE status='reduced' AND modeled_at IS NULL"
+        )
 
 
 @dataclass
@@ -74,8 +76,7 @@ class SessionRow:
     flush_end: datetime | None = None
     classified_end: datetime | None = None
     pattern_detected_end: datetime | None = None
-    active_tick_bookmark: datetime | None = None
-    recognized_final_at: datetime | None = None
+    modeled_at: datetime | None = None
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -155,13 +156,6 @@ def get_by_id(conn: sqlite3.Connection, session_id: str) -> SessionRow | None:
     return _to_row(r) if r else None
 
 
-def get_open(conn: sqlite3.Connection) -> SessionRow | None:
-    r = conn.execute(
-        "SELECT * FROM sessions WHERE status='active' ORDER BY start_time DESC LIMIT 1"
-    ).fetchone()
-    return _to_row(r) if r else None
-
-
 def set_flush_end(
     conn: sqlite3.Connection,
     session_id: str,
@@ -207,69 +201,16 @@ def set_pattern_detected_end(
     )
 
 
-def set_active_tick_bookmark(
-    conn: sqlite3.Connection,
-    session_id: str,
-    bookmark: datetime,
-) -> None:
+def mark_modeled(conn: sqlite3.Connection, session_id: str, modeled_at: datetime) -> None:
+    """Mark terminal classifier/pattern/delta processing complete."""
     conn.execute(
-        "UPDATE sessions SET active_tick_bookmark=?, updated_at=? WHERE id=?",
+        "UPDATE sessions SET modeled_at=?, updated_at=? WHERE id=?",
         (
-            bookmark.isoformat(),
+            modeled_at.isoformat(),
             datetime.now().astimezone().isoformat(),
             session_id,
         ),
     )
-
-
-def set_recognized_final_at(
-    conn: sqlite3.Connection,
-    session_id: str,
-    recognized_final_at: datetime,
-) -> None:
-    """Mark a session as having had its terminal (#621) recognition pass.
-
-    Once set, :func:`list_for_finalization` never returns the row again — the
-    finalization sweep is one-shot per session (cost control).
-    """
-    conn.execute(
-        "UPDATE sessions SET recognized_final_at=?, updated_at=? WHERE id=?",
-        (
-            recognized_final_at.isoformat(),
-            datetime.now().astimezone().isoformat(),
-            session_id,
-        ),
-    )
-
-
-def list_for_finalization(conn: sqlite3.Connection, *, ended_before: datetime) -> list[SessionRow]:
-    """Ended sessions awaiting a terminal recognition pass (#621).
-
-    A session qualifies when it is no longer active (``status != 'active'``),
-    has an ``end_time`` at/before ``ended_before`` (the grace cutoff so the
-    timeline aggregator had time to land trailing blocks materialised after the
-    cut), and has not yet been finalized (``recognized_final_at IS NULL``).
-    Oldest-ended first so a backlog drains deterministically.
-    """
-    rows = conn.execute(
-        """
-        SELECT * FROM sessions
-         WHERE status != 'active'
-           AND end_time IS NOT NULL
-           AND end_time <= ?
-           AND recognized_final_at IS NULL
-         ORDER BY end_time ASC
-        """,
-        (ended_before.isoformat(),),
-    ).fetchall()
-    return [_to_row(r) for r in rows]
-
-
-def list_active(conn: sqlite3.Connection) -> list[SessionRow]:
-    rows = conn.execute(
-        "SELECT * FROM sessions WHERE status='active' ORDER BY start_time ASC"
-    ).fetchall()
-    return [_to_row(r) for r in rows]
 
 
 def list_due_for_retry(conn: sqlite3.Connection, *, now: datetime) -> list[SessionRow]:
@@ -285,19 +226,16 @@ def list_due_for_retry(conn: sqlite3.Connection, *, now: datetime) -> list[Sessi
     return [_to_row(r) for r in rows]
 
 
-def list_unfinished_for_date(
-    conn: sqlite3.Connection, *, day_start: datetime, day_end: datetime
-) -> list[SessionRow]:
-    """Sessions that started during [day_start, day_end) and aren't reduced."""
+def list_pending_modeling(conn: sqlite3.Connection) -> list[SessionRow]:
+    """Reduced sessions whose terminal model stages have not completed."""
     rows = conn.execute(
         """
         SELECT * FROM sessions
-         WHERE start_time >= ?
-           AND start_time < ?
-           AND status != 'reduced'
+         WHERE status = 'reduced'
+           AND end_time IS NOT NULL
+           AND modeled_at IS NULL
          ORDER BY start_time ASC
-        """,
-        (day_start.isoformat(), day_end.isoformat()),
+        """
     ).fetchall()
     return [_to_row(r) for r in rows]
 
@@ -364,16 +302,11 @@ def _to_row(r: sqlite3.Row) -> SessionRow:
         pattern_detected_end = _dt(r["pattern_detected_end"])
     except (IndexError, KeyError):
         pattern_detected_end = None
-    active_tick_bookmark: datetime | None = None
+    modeled_at: datetime | None = None
     try:
-        active_tick_bookmark = _dt(r["active_tick_bookmark"])
+        modeled_at = _dt(r["modeled_at"])
     except (IndexError, KeyError):
-        active_tick_bookmark = None
-    recognized_final_at: datetime | None = None
-    try:
-        recognized_final_at = _dt(r["recognized_final_at"])
-    except (IndexError, KeyError):
-        recognized_final_at = None
+        modeled_at = None
     return SessionRow(
         id=r["id"],
         start_time=_dt(r["start_time"]) or datetime.now().astimezone(),
@@ -387,6 +320,5 @@ def _to_row(r: sqlite3.Row) -> SessionRow:
         flush_end=flush_end,
         classified_end=classified_end,
         pattern_detected_end=pattern_detected_end,
-        active_tick_bookmark=active_tick_bookmark,
-        recognized_final_at=recognized_final_at,
+        modeled_at=modeled_at,
     )

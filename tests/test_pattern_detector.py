@@ -89,10 +89,11 @@ def test_pattern_detector_creates_workflow(ac_root: Path, monkeypatch) -> None:
                     {
                         "path": "skills/skill-morning-routine.md",
                         "content": (
+                            "stage: observed\n\n"
                             "**Pattern**: Weekday mornings 9:00, user opens Mail → Slack → Cursor.\n"
                             "**Confidence**: high (3 consecutive days)\n"
-                            "**Trigger**: weekday, 9:00\n"
-                            "**Suggested automation**: macOS Shortcut to launch the three apps"
+                            "**Context**: weekday, 9:00\n"
+                            "**Evidence**: three independent sessions"
                         ),
                         "tags": ["pattern", "detected"],
                     },

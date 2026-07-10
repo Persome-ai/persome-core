@@ -268,9 +268,7 @@ class PersonGraph:
             last_seen=event.occurred_at or _now(),
         )
 
-    def _merge_entity(
-        self, existing: PersonEntity, event: PersonEntity | PersonEvent
-    ) -> PersonEntity:
+    def _merge_entity(self, existing: PersonEntity, event: PersonEvent) -> PersonEntity:
         """别名/类别并集 + 计数 +1，经 SUPERSEDE 落新实体头（不分叉）。"""
         aliases = _dedup_aliases([*existing.aliases, event.name, *event.aliases])
         category = existing.category or event.category

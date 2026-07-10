@@ -178,72 +178,11 @@ class TestSyncOcrBackfill:
             "tiny",
             {"bundle_id": "com.tencent.xinWeChat", "app_name": "WeChat"},
             True,
-            False,  # structured=True, collect=False
         )
 
         with fts_store.cursor() as conn:
             text = fts_store.get_capture_visible_text(conn, "cap-struct")
         assert "会话列表" in text and "罗" in text  # structured, not raw "罗\n14:48"
-
-    def test_collect_training_data_writes_no_screenshot(
-        self, monkeypatch: pytest.MonkeyPatch, ac_root: Path
-    ) -> None:
-        """collect=True → a local JSON sample with OCR geometry but NEVER a screenshot."""
-        import json as _json
-
-        from persome import paths
-        from persome.capture import scheduler as sched_mod
-
-        monkeypatch.setattr(
-            sched_mod.ocr_local,
-            "recognize_detailed",
-            lambda *a, **k: (
-                ["罗", "14:48"],
-                [[80, 60, 130, 76], [280, 62, 332, 74]],
-                [0.97, 0.92],
-            ),
-        )
-        monkeypatch.setattr(sched_mod, "_image_width", lambda b: 960)
-        with fts_store.cursor() as conn:
-            _insert_capture(conn, id="cap-train", visible_text="")
-
-        sched_mod._submit_ocr_async(
-            b"SCREENSHOTBYTES",
-            "cap-train",
-            "tiny",
-            {"bundle_id": "com.tencent.xinWeChat", "app_name": "WeChat", "title": "微信"},
-            True,
-            True,  # structured=True, collect=True
-        )
-
-        sample_path = paths.ocr_samples_dir() / "cap-train.json"
-        assert sample_path.exists(), "training sample should be written"
-        sample = _json.loads(sample_path.read_text())
-        # PRIVACY: geometry + text present, but NO screenshot/image bytes anywhere.
-        assert sample["ocr"]["texts"] == ["罗", "14:48"]
-        assert sample["ocr"]["boxes"] and sample["ocr"]["scores"]
-        assert sample["bundle_id"] == "com.tencent.xinWeChat"
-        blob = _json.dumps(sample).lower()
-        for forbidden in ("screenshot", "image_base64", "jpeg", "screenshotbytes", "png", "base64"):
-            assert forbidden not in blob, f"training sample must not contain {forbidden!r}"
-
-    def test_no_training_sample_when_collect_off(
-        self, monkeypatch: pytest.MonkeyPatch, ac_root: Path
-    ) -> None:
-        from persome import paths
-        from persome.capture import scheduler as sched_mod
-
-        monkeypatch.setattr(
-            sched_mod.ocr_local,
-            "recognize_detailed",
-            lambda *a, **k: (["x"], [[0, 0, 0, 0]], [0.9]),
-        )
-        with fts_store.cursor() as conn:
-            _insert_capture(conn, id="cap-nocollect", visible_text="")
-
-        sched_mod._submit_ocr_async(b"jpeg", "cap-nocollect", "tiny", {}, False, False)
-
-        assert not (paths.ocr_samples_dir() / "cap-nocollect.json").exists()
 
 
 # ─── capture/scheduler.py: _write_capture defers OCR until AFTER the row lands ──
@@ -338,7 +277,6 @@ class TestWriteCaptureDefersOcr:
             "_ocr_pending_jpeg": b"jpeg",
             "_ocr_tier": "tiny",
             "_ocr_structured": True,
-            "_ocr_collect_training_data": False,
         }
         path = sched_mod._write_capture(out)
 
@@ -347,7 +285,6 @@ class TestWriteCaptureDefersOcr:
         assert "_ocr_pending_jpeg" not in on_disk  # raw bytes never serialized
         assert "_ocr_tier" not in on_disk
         assert "_ocr_structured" not in on_disk
-        assert "_ocr_collect_training_data" not in on_disk
         assert on_disk.get("ocr_submitted") is True  # but the marker is kept
 
 
@@ -532,9 +469,9 @@ class TestCaptureTextSourceAndStatus:
         assert r["ax"]["present"] is True
         assert r["ax"]["node_count"] == 3  # window + 2 children
 
-    def test_read_capture_by_stem_exact(self, ac_root: Path) -> None:
+    def test_read_recent_capture_accepts_exact_stem(self, ac_root: Path) -> None:
         from persome import paths
-        from persome.mcp.captures import read_capture_by_stem
+        from persome.mcp.captures import read_recent_capture
 
         _write_rich_capture_json(
             paths.capture_buffer_dir(), self._STEM, visible_text="", ocr_submitted=True
@@ -542,17 +479,18 @@ class TestCaptureTextSourceAndStatus:
         with fts_store.cursor() as conn:
             _backfill_ocr(conn, capture_id=self._STEM, text="exact-lookup ocr text")
 
-        r = read_capture_by_stem(self._STEM)
+        r = read_recent_capture(at=self._STEM)
         assert r is not None
         assert r["file_stem"] == self._STEM
         assert r["ocr_text"] == "exact-lookup ocr text"
 
-    def test_read_capture_by_stem_rejects_traversal_and_missing(self, ac_root: Path) -> None:
-        from persome.mcp.captures import read_capture_by_stem
+    def test_read_recent_capture_rejects_invalid_stem(self, ac_root: Path) -> None:
+        from persome.mcp.captures import read_recent_capture
 
-        assert read_capture_by_stem("../../etc/passwd") is None
-        assert read_capture_by_stem("does-not-exist") is None
-        assert read_capture_by_stem("") is None
+        with pytest.raises(ValueError):
+            read_recent_capture(at="../../etc/passwd")
+        with pytest.raises(ValueError):
+            read_recent_capture(at="does-not-exist")
 
 
 class TestCurrentContextHeadlinePreview:
@@ -584,27 +522,41 @@ class TestIncludeAxTreeExpand:
             "focused_element": {},
             "visible_text": "page body",
             "url": "",
-            "ax_tree": {"apps": [{"bundle_id": "com.google.Chrome", "windows": [{"elements": [
-                {"role": "AXToolbar", "children": [{"role": "AXButton", "title": "Bookmark"}]},
-            ]}]}]},
+            "ax_tree": {
+                "apps": [
+                    {
+                        "bundle_id": "com.google.Chrome",
+                        "windows": [
+                            {
+                                "elements": [
+                                    {
+                                        "role": "AXToolbar",
+                                        "children": [{"role": "AXButton", "title": "Bookmark"}],
+                                    },
+                                ]
+                            }
+                        ],
+                    }
+                ]
+            },
         }
         (buf / f"{self._STEM}.json").write_text(json.dumps(data, ensure_ascii=False))
 
     def test_default_omits_ax_tree(self, ac_root: Path) -> None:
         from persome import paths
-        from persome.mcp.captures import read_capture_by_stem
+        from persome.mcp.captures import read_recent_capture
 
         self._write(paths.capture_buffer_dir())
-        r = read_capture_by_stem(self._STEM)
+        r = read_recent_capture(at=self._STEM)
         assert r is not None
         assert "ax_tree" not in r
 
     def test_include_ax_tree_returns_full_tree(self, ac_root: Path) -> None:
         from persome import paths
-        from persome.mcp.captures import read_capture_by_stem, read_recent_capture
+        from persome.mcp.captures import read_recent_capture
 
         self._write(paths.capture_buffer_dir())
-        r = read_capture_by_stem(self._STEM, include_ax_tree=True)
+        r = read_recent_capture(at=self._STEM, include_ax_tree=True)
         assert r is not None and isinstance(r.get("ax_tree"), dict)
         assert r["ax_tree"]["apps"][0]["bundle_id"] == "com.google.Chrome"
         # also via the time-based reader

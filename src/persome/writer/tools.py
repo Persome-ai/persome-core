@@ -1,7 +1,7 @@
 """Writer tool implementations + JSON Schema declarations for the LLM.
 
 写权反转（PR-6b，SSOT 切换设计 §1.3/§5）：本模块是 classifier /
-pattern_detector / consolidator 共用的写工具层；``write_authority="evomem"`` 时
+classifier / pattern_detector 共用的写工具层；``write_authority="evomem"`` 时
 ``tool_create``/``tool_append``/``tool_supersede`` 经 ``store/entries.py`` 的
 choke-point dispatch 走 evomem engine 落 evo_nodes，markdown 由投影器再生成
 （``tool_flag_compact`` 改走 ``inversion.flag_needs_compact``——files 行是真相，
@@ -298,7 +298,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "create",
             "description": (
                 "Create a new memory file. Filename prefix must be one of: "
-                "user-, project-, tool-, topic-, person-, org-, event-, skill-. For skill drafts detected by pattern analysis, use path skills/skill-{slug}.md with stage: draft in the entry body."
+                "user-, project-, tool-, topic-, person-, org-, event-, skill-. For observed behavioral patterns, use path skills/skill-{slug}.md with stage: observed in the entry body."
             ),
             "parameters": {
                 "type": "object",

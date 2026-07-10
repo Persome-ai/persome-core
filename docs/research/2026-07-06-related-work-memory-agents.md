@@ -1,5 +1,9 @@
 # Personome 相关工作研究笔记：Agent Memory 的三条路线
 
+> **Non-normative research note.** This dated literature note is manuscript
+> background, not the Runtime contract. Current behavior is documented in the
+> repository root and `docs/INDEX.md`.
+
 > 用途：为 Personome 技术报告（"Predict Your Next State"）的 Related Work / 定位服务的**参考文档**（非正文）。
 > 收录方式：忠实转述来源；凡属推断显式标注「（推断）」。所有条目尽量带 arXiv id / 出处以便回查。
 > 起点：arXiv:2606.29778（Mandol），由此顺藤梳理整条脉络。

@@ -70,6 +70,35 @@ def test_search_multiterm_is_or_ranked_not_and(ac_root: Path) -> None:
         )
 
 
+def test_search_handles_apostrophes_and_embedded_quotes(ac_root: Path) -> None:
+    """Production FTS escaping must preserve literal punctuation-bearing hints."""
+    assert fts._safe_fts_query('用户说"好"') == '"用户说" OR "好"'
+    assert fts._safe_fts_query("meeting 18:00") == '"meeting" OR "18" OR "00"'
+
+    with fts.cursor() as conn:
+        entries_mod.create_file(
+            conn,
+            name="user-preferences.md",
+            description="preferences",
+            tags=["user"],
+        )
+        apostrophe = entries_mod.append_entry(
+            conn,
+            name="user-preferences.md",
+            content="User's preference is dark roast.",
+            tags=["preference"],
+        )
+        quoted = entries_mod.append_entry(
+            conn,
+            name="user-preferences.md",
+            content="用户说“好”，确认了 evening 方案。",
+            tags=["decision"],
+        )
+
+        assert any(hit.id == apostrophe for hit in fts.search(conn, query="User's", top_k=5))
+        assert any(hit.id == quoted for hit in fts.search(conn, query='用户说"好"', top_k=5))
+
+
 def test_supersede_filters_old_by_default(ac_root: Path) -> None:
     with fts.cursor() as conn:
         entries_mod.create_file(

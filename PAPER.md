@@ -15,7 +15,7 @@ predictor as a paper result.
 
 | Paper claim | Repository | Executable artifact |
 |---|---|---|
-| State Formation | core | capture -> timeline -> session -> reducer -> classifier |
+| State Formation | core | capture -> timeline -> session -> reducer -> terminal model finalizer |
 | Personal Weights | core | Point/Line/Face/Volume/Root model and `schema_version: 1` snapshot |
 | Evidence and reversibility | core | receipts, bitemporal nodes, `remember`, `correct_memory`, rebuild |
 | Model access | core | `/model`, MCP, optional Chat, `persome model export` |

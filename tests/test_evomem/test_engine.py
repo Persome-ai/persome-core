@@ -73,28 +73,6 @@ def test_coffee_then_tea_recall_returns_one_evolved_result(ac_root):
     assert [c["content"] for c in evolved[0]["evolution_chain"]] == ["用户喝茶", "用户喝咖啡"]
 
 
-def test_system2_writes_schema_node(ac_root):
-    from persome.evomem.schema_miner import SchemaMiner
-
-    sch = _resp(
-        {
-            "central_proposition": "偏好极简",
-            "supporting_summary": "s",
-            "expected_inferences": ["拒大依赖"],
-            "confidence": 0.7,
-        }
-    )
-    mem = EvoMemory(
-        user_id="u1",
-        reconciler=Reconciler(llm_call=lambda m: _resp({"ops": []})),
-        schema_miner=SchemaMiner(llm_call=lambda m: sch),
-    )
-    res = mem.run_system2(["用 uv", "用 ruff", "拒 litellm"])
-    assert res is not None and res.central_proposition == "偏好极简"
-    schemas = [n for n in mem._store.all_latest() if n.layer is MemoryLayer.L6_SCHEMA]
-    assert len(schemas) == 1
-
-
 def test_apply_op_abstract_retires_all_sources(ac_root):
     # issue #416：ABSTRACT op 必须收编 source_ids，否则落兜底 ADD → 源节点仍活跃，
     # N→1 退化成 N+1 并存。

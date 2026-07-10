@@ -1,7 +1,7 @@
 """Unit + integration tests for chat session title generation.
 
-The sidebar in Mens.app prefers ``SessionInfo.title`` (LLM-generated)
-over ``preview`` (first-user-message truncation). These tests pin:
+Local clients can prefer ``SessionInfo.title`` (LLM-generated) over ``preview``
+(first-user-message truncation). These tests pin:
 
 * ``generate_title`` happy path + degenerate inputs.
 * Title is persisted in the session JSON across reload.
