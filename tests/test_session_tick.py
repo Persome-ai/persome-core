@@ -5,12 +5,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from persome import config as config_mod
-from persome.intent import store as intent_store
 from persome.session import store as session_store
 from persome.session import tick as session_tick
 from persome.store import fts
 from persome.timeline import store as timeline_store
-from persome.writer import llm as llm_mod
 from persome.writer import session_reducer
 
 _TZ = timezone(timedelta(hours=8))

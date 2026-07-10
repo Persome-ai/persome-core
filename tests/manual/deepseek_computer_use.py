@@ -15,8 +15,12 @@ Run (needs DEEPSEEK_API_KEY + Tabbit installed; sends a few real keystrokes/clic
   PERSOME_ACTUATION_E2E=1 DEEPSEEK_API_KEY=... python3 tests/manual/deepseek_computer_use.py
 """
 
+import json
 import os
+import subprocess
 import sys
+import time
+import urllib.request
 
 if os.environ.get("PERSOME_ACTUATION_E2E") != "1":
     print("refusing to run: set PERSOME_ACTUATION_E2E=1 (drives a real browser)")

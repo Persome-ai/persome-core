@@ -25,9 +25,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
 from types import SimpleNamespace
+from typing import Any
 
 from ..evomem import identity
 from ..evomem._json import parse_json_object
@@ -232,7 +231,9 @@ def update_memory(
         if not supersede and not (entity_op and entity_op.get("op") in _ENTITY_OPS):
             return UpdateResult("noop", reason=reason, ok=False)
         if dry_run:
-            return UpdateResult("update", applied=_plan(supersede, entity_op), reason=reason, ok=False)
+            return UpdateResult(
+                "update", applied=_plan(supersede, entity_op), reason=reason, ok=False
+            )
 
         applied: list[str] = []
         kind = "update"

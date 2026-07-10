@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from persome.capture import ocr_structure
 from persome.parsers import wechat
@@ -43,17 +42,17 @@ def _struct(
 
 
 class TestMapping:
-    def test_real_fixture_direction_and_title(self):
+    def test_synthetic_fixture_direction_and_title(self):
         conv = wechat.conversation_from_structure(_fixture_struct("wechat_chat.json"))
-        assert conv.thread_title == "周正雷"
+        assert conv.thread_title == "测试联系人"
         by = {m.body: m.direction for m in conv.messages}
-        assert by.get("我没化过妆") == "outgoing"  # 我 = right bubble
-        assert by.get("没事你化又不出门") == "incoming"  # 对方 = left bubble
+        assert by.get("我在写论文") == "outgoing"  # 我 = right bubble
+        assert by.get("记得补上复现实验") == "incoming"  # 对方 = left bubble
         # timeline separator rows are NOT messages
         assert all(m.body != "13:27" for m in conv.messages)
         # incoming sender is the chat title; outgoing has no sender
         for m in conv.messages:
-            assert (m.sender == "周正雷") if m.direction == "incoming" else (m.sender is None)
+            assert (m.sender == "测试联系人") if m.direction == "incoming" else (m.sender is None)
 
     def test_previews_from_sidebar(self):
         conv = wechat.conversation_from_structure(_fixture_struct("wechat_chat.json"))
