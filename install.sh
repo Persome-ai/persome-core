@@ -369,7 +369,8 @@ write_default_if_missing()
   echo ""
 
   local api_key base_url
-  read -r -p "Enter ANTHROPIC_API_KEY (or press Enter to skip): " api_key
+  read -r -s -p "Enter ANTHROPIC_API_KEY (or press Enter to skip): " api_key
+  printf '\n'
   if [[ -z "${api_key}" ]]; then
     echo "Skipped. Set it later:  echo 'ANTHROPIC_API_KEY=sk-...' >> ${env_path}"
     return 0
