@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-latest: the Paddle OCR deps are gated to Apple Silicon macOS,
+        # so they are skipped
+        # and the OCR-less code path is exercised.
+        # macos-latest (arm64): full dependency set incl. local OCR runtime.
+        # Tests marked "macos" stay deselected on BOTH runners: CI has no
+        # Accessibility (AX) permission, so AX-capture tests cannot run there.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+          # Python version is pinned by .python-version (3.11).
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Format (ruff check)
+        run: uv run ruff format --check .
+
+      - name: Shell syntax
+        run: bash -n install.sh uninstall.sh resources/*.sh
+
+      - name: Tests (offline, mocked LLM)
+        # The default offline gate: no network, no API key. Markers deselected:
+        #   macos       — needs real AX permission / Swift capture helpers
+        #   integration — talks to real LLM providers
+        env:
+          PERSOME_LLM_MOCK: "1"
+        run: uv run pytest -m "not macos and not integration" -q
+
+      - name: PII scan
+        # Hard privacy gate: the whole tree (source + test fixtures) must be
+        # free of real names / emails / tokens. Must exit 0.
+        run: uv run python scripts/pii_scan.py
+
+      - name: Secret and token scan
+        run: uv run python scripts/secret_scan.py
+
+      - name: English-language source gate
+        run: uv run python scripts/language_scan.py
+
+      - name: Documentation links and assets
+        run: uv run python scripts/check_doc_links.py
+
+      - name: Synthetic MCP transport smoke
+        env:
+          PERSOME_LLM_MOCK: "1"
+        run: |
+          uv run python scripts/sample_demo.py --no-open --port 18743 >/tmp/persome-sample.log 2>&1 &
+          sample_pid=$!
+          trap 'kill "$sample_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18743/health >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$sample_pid" 2>/dev/null; then
+              cat /tmp/persome-sample.log
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:18743/health >/dev/null
+          uv run python scripts/verify_sample_mcp.py --url http://127.0.0.1:18743/mcp
+
+  package:
+    name: package smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Verify lock and build artifacts
+        run: |
+          uv lock --check
+          uv build
+
+      - name: Install wheel outside the checkout
+        run: |
+          uv venv /tmp/persome-wheel --python 3.11
+          uv pip install --python /tmp/persome-wheel/bin/python dist/persome_core-*.whl
+          cd /tmp
+          PERSOME_ROOT=/tmp/persome-smoke-root /tmp/persome-wheel/bin/persome --help >/dev/null
+          /tmp/persome-wheel/bin/python - <<'PY'
+          from importlib.resources import files
+
+          bundled = files("persome") / "_bundled"
+          required = (
+              "build-mac-ax-helper.sh",
+              "build-mac-ax-watcher.sh",
+              "mac-ax-helper.swift",
+              "mac-ax-watcher.swift",
+              "mac-url-handlers.swift",
+              "model_assets/LICENSE",
+              "model_assets/three.module.js",
+              "model_assets/viewer.css",
+              "model_assets/viewer.js",
+              "model_assets/jsm/controls/OrbitControls.js",
+              "model_assets/jsm/renderers/CSS2DRenderer.js",
+              "ocr_models/PP-OCRv6_tiny_det/inference.pdiparams",
+              "ocr_models/PP-OCRv6_tiny_rec/inference.pdiparams",
+          )
+          for relative in required:
+              assert (bundled / relative).is_file(), relative
+          PY

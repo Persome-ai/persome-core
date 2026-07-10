@@ -1,0 +1,808 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Persome API",
+    "description": "Local-first screen-context memory and personal-model REST API.",
+    "version": "0.2.2"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "description": "Return the service liveness status.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/permissions": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Permissions",
+        "description": "Return the daemon's current macOS permission state.\n\nAccessibility belongs to the daemon process because it launches the AX\nhelpers that read the tree. A GUI onboarding flow should poll this endpoint\ninstead of creating a second TCC identity. ``accessibility`` is ``granted``\nor ``denied`` and is always ``denied`` on non-macOS hosts.",
+        "operationId": "permissions_permissions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Status",
+        "description": "Return version, daemon, capture, memory, and LLM connectivity status.",
+        "operationId": "status_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/captures/ingest": {
+      "post": {
+        "tags": [
+          "capture"
+        ],
+        "summary": "Ingest Capture",
+        "description": "Ingest one frame from a trusted local producer.\n\nThis replay/embedding path shares enrichment, deduplication, and persistence\nwith the daemon's native macOS AX watcher.",
+        "operationId": "ingest_capture_captures_ingest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureIngestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/model": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "Model View",
+        "description": "Render the local Point/Line/Face/Volume/Root model explorer.",
+        "operationId": "model_view_model_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/model/graph": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "Model Graph",
+        "description": "Return the canonical versioned Point/Line/Face/Volume/Root snapshot.",
+        "operationId": "model_graph_model_graph_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Model Graph Model Graph Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/model/node": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "Model Node",
+        "description": "Return the symbolic receipts behind one graph node.\n\nThis is the click-through from the visual graph to the symbolic layer. Lazy per-node fetch\nso the graph payload stays lean. Zero-LLM, read-only, fail-open:\n\n- ``event:<source-kind>:<source-id>`` → the canonical Activity source;\n- any other identity → the latest ACTIVE evo_nodes of its typed entity file\n  entity file (newest first, bounded, truncated) — the consolidation\n  trail the point was distilled from.",
+        "operationId": "model_node_model_node_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Model Node Model Node Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Sessions",
+        "description": "List active and persisted chat sessions.",
+        "operationId": "list_sessions_chat_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Create Session",
+        "description": "Create a chat session and return its initial metadata.",
+        "operationId": "create_session_chat_sessions_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Session",
+        "description": "Return session metadata and message history.",
+        "operationId": "get_session_chat_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Eight-character session UUID",
+              "title": "Session Id"
+            },
+            "description": "Eight-character session UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Delete Session",
+        "description": "Delete a session and its persisted file.",
+        "operationId": "delete_session_chat_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Eight-character session UUID",
+              "title": "Session Id"
+            },
+            "description": "Eight-character session UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions/{session_id}/messages": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Session Messages",
+        "description": "Return the session message history without the system message.",
+        "operationId": "get_session_messages_chat_sessions__session_id__messages_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Eight-character session UUID",
+              "title": "Session Id"
+            },
+            "description": "Eight-character session UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Send Message",
+        "description": "Send a message and stream assistant tokens and tool events over SSE.\n\nEvent types are defined by :data:`SendMessageEvent`: ``reply`` carries\nincremental text; ``tool_call`` and ``tool_result`` bracket a tool\ninvocation; ``error`` reports turn failure; and ``done`` completes the\nturn. The session is persisted when the stream ends. Disconnecting the\nclient cancels the active LLM task.",
+        "operationId": "send_message_chat_sessions__session_id__messages_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Eight-character session UUID",
+              "title": "Session Id"
+            },
+            "description": "Eight-character session UUID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream. Each frame is ``data: <json>\\n\\n``, where ``<json>`` matches the ``SendMessageEvent`` union. The stream ends with ``data: [DONE]\\n\\n``.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$defs": {
+                    "SSEDoneEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "done",
+                          "description": "Event type constant for a completed SSE turn",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "ttft_ms": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Time to first token in milliseconds; null when no token was emitted",
+                          "title": "Ttft Ms"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "title": "SSEDoneEvent",
+                      "type": "object"
+                    },
+                    "SSEErrorEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "error",
+                          "description": "Event type constant",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "message": {
+                          "description": "Error description",
+                          "title": "Message",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "message"
+                      ],
+                      "title": "SSEErrorEvent",
+                      "type": "object"
+                    },
+                    "SSEReasoningEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "reasoning",
+                          "description": "Event type constant",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "Incremental extended-thinking text",
+                          "title": "Content",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "content"
+                      ],
+                      "title": "SSEReasoningEvent",
+                      "type": "object"
+                    },
+                    "SSEReplyEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "reply",
+                          "description": "Event type constant",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "Incremental token text",
+                          "title": "Content",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "content"
+                      ],
+                      "title": "SSEReplyEvent",
+                      "type": "object"
+                    },
+                    "SSEToolCallEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "tool_call",
+                          "description": "Event type constant",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Tool name",
+                          "title": "Name",
+                          "type": "string"
+                        },
+                        "arguments": {
+                          "additionalProperties": true,
+                          "description": "Tool arguments",
+                          "title": "Arguments",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name",
+                        "arguments"
+                      ],
+                      "title": "SSEToolCallEvent",
+                      "type": "object"
+                    },
+                    "SSEToolResultEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "tool_result",
+                          "description": "Event type constant",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Tool name",
+                          "title": "Name",
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "Tool result text",
+                          "title": "Content",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name",
+                        "content"
+                      ],
+                      "title": "SSEToolResultEvent",
+                      "type": "object"
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SSEReplyEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEReasoningEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEToolCallEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEToolResultEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEErrorEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEDoneEvent"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the request succeeded",
+            "default": true
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "Response payload"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse",
+        "description": "Common response envelope for the local runtime API."
+      },
+      "CaptureIngestBody": {
+        "properties": {
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp",
+            "description": "ISO 8601 capture time; generated by the server when omitted"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger",
+            "description": "Trigger metadata: {event_type, bundle_id, window_title, details?}"
+          },
+          "window_meta": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Window Meta",
+            "description": "{app_name, title, bundle_id}"
+          },
+          "ax_tree": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ax Tree",
+            "description": "Raw AX tree: {apps -> windows -> elements}; omission means AX is unavailable"
+          },
+          "ax_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ax Metadata",
+            "description": "AX capture metadata"
+          },
+          "screenshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screenshot",
+            "description": "{image_base64, mime_type, width, height}; plaintext in transit and encrypted at rest according to server configuration"
+          },
+          "ocr_jpeg_b64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Jpeg B64",
+            "description": "Base64 focused-window JPEG for local OCR when AX text is insufficient"
+          },
+          "ocr_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Tier",
+            "description": "Per-capture OCR tier override; uses configuration when omitted"
+          }
+        },
+        "type": "object",
+        "title": "CaptureIngestBody",
+        "description": "One capture frame pushed by a trusted Swift producer.\n\nThe Swift process owns Accessibility and Screen Recording permissions and\nsupplies the AX tree plus an optional focused-window screenshot. The daemon\nperforms enrichment and persistence. Fields align with the native\n``_build_capture`` output and degrade safely when optional data is absent."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "User message content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "SendMessageRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

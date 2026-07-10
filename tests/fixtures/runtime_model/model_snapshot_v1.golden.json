@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "top_level": [
+    "build",
+    "faces",
+    "generated_at",
+    "lines",
+    "points",
+    "receipts",
+    "root",
+    "schema_version",
+    "stats",
+    "volumes"
+  ],
+  "build": [
+    "build_id",
+    "completed_at",
+    "config_hash",
+    "core_commit",
+    "degraded_stages",
+    "duration_ms",
+    "input_window",
+    "mode",
+    "models",
+    "prompt_hashes",
+    "started_at",
+    "status",
+    "trigger"
+  ],
+  "point": [
+    "conflicted",
+    "confidence",
+    "content",
+    "created_at",
+    "file_name",
+    "id",
+    "is_latest",
+    "layer",
+    "occurred_at",
+    "receipt",
+    "status",
+    "superseded_by",
+    "supersedes",
+    "tags",
+    "valid_from",
+    "valid_until"
+  ],
+  "evolution_line": [
+    "id",
+    "kind",
+    "predicate",
+    "receipt",
+    "source",
+    "target"
+  ],
+  "relation_line": [
+    "confidence",
+    "created_at",
+    "id",
+    "kind",
+    "label",
+    "observations",
+    "polarity",
+    "predicate",
+    "provenance",
+    "quote",
+    "source",
+    "source_entity_kind",
+    "source_evidence",
+    "target",
+    "target_entity_kind",
+    "valid_from"
+  ],
+  "schema_object": [
+    "anchors",
+    "confidence",
+    "created_at",
+    "id",
+    "level",
+    "member_receipts",
+    "members",
+    "observations",
+    "parent_id",
+    "provenance",
+    "signature",
+    "source_receipts",
+    "status",
+    "valid_from"
+  ],
+  "receipt": [
+    "receipt",
+    "source_id",
+    "source_kind"
+  ],
+  "point_receipt_extra": [
+    "path"
+  ],
+  "stats": [
+    "active_points",
+    "evolution_lines",
+    "faces",
+    "points",
+    "receipts",
+    "redactions",
+    "relation_lines",
+    "roots",
+    "volumes"
+  ]
+}

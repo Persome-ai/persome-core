@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Coverage reports (generated locally + in CI)
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Compiled Swift helpers (rebuilt on first run)
+resources/mac-ax-helper
+resources/mac-ax-watcher
+resources/mac-ax-actuator
+
+# Local Persome data (only if symlinked into the repo for dev)
+.persome/
+
+# Ad-hoc logs / scratch
+*.log
+scratch/
+output/
+
+.env
+scripts/pii_names.local.txt
+
+# Claude Code worktrees (local dev isolation)
+.claude/worktrees/

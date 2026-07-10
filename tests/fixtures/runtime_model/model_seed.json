@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-07-10T08:00:00+00:00",
+  "points": [
+    {
+      "id": "point-focus-v1",
+      "content": "The user reserved mornings for focused writing.",
+      "file_name": "synthetic/work.md",
+      "tags": "work focus",
+      "valid_from": "2026-06-01T08:00:00+00:00"
+    },
+    {
+      "id": "point-focus-v2",
+      "content": "The user reserves mornings for focused writing and review.",
+      "file_name": "synthetic/work.md",
+      "tags": "work focus writing",
+      "valid_from": "2026-07-01T08:00:00+00:00",
+      "supersedes": "point-focus-v1"
+    },
+    {
+      "id": "point-collaboration",
+      "content": "The user reviews architecture decisions with collaborators.",
+      "file_name": "synthetic/collaboration.md",
+      "tags": "work collaboration",
+      "valid_from": "2026-06-15T08:00:00+00:00"
+    },
+    {
+      "id": "point-runtime",
+      "content": "The user treats Persome as a local-first personal model runtime.",
+      "file_name": "synthetic/projects.md",
+      "tags": "project persome runtime",
+      "valid_from": "2026-06-20T08:00:00+00:00"
+    }
+  ],
+  "relation": {
+    "id": "relation-self-persome",
+    "source": "self",
+    "target": "persome",
+    "predicate": "participates_in",
+    "source_kind": "self",
+    "target_kind": "project",
+    "label": "maintains",
+    "quote": "The user maintains the Persome runtime.",
+    "valid_from": "2026-06-20T08:00:00+00:00",
+    "source_event_kind": "session",
+    "source_event_id": "event:session:synthetic-1",
+    "source_receipt": "⟨event:session:synthetic-1:fixtures/session-1.json⟩"
+  },
+  "faces": [
+    {
+      "key": "face-focus",
+      "signature": "Focused mornings are used for writing and review.",
+      "members": ["point-focus-v2", "point-runtime"],
+      "anchors": ["self", "persome"]
+    },
+    {
+      "key": "face-collaboration",
+      "signature": "Architecture decisions are reviewed collaboratively.",
+      "members": ["point-collaboration", "point-runtime"],
+      "anchors": ["self", "persome"]
+    }
+  ],
+  "volume": {
+    "key": "volume-work",
+    "signature": "The user combines focused authorship with collaborative runtime stewardship.",
+    "members": ["face-focus", "face-collaboration"],
+    "anchors": ["self", "persome"]
+  },
+  "root": {
+    "signature": "A focused builder who turns personal context into an inspectable local model.",
+    "members": ["volume-work"],
+    "anchors": ["self", "persome"]
+  }
+}

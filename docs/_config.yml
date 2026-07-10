@@ -1,0 +1,6 @@
+title: Persome
+description: Local-first Personal Model Runtime for macOS
+theme: jekyll-theme-minimal
+show_downloads: true
+github:
+  repository_url: https://github.com/Persome-ai/persome-core

@@ -1,0 +1,72 @@
+[
+  {
+    "timestamp": "2026-07-10T09:00:10+08:00",
+    "trigger": {
+      "event_type": "AXValueChanged",
+      "bundle_id": "org.persome.synthetic.editor"
+    },
+    "window_meta": {
+      "app_name": "Synthetic Editor",
+      "title": "Persome Runtime documentation",
+      "bundle_id": "org.persome.synthetic.editor"
+    },
+    "ax_tree": {
+      "timestamp": "2026-07-10T09:00:10+08:00",
+      "apps": [
+        {
+          "name": "Synthetic Editor",
+          "bundle_id": "org.persome.synthetic.editor",
+          "is_frontmost": true,
+          "windows": [
+            {
+              "title": "Persome Runtime documentation",
+              "focused": true,
+              "elements": [
+                {
+                  "role": "AXTextArea",
+                  "title": "editor",
+                  "value": "Document the local-first runtime and auditable model build."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-07-10T09:01:10+08:00",
+    "trigger": {
+      "event_type": "AXValueChanged",
+      "bundle_id": "org.persome.synthetic.editor"
+    },
+    "window_meta": {
+      "app_name": "Synthetic Editor",
+      "title": "Persome Runtime documentation",
+      "bundle_id": "org.persome.synthetic.editor"
+    },
+    "ax_tree": {
+      "timestamp": "2026-07-10T09:01:10+08:00",
+      "apps": [
+        {
+          "name": "Synthetic Editor",
+          "bundle_id": "org.persome.synthetic.editor",
+          "is_frontmost": true,
+          "windows": [
+            {
+              "title": "Persome Runtime documentation",
+              "focused": true,
+              "elements": [
+                {
+                  "role": "AXTextArea",
+                  "title": "editor",
+                  "value": "Connect Point Line Face Volume and Root to reproducible artifacts."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
