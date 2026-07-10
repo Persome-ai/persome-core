@@ -1043,35 +1043,6 @@ def decay_report(
         )
 
 
-@app.command("memory-viz")
-def memory_viz(
-    out: str = typer.Option("", help="Write sem_facts.json here (default: <root>/sem_facts.json)."),
-) -> None:
-    """Precompute the semantic fact-space layout for the /model 3D explorer.
-
-    Reads the local index.db (read-only, zero-LLM, zero-network) and writes
-    ``sem_facts.json`` to the chronicle root: fact point cloud (XZ = semantic
-    layout), k-NN semantic edges (or the symbolic-graph fallback on stores
-    without embeddings — labeled via ``edge_source``), and emergent face
-    clusters. The model explorer (``/model``) picks the file up on next load.
-    """
-    from pathlib import Path as _Path
-
-    from . import paths
-    from .viz import sem_layout
-
-    out_path = _Path(out).expanduser() if out else paths.root() / "sem_facts.json"
-    try:
-        stats = sem_layout.generate(paths.index_db(), out_path)
-    except FileNotFoundError as exc:
-        typer.echo(f"error: {exc}")
-        raise typer.Exit(1) from exc
-    typer.echo(
-        f"sem_facts: {stats['facts']} fact(s), {stats['edges']} edge(s) "
-        f"({stats['edge_source']}), {stats['faces']} face(s) -> {stats['out']}"
-    )
-
-
 install_app = typer.Typer(help="Register the MCP server with common LLM clients.")
 app.add_typer(install_app, name="install")
 

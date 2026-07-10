@@ -266,7 +266,8 @@ persome model status
 A new store can truthfully have Points but no Face, Volume, or Root. Those
 levels require repeated stable evidence and model status should remain
 `degraded`; the viewer does not invent missing geometry. Check
-`model-build.json` for failed stages and `sem_facts.json` for generated layout.
+`model-build.json` for failed stages and `/model/graph` for the exact snapshot
+currently consumed by the viewer.
 
 ## Resetting
 

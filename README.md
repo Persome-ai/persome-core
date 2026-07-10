@@ -89,7 +89,7 @@ patterns as evidence-backed skill memory.
 
 At 00:15 local time by default, the daemon runs the same locked build as
 `persome model build`: pending session recovery, case extraction, schema mining,
-cross-domain synthesis, Root synthesis, vectors, and semantic layout. A new or
+cross-domain synthesis, Root synthesis, and vector backfill. A new or
 sparse store is expected to be `degraded` until repeated evidence is sufficient
 for a Face, Volume, and Root. `persome model status` explains which geometry is
 missing; the viewer reflects the current store rather than filling gaps with

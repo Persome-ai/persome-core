@@ -117,7 +117,6 @@ def _run_pipeline(cfg: Any) -> PipelineOutcome:
     """Run the existing one-shot stage functions in paper-model order."""
     from .. import vectors_tick
     from ..session.tick import _run_evomem_enrichment_once
-    from ..viz import sem_layout
     from ..writer import agent as writer_agent
     from ..writer import cross_domain_sweeper, root_synthesis, schema_miner_stage
 
@@ -223,10 +222,6 @@ def _run_pipeline(cfg: Any) -> PipelineOutcome:
 
     _run_stage(outcome, "vector_backfill", run_vectors)
 
-    def run_layout() -> dict[str, Any]:
-        return sem_layout.generate(paths.index_db(), paths.root() / "sem_facts.json")
-
-    _run_stage(outcome, "semantic_layout", run_layout)
     return outcome
 
 

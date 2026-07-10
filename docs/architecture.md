@@ -120,7 +120,6 @@ ingestion architecture.
 | `memory/skills/skill-*.md` | Evidence-backed repeated behavior. |
 | `index.db` | WAL-mode sessions, FTS5, evomem, relations, geometry, receipts, vectors, and audit tables. |
 | `model-build.json` | Owner-only build conditions and stage outcomes. |
-| `sem_facts.json` | Local semantic layout consumed by `/model`. |
 | `exports/*.json` | Owner-only, redacted-by-default snapshots. |
 | `backup/*.db` | Verified daily SQLite snapshots when enabled. |
 

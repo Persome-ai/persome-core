@@ -3,7 +3,7 @@
   "info": {
     "title": "Persome API",
     "description": "Local-first screen-context memory — REST API layer.",
-    "version": "0.1.0"
+    "version": "0.2.2"
   },
   "paths": {
     "/health": {
@@ -78,7 +78,7 @@
           "capture"
         ],
         "summary": "Ingest Capture",
-        "description": "接收可信本地生产者采集的一帧 capture，完成富化、去重和持久化。\n\n采集层（AX 树 + 焦点窗口截图）已搬进持有 Accessibility / Screen-Recording 的 Swift\n进程（``capture.source = \"ingest\"``）；daemon 自身不再 spawn watcher、不再抓屏，因而\n不需要任何系统权限。落库和去重与 daemon 自采路径共用同一 runner。",
+        "description": "Ingest one frame from a trusted local producer.\n\nThis replay/embedding path shares enrichment, deduplication, and persistence\nwith the daemon's native macOS AX watcher.",
         "operationId": "ingest_capture_captures_ingest_post",
         "requestBody": {
           "content": {
@@ -142,7 +142,7 @@
           "model"
         ],
         "summary": "Model Graph",
-        "description": "Read-only model graph: nodes (USER + roster identities +\nActivity endpoints), relation_edges (both statuses — the shadow/ACTIVE\nsplit IS the point), and the schema_faces tower, each carrying its\nbitemporal fields so the client can replay f(T) without refetching.\nZero-LLM; fail-open per section (a store predating a table contributes\nan empty list).",
+        "description": "Return the canonical versioned Point/Line/Face/Volume/Root snapshot.",
         "operationId": "model_graph_model_graph_get",
         "responses": {
           "200": {

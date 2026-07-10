@@ -38,14 +38,8 @@ dependencies = [
     # keep the AX pipeline and degrade cleanly without local OCR.
     "paddleocr==3.7.0; platform_machine == 'arm64'",
     "paddlepaddle==3.3.1; platform_machine == 'arm64'",
-    # Semantic fact-space visualization (persome memory-viz / src/persome/viz/sem_layout.py):
-    # community detection (louvain_communities) over the fact k-NN graph. Declared
-    # explicitly — it is only transitively present via paddle on arm64, and the x86_64
-    # (OCR-less) slice has no paddle to pull it in.
-    "networkx>=3.0",
-    # Direct dependency: sem_layout (memory-viz) and the OCR in-process decode
-    # path both import numpy on every platform — do not rely on the transitive
-    # copy that only paddle/onnxruntime happen to pull in.
+    # Vector retrieval and the OCR in-process decode path import numpy directly;
+    # do not rely on the transitive copy pulled in by Paddle on arm64.
     "numpy>=1.26",
 ]
 

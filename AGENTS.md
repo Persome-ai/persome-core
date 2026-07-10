@@ -76,7 +76,7 @@ mac-ax-watcher or trusted ingest
        -> pattern detector
        -> evidence-gated memory_delta + deterministic apply
   -> daily/explicit model build
-       -> cases -> Faces -> Volumes -> Root -> semantic layout
+       -> cases -> Faces -> Volumes -> Root
   -> snapshot / MCP / Chat / localhost viewer
 ```
 

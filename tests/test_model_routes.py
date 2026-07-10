@@ -1,137 +1,115 @@
-"""Formal paper-model HTTP routes and local 3D visualization.
-
-Deterministic, zero-LLM. Pins: the graph JSON contract (nodes derived from USER ∪ edge
-endpoints ∪ roster, kind partition user/person/activity, edges carrying their
-bitemporal fields both statuses included, faces live-only), the served page
-(locally bundled Three.js canvas fetching the model endpoint), versioned model
-snapshot, receipt drill-down, and offline assets.
-"""
+"""Canonical model snapshot HTTP routes and the offline viewer shell."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from persome.api import routes
+from persome.evomem.models import MemoryLayer, MemoryNode
+from persome.evomem.store import NodeStore
 from persome.store import fts
 from persome.store import relation_edges as edges_store
-from persome.store import schema_faces as faces_store
 
 
-def _seed(conn):
-    edges_store.ensure_schema(conn)
-    faces_store.ensure_schema(conn)
-    edges_store.add_edge(
-        conn,
-        src_identity="self",
-        dst_identity="张伟",
-        predicate=edges_store.Predicate.KNOWS,
-        src_kind=edges_store.EntityKind.SELF,
-        dst_kind=edges_store.EntityKind.PERSON,
-        provenance="inferred",
-        confidence=0.9,
-        status="active",
-        valid_from="2026-01-01T00:00:00+00:00",
+def _save_point(
+    *,
+    node_id: str,
+    content: str,
+    file_name: str = "project-persome.md",
+) -> None:
+    NodeStore().save(
+        MemoryNode(
+            node_id=node_id,
+            content=content,
+            layer=MemoryLayer.L2_FACT,
+            file_name=file_name,
+            memory_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        )
     )
-    edges_store.add_edge(
-        conn,
-        src_identity="self",
-        dst_identity="event:entry:e42",
-        predicate=edges_store.Predicate.PARTICIPATES_IN,
-        src_kind=edges_store.EntityKind.SELF,
-        dst_kind=edges_store.EntityKind.EVENT,
-        provenance="inferred",
-        confidence=0.9,
-        source_kind="entry",
-        source_id="e42",
-        source_receipt="⟨e42:event-2026-07-10.md⟩",
-    )
-    fid = faces_store.record_face(
-        conn,
-        source="mined",
-        signature="每天早上先看邮件",
-        members=["a", "b", "c"],
-        anchors=["张伟"],
-    )
-    return fid
 
 
 class TestGraphJson:
-    def test_shape_nodes_edges_faces(self, ac_root):
-        with fts.cursor() as conn:
-            _seed(conn)
-        g = routes.model_graph()
-        # node kind = the full EntityKind closed set (§1.2 种类 axis), recovered
-        # from the persisted src_kind/dst_kind edge columns
-        kinds = {n["id"]: n["kind"] for n in g["nodes"]}
-        assert kinds["self"] == "self"
-        assert kinds["张伟"] == "person"
-        assert kinds["event:entry:e42"] == "event"
-        # edges carry status + bitemporal fields; BOTH statuses included (the
-        # shadow/ACTIVE split is what the view exists to show)
-        stats = {e["status"] for e in g["edges"]}
-        assert stats == {"active", "shadow"}
-        active = next(e for e in g["edges"] if e["status"] == "active")
-        assert active["valid_from"] == "2026-01-01T00:00:00+00:00"
-        assert "observations" in active and "recall_count" in active
-        # §7-6 lens axes ride along: kinds, polarity (closed ±0), provenance
-        assert active["src_kind"] == "self" and active["dst_kind"] == "person"
-        assert active["polarity"] == "0"
-        assert active["provenance"] == "inferred"
-        activity = next(e for e in g["edges"] if e["b"] == "event:entry:e42")
-        assert activity["source_kind"] == "entry"
-        assert activity["source_id"] == "e42"
-        assert activity["source_receipt"] == "⟨e42:event-2026-07-10.md⟩"
-        assert [f["provenance"] for f in g["faces"]] == ["mined"]
-        assert g["faces"][0]["level"] == 1
-        # anchors ride along — the hull vertices the view renders the face over
-        assert g["faces"][0]["anchors"] == ["张伟"]
-        # §7-8 检索权重状态随行（看板 stats 行的数据源）
-        s = g["search"]
-        assert set(s) == {
-            "slot_pool_weight",
-            "relation_pool_weight",
-            "relation_include_shadow",
-            "contains_pool_rerank",
-            "active_edges",
-            "shadow_edges",
-        }
-        assert s["active_edges"] == 1 and s["shadow_edges"] == 1
-        # §7-10 池内混排状态随行 — 模块默认开
-        assert s["contains_pool_rerank"] is True
-        assert g["model"]["schema_version"] == 1
-        assert set(g["model"]) >= {"points", "lines", "faces", "volumes", "root", "receipts"}
+    def test_graph_is_the_canonical_snapshot(self, ac_root):
+        _save_point(node_id="point-runtime", content="The runtime stores local context.")
 
-    def test_empty_store_is_user_only_fail_open(self, ac_root):
-        g = routes.model_graph()
-        assert [n["id"] for n in g["nodes"]] == ["self"]
-        assert g["edges"] == [] and g["faces"] == []
-        assert g["model"]["stats"]["points"] == 0
+        graph = routes.model_graph()
+
+        assert set(graph) == {"generated_at", "model"}
+        assert graph["model"]["schema_version"] == 1
+        assert [point["id"] for point in graph["model"]["points"]] == ["point-runtime"]
+        assert set(graph["model"]) >= {
+            "points",
+            "lines",
+            "faces",
+            "volumes",
+            "root",
+            "receipts",
+        }
+
+    def test_empty_store_returns_an_empty_snapshot(self, ac_root):
+        graph = routes.model_graph()
+        assert graph["model"]["points"] == []
+        assert graph["model"]["stats"]["points"] == 0
 
 
 class TestViewPage:
-    def test_page_serves_the_canvas_without_network_imports(self, ac_root):
+    def test_page_uses_snapshot_native_offline_assets(self, ac_root):
         body = routes.model_view().body.decode()
-        assert "/model/graph" in body
+        assert "/model/assets/viewer.css" in body
+        assert "/model/assets/viewer.js" in body
         assert "/model/assets/three.module.js" in body
         assert "cdn.jsdelivr.net" not in body
-        assert "preserveDrawingBuffer:true" in body
-        assert "point.receipt" in body
-        assert "根◎" in body
-        assert "as-of" in body  # the f(T) scrubber
+        assert "Personal Model" in body
+        assert "Points" in body and "Volumes" in body and "Root" in body
 
-    def test_bundled_three_asset_is_served(self, ac_root):
-        response = routes.model_asset("three.module.js")
-        assert len(response.body) > 1_000_000
-        assert b"class WebGLRenderer" in response.body
+    def test_bundled_viewer_assets_are_served(self, ac_root):
+        three = routes.model_asset("three.module.js")
+        viewer = routes.model_asset("viewer.js")
+        css = routes.model_asset("viewer.css")
+
+        assert len(three.body) > 1_000_000
+        assert b"class WebGLRenderer" in three.body
+        assert b"model.points" in viewer.body
+        assert b"model.lines" in viewer.body
+        assert b"model.faces" in viewer.body
+        assert b"model.volumes" in viewer.body
+        assert b"model.root" in viewer.body
+        assert viewer.media_type == "text/javascript"
+        assert css.media_type == "text/css"
 
 
 class TestNodeReceipts:
-    """§2.1 click-through: /model/node returns raw receipts behind a point."""
+    def test_snapshot_point_returns_its_exact_receipt(self, ac_root):
+        _save_point(
+            node_id="point-runtime",
+            content="The runtime stores auditable local context.",
+            file_name="synthetic/runtime.md",
+        )
+
+        detail = routes.model_node(id="point-runtime")
+
+        assert detail["source"] == "synthetic/runtime.md"
+        assert detail["raw"][0]["text"] == "The runtime stores auditable local context."
+        assert detail["raw"][0]["receipt"] == "⟨point-runtime:synthetic/runtime.md⟩"
+
+    def test_historical_snapshot_point_keeps_its_receipt(self, ac_root):
+        _save_point(
+            node_id="point-runtime-v1",
+            content="The runtime used an earlier model contract.",
+            file_name="synthetic/runtime.md",
+        )
+        with fts.cursor() as conn:
+            conn.execute(
+                "UPDATE evo_nodes SET is_latest = 0, status = 'superseded' WHERE node_id = ?",
+                ("point-runtime-v1",),
+            )
+
+        detail = routes.model_node(id="point-runtime-v1")
+
+        assert detail["source"] == "synthetic/runtime.md"
+        assert detail["raw"][0]["receipt"] == "⟨point-runtime-v1:synthetic/runtime.md⟩"
 
     def test_person_node_returns_entity_trail(self, ac_root):
-        from datetime import UTC, datetime
-
-        from persome.evomem.models import MemoryLayer, MemoryNode
-        from persome.evomem.store import NodeStore
-
         NodeStore().save(
             MemoryNode(
                 node_id="n-zw-1",
@@ -141,13 +119,13 @@ class TestNodeReceipts:
                 memory_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
             )
         )
-        d = routes.model_node(id="张伟")
-        assert d["source"] == "person-张伟.md"
-        assert d["raw"] and "张伟负责后端评审" in d["raw"][0]["text"]
-        assert d["raw"][0]["receipt"] == "⟨n-zw-1:person-张伟.md⟩"
+        detail = routes.model_node(id="张伟")
+        assert detail["source"] == "person-张伟.md"
+        assert detail["raw"] and "张伟负责后端评审" in detail["raw"][0]["text"]
+        assert detail["raw"][0]["receipt"] == "⟨n-zw-1:person-张伟.md⟩"
 
     def test_legacy_event_node_uses_activity_adapter(self, ac_root):
-        import json as _json
+        import json
 
         with fts.cursor() as conn:
             conn.execute(
@@ -174,48 +152,23 @@ class TestNodeReceipts:
                 " VALUES (77, '2026-07-01T09:00:00+00:00', 'timeline', 'meeting', 0.9,"
                 " 'resolved', '和张伟对齐接口', ?, '[]', 'k77',"
                 " '2026-07-01T09:00:00+00:00', 'done')",
-                (_json.dumps({"with": ["张伟"]}, ensure_ascii=False),),
+                (json.dumps({"with": ["张伟"]}, ensure_ascii=False),),
             )
-        d = routes.model_node(id="event:77")
-        assert d["source"] == "⟨77:intents⟩"
-        assert d["raw"] and "和张伟对齐接口" in d["raw"][0]["text"]
-        assert d["raw"][0]["receipt"] == "⟨77:intents⟩"
+        detail = routes.model_node(id="event:77")
+        assert detail["source"] == "⟨77:intents⟩"
+        assert detail["raw"] and "和张伟对齐接口" in detail["raw"][0]["text"]
+        assert detail["raw"][0]["receipt"] == "⟨77:intents⟩"
 
     def test_unknown_id_is_empty_fail_open(self, ac_root):
-        d = routes.model_node(id="不存在的人")
-        assert d["raw"] == []
-
-
-class TestTypedPoints:
-    """§7-6 kind-axis 过渡腿: org-*/project-* entity files enter as typed points."""
-
-    def test_project_entity_file_becomes_project_node(self, ac_root):
-        from datetime import UTC, datetime
-
-        from persome.evomem.models import MemoryLayer, MemoryNode
-        from persome.evomem.store import NodeStore
-
-        NodeStore().save(
-            MemoryNode(
-                node_id="n-acme-1",
-                content="Acme 是主项目",
-                layer=MemoryLayer.L4_IDENTITY,
-                file_name="project-Acme.md",
-                memory_at=datetime(2026, 7, 1, tzinfo=UTC),
-            )
-        )
-        g = routes.model_graph()
-        kinds = {n["id"]: n["kind"] for n in g["nodes"]}
-        # a typed point with no edges is an honest orphan, but it EXISTS with
-        # its kind — the sector can start growing
-        assert kinds.get("Acme") == "project"
+        detail = routes.model_node(id="不存在的人")
+        assert detail["raw"] == []
 
 
 class TestNodeTree:
-    """§1.2 点开一个事物 → 以它为根的整棵树 (bounded BFS, strongest-first)."""
+    """A node drill-down includes a bounded strongest-first relation tree."""
 
     def _seed_chain(self, conn):
-        for src, dst, sk, dk, obs in (
+        for src, dst, src_kind, dst_kind, observations in (
             ("self", "张伟", "self", "person", 5),
             ("张伟", "Bob", "person", "person", 2),
             ("self", "李四", "self", "person", 1),
@@ -225,28 +178,26 @@ class TestNodeTree:
                 src_identity=src,
                 dst_identity=dst,
                 predicate="knows",
-                src_kind=sk,
-                dst_kind=dk,
+                src_kind=src_kind,
+                dst_kind=dst_kind,
                 provenance="inferred",
                 confidence=0.9,
-                observations=obs,
+                observations=observations,
             )
 
     def test_tree_rooted_at_point_walks_both_directions(self, ac_root):
         with fts.cursor() as conn:
             edges_store.ensure_schema(conn)
             self._seed_chain(conn)
-        d = routes.model_node(id="张伟")
-        tree = d["tree"]
-        assert tree["id"] == "张伟"
-        # depth 1: incoming self edge (obs 5) first, then outgoing Bob
-        firsts = [(e["dir"], e["child"]["id"], e["observations"]) for e in tree["edges"]]
+        tree = routes.model_node(id="张伟")["tree"]
+        firsts = [
+            (edge["dir"], edge["child"]["id"], edge["observations"]) for edge in tree["edges"]
+        ]
         assert ("in", "self", 5) in firsts and ("out", "Bob", 2) in firsts
-        # depth 2 under self: 李四 reachable; 张伟 cycle-guarded out
-        self_node = next(e["child"] for e in tree["edges"] if e["child"]["id"] == "self")
-        ids2 = {e["child"]["id"] for e in self_node["edges"]}
-        assert "李四" in ids2 and "张伟" not in ids2
+        self_node = next(edge["child"] for edge in tree["edges"] if edge["child"]["id"] == "self")
+        second_level = {edge["child"]["id"] for edge in self_node["edges"]}
+        assert "李四" in second_level and "张伟" not in second_level
 
     def test_tree_isolated_point_is_bare_root(self, ac_root):
-        d = routes.model_node(id="孤点")
-        assert d["tree"] == {"id": "孤点", "edges": []}
+        detail = routes.model_node(id="孤点")
+        assert detail["tree"] == {"id": "孤点", "edges": []}

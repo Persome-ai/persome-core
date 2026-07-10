@@ -1,4 +1,4 @@
-"""MCP server exposing Persome memory as read-only tools.
+"""MCP server exposing Persome memory and explicit correction tools.
 
 Uses the official `mcp` Python SDK via FastMCP. Runs either standalone
 over stdio (`persome mcp`) or in-daemon over streamable-http / sse,
@@ -19,6 +19,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any
 
+from .. import __version__
 from ..config import Config
 from ..config import load as load_config
 from ..logger import get
@@ -464,6 +465,7 @@ def _entity_graph(  # type: ignore[no-untyped-def]
             "note": f"'{name}' 未能消解为已知身份——图里还没有这个人/物，或提法歧义（不硬猜）。",
         }
     canonical = res.canonical
+    assert canonical is not None
 
     def _edge_dict(r) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         keys = set(r.keys())
@@ -778,6 +780,9 @@ def build_server(cfg: Config | None = None):  # type: ignore[no-untyped-def]
             ],
         ),
     )
+    # FastMCP otherwise reports the SDK version in the MCP initialize response.
+    # The server contract must identify the Persome Runtime release instead.
+    server._mcp_server.version = __version__  # noqa: SLF001
 
     @server.tool()
     def list_memories(include_dormant: bool = False, include_archived: bool = False) -> str:

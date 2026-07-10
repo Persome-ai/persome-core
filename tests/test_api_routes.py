@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from persome import __version__
 from persome.api import build_api_app
 
 
@@ -15,6 +16,11 @@ def test_health_returns_ok() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body == {"success": True, "data": {"status": "ok"}}
+
+
+def test_openapi_reports_runtime_version() -> None:
+    client = TestClient(build_api_app())
+    assert client.get("/openapi.json").json()["info"]["version"] == __version__
 
 
 def test_model_routes_are_public_and_local(ac_root) -> None:

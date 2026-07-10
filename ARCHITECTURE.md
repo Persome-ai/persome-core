@@ -62,8 +62,7 @@ The coordinator runs, in order:
 4. level-1 schema mining;
 5. level-2 cross-domain synthesis;
 6. level-3 root synthesis;
-7. vector backfill;
-8. semantic layout generation.
+7. vector backfill.
 
 Each stage records completion, skip, or failure. Enrichment runs every enabled
 substage before surfacing a partial failure, so the manifest cannot call a
@@ -83,7 +82,6 @@ written atomically with owner-only permissions.
 | `index.db` | WAL-mode FTS5, model, provenance, sessions, and vectors |
 | `model-build.json` | last reproducibility manifest |
 | `exports/*.json` | redacted model snapshots, mode `0600` |
-| `sem_facts.json` | semantic coordinates for the local viewer |
 
 Markdown remains the default write authority; evomem can be selected
 explicitly. The runtime does not destructively migrate old product tables, and

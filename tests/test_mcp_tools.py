@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from persome import __version__
 from persome.mcp import captures as captures_mod
 from persome.mcp import server as mcp_server
 from persome.store import entries as entries_mod
@@ -67,6 +68,11 @@ def test_get_model_snapshot_uses_versioned_contract(ac_root: Path) -> None:
     assert out["points"] == []
     assert out["root"] is None
     assert out["stats"]["roots"] == 0
+
+
+def test_server_reports_runtime_version(ac_root: Path) -> None:
+    server = mcp_server.build_server()
+    assert server._mcp_server.version == __version__
 
 
 # ─── search_captures + current_context ────────────────────────────────────

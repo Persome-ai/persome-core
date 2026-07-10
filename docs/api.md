@@ -23,11 +23,13 @@ runtime schema.
 | GET | `/status` | Daemon, capture, session, memory, and provider status. |
 | POST | `/captures/ingest` | Ingest one capture from a trusted local producer. |
 | GET | `/model` | Open the offline Point/Line/Face/Volume/Root explorer. |
-| GET | `/model/graph` | Read visualization data plus the versioned model snapshot. |
-| GET | `/model/node?id=...` | Resolve one graph point to receipts and its relation tree. |
+| GET | `/model/graph` | Read the canonical versioned model snapshot. |
+| GET | `/model/node?id=...` | Resolve a snapshot Point ID or relation endpoint to receipts and its relation tree. |
 
-The model page loads its pinned Three.js modules from `/model/assets/*`. Those
-static routes are package resources and are intentionally omitted from OpenAPI.
+The model page renders snapshot Points and Lines directly, then derives the
+Face, Volume, and Root hierarchy from their declared `members`. It loads its
+pinned Three.js modules from `/model/assets/*`; those package resources are
+intentionally omitted from OpenAPI.
 
 ## Chat routes
 
@@ -49,7 +51,7 @@ interactive client; the routes above support trusted local product clients.
 
 ## Model contract
 
-`GET /model/graph` includes a `model` object with the same schema returned by the
+`GET /model/graph` wraps a `model` object with the same schema returned by the
 MCP `get_model_snapshot` tool and CLI `persome model export`:
 
 ```text

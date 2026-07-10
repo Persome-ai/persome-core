@@ -17,6 +17,7 @@ from starlette.datastructures import Headers
 from starlette.routing import Mount
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .. import __version__
 from ..config import Config
 from ..logger import get as _get_logger
 from ..trace import generate_trace_id, set_trace_id
@@ -191,7 +192,7 @@ def build_api_app(cfg: Config | None = None) -> FastAPI:
     app = FastAPI(
         title="Persome API",
         description="Local-first screen-context memory — REST API layer.",
-        version="0.1.0",
+        version=__version__,
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
