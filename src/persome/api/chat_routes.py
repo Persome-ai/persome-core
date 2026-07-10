@@ -634,24 +634,6 @@ async def send_message(
     return EventSourceResponse(_events())
 
 
-@router.post("/consolidate", response_model=ApiResponse, tags=["consolidation"])
-def trigger_consolidation() -> ApiResponse:
-    """手动触发一次离线 consolidation（绕过 session 计数器）。
-
-    Returns the current completed-session counter so callers can sanity-check
-    the cadence state.
-    """
-    from ..writer.classifier import trigger_consolidation_now
-
-    cfg = _get_cfg()
-    try:
-        count = trigger_consolidation_now(cfg)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("manual consolidation failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"consolidation failed: {exc}") from exc
-    return ApiResponse(data={"status": "triggered", "session_count": count})
-
-
 @router.delete("/chat/sessions/{session_id}", response_model=ApiResponse, tags=["chat"])
 def delete_session(
     session_id: Annotated[str, FastPath(description="会话 ID（8 位短 UUID）")],

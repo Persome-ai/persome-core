@@ -238,34 +238,6 @@ port = 8742
 - `sse` — legacy. Still works but deprecated.
 - `stdio` — don't set this in the daemon config; stdio is for per-client spawns via `persome mcp`.
 
-## `[debug_hud]`
-
-Controls what the **debug HUD** renders — the always-on-top panel shown when debug mode is enabled in the app.
-
-```toml
-[debug_hud]
-show = ["stage"]                  # allowlist of content blocks to render
-```
-
-`show` is a single allowlist; the HUD renders **only** the keys listed. Valid keys:
-
-| Key | Shows |
-|---|---|
-| `tool_call` | agent tool calls (name + arguments) |
-| `thinking` | agent reasoning text (`llm_text`) |
-| `stage` | pipeline stage start/end (classifier, reducer, schema, …) — **default** |
-| `health` | daemon health + uptime / sessions / memory counts |
-| `memory` | most recent memory writes |
-
-`tool_call` / `thinking` / `stage` are event kinds inside the **AGENT ACTIVITY**
-feed; `health` and `memory` are separate panels. Default is `["stage"]` so the
-HUD is quiet; add keys to surface more, for example
-`show = ["stage", "tool_call", "thinking", "health"]`.
-
-Applied **live**: the HUD reads this via `GET /config/debug-hud`, which re-reads `config.toml` on each call, so changes take effect without restarting the daemon (within the HUD's poll interval).
-
-> **You don't need to hand-edit this.** The HUD has a **gear button** (top-right) that opens an in-place checklist of these blocks — ticking a box writes `show` for you via `PUT /config/debug-hud`. Editing the TOML directly still works and is equivalent.
-
 ## Environment overrides
 
 - `PERSOME_ROOT=/some/path` — move `~/.persome/` entirely. Good for tests, throwaway envs, or separating work and personal memory.

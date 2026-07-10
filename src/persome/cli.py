@@ -1058,13 +1058,13 @@ def decay_report(
 def memory_viz(
     out: str = typer.Option("", help="Write sem_facts.json here (default: <root>/sem_facts.json)."),
 ) -> None:
-    """Precompute the semantic fact-space layout for the /dev/memory 3D dashboard.
+    """Precompute the semantic fact-space layout for the /model 3D explorer.
 
     Reads the local index.db (read-only, zero-LLM, zero-network) and writes
     ``sem_facts.json`` to the chronicle root: fact point cloud (XZ = semantic
     layout), k-NN semantic edges (or the symbolic-graph fallback on stores
     without embeddings — labeled via ``edge_source``), and emergent face
-    clusters. The dashboard (``/dev/memory``) picks the file up on next load.
+    clusters. The model explorer (``/model``) picks the file up on next load.
     """
     from pathlib import Path as _Path
 

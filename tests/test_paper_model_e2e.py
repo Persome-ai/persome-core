@@ -217,3 +217,19 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
     assert all(face["source_receipts"] for face in snapshot["faces"])
     assert all(volume["source_receipts"] for volume in snapshot["volumes"])
     assert exported.stat().st_mode & 0o777 == 0o600
+
+    client = TestClient(build_api_app(cfg))
+    graph_response = client.get("/model/graph")
+    assert graph_response.status_code == 200
+    live = graph_response.json()["model"]
+    assert live["points"]
+    assert live["lines"]
+    assert live["faces"]
+    assert live["volumes"]
+    assert live["root"] is not None
+    assert live["root"]["source_receipts"]
+
+    page = client.get("/model")
+    assert page.status_code == 200
+    assert "/model/assets/three.module.js" in page.text
+    assert "cdn.jsdelivr.net" not in page.text

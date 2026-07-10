@@ -38,7 +38,7 @@ logger = get("persome.writer.delta_apply")
 SELF_IDENTITY = "self"
 EVENT_PREFIX = "event:"
 
-# kind → markdown file 前缀（与 dev_memory_graph 的 typed-point 反射一致：tool-*→artifact）
+# kind → markdown file 前缀（与 model_graph 的 typed-point 反射一致：tool-*→artifact）
 _KIND_PREFIX = {"person": "person", "org": "org", "project": "project", "artifact": "tool"}
 _KIND_ENUM = {
     "person": EntityKind.PERSON,

@@ -521,69 +521,6 @@ class ChatConfig:
 
 
 @dataclass
-class DebugHudConfig:
-    # What the debug HUD (the always-on-top panel shown in debug mode) renders.
-    # A single allowlist over every content block; the HUD shows only the keys
-    # listed here. Valid keys:
-    #   tool_call / thinking / stage           — AGENT ACTIVITY event kinds
-    #   health                                 — daemon health + counts
-    #   memory                                 — recent memory writes
-    # Default is stage only, so the panel is quiet by default; add keys to
-    # surface more. Read live via GET /config/debug-hud (no daemon restart).
-    show: list[str] = field(default_factory=lambda: ["stage"])
-
-
-# Valid [debug_hud] show keys, in display order. The app's gear menu offers
-# exactly these; the PUT endpoint filters writes to this set.
-DEBUG_HUD_KEYS: tuple[str, ...] = (
-    "tool_call",
-    "thinking",
-    "stage",
-    "health",
-    "memory",
-)
-
-
-def set_debug_hud_show(toml_text: str, show: list[str]) -> str:
-    """Return ``toml_text`` with ``[debug_hud] show`` set to ``show``.
-
-    A targeted, formatting-preserving edit (NOT a full re-serialize): replaces
-    the ``show = …`` line inside an existing ``[debug_hud]`` section, inserts
-    the line if the section exists without it, or appends a fresh section.
-    Everything else in the file — comments, ordering, the user's other edits —
-    is left untouched. Used by ``PUT /config/debug-hud`` so the app's gear menu
-    can persist the allowlist without anyone hand-editing the file.
-    """
-    rendered = "show = [" + ", ".join(f'"{s}"' for s in show) + "]"
-    lines = toml_text.splitlines()
-    trailing_nl = toml_text.endswith("\n") or toml_text == ""
-
-    sec = next((i for i, ln in enumerate(lines) if ln.strip() == "[debug_hud]"), None)
-    if sec is None:
-        prefix = "" if toml_text == "" else ("\n" if trailing_nl else "\n\n")
-        return toml_text + f"{prefix}[debug_hud]\n{rendered}\n"
-
-    j = sec + 1
-    while j < len(lines):
-        s = lines[j].strip()
-        if s.startswith("[") and s.endswith("]"):
-            break  # next section, no show line found
-        if s.startswith("show") and "=" in s:
-            lines[j] = rendered
-            return "\n".join(lines) + ("\n" if trailing_nl else "")
-        j += 1
-    lines.insert(sec + 1, rendered)
-    return "\n".join(lines) + ("\n" if trailing_nl else "")
-
-
-@dataclass
-class DevConfig:
-    # Developer-only gates retained for compatibility while the memory viewer
-    # moves from /dev/memory to the formal /model surface.
-    enabled: bool = False
-
-
-@dataclass
 class Config:
     models: dict[str, ModelConfig] = field(default_factory=dict)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
@@ -604,8 +541,6 @@ class Config:
     schema: SchemaConfig = field(default_factory=SchemaConfig)
     user: UserConfig = field(default_factory=UserConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
-    debug_hud: DebugHudConfig = field(default_factory=DebugHudConfig)
-    dev: DevConfig = field(default_factory=DevConfig)
     # --- Competitive-enhancement feature flags (spec 2026-06-23-evomem-...) ---
     # Flat top-level toggles, read defensively via ``getattr(cfg, name, default)``
     # at each feature site (api Origin/Host guard · extraction known-memory
@@ -629,8 +564,6 @@ class Config:
     # Extended retention for user-input-anchored capture receipts.
     capture_extended_retention_enabled: bool = True
     capture_actionable_retention_days: int = 7
-    # Wave 3: #9 Rewind REST endpoints (/rewind/day, /rewind/screenshot).
-    rewind_enabled: bool = True
 
     def model_for(self, stage: str) -> ModelConfig:
         """Return stage config (already inherited from default at build time)."""
@@ -753,8 +686,6 @@ def load(path: Path | None = None) -> Config:
         schema=_build_dataclass(SchemaConfig, _as_dict(raw.get("schema"))),
         user=_build_dataclass(UserConfig, _as_dict(raw.get("user"))),
         chat=_build_chat(_as_dict(raw.get("chat"))),
-        debug_hud=_build_dataclass(DebugHudConfig, _as_dict(raw.get("debug_hud"))),
-        dev=_build_dataclass(DevConfig, _as_dict(raw.get("dev"))),
         # Competitive-enhancement flat toggles (spec 2026-06-23): top-level TOML
         # scalars so config.toml can override the safe defaults.
         api_require_local_origin=bool(raw.get("api_require_local_origin", True)),
@@ -771,7 +702,6 @@ def load(path: Path | None = None) -> Config:
             raw.get("capture_extended_retention_enabled", True)
         ),
         capture_actionable_retention_days=int(raw.get("capture_actionable_retention_days", 7)),
-        rewind_enabled=bool(raw.get("rewind_enabled", True)),
     )
 
 
@@ -977,13 +907,6 @@ cross_domain_enabled = true       # Hy-Memory cross-domain sweeper: collide topi
 cross_domain_behavior_max_distance = 0.5  # behavior-distance ceiling for the deterministic pre-filter (≤ == behavior-near)
 cross_domain_min_confidence = 0.6 # fused cross-domain schema below this confidence is born forming (not injected)
 
-[debug_hud]
-# What the debug HUD (always-on-top panel, shown in debug mode) renders.
-# Allowlist over content blocks — the panel shows ONLY what's listed.
-# Keys: tool_call / thinking / stage (AGENT ACTIVITY event kinds),
-#       health (daemon health + counts), memory (recent memory writes).
-# Default is stage only; add keys to surface more. Applied live (no restart).
-show = ["stage"]
 """
 
 

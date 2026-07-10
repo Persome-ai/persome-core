@@ -63,11 +63,10 @@ def _is_rebinding_host(host: str | None) -> bool:
 # ── Middleware: PURE ASGI, deliberately NOT BaseHTTPMiddleware ────────────────
 # Starlette's ``BaseHTTPMiddleware`` / ``@app.middleware("http")`` pumps the
 # response body through an anyio memory stream, which is incompatible with a
-# long-lived streaming response (the ``GET /events/stream`` SSE): when the client
+# long-lived streaming response (such as Chat message SSE): when the client
 # disconnects, the pump raises ``anyio.EndOfStream`` / ``CancelledError`` and the
 # middleware ends with ``RuntimeError: No response returned``, which uvicorn logs
-# as a spurious HTTP 500 (Sentry MENS-MACOS-15: ~143 of the events/stream 500s were
-# exactly this teardown, not a server error). Pure ASGI middleware passes
+# as a spurious HTTP 500. Pure ASGI middleware passes
 # ``receive`` / ``send`` straight through, so an SSE disconnect is a clean
 # cancellation the route handles — no synthetic 500. Keep these pure ASGI; do not
 # reintroduce BaseHTTPMiddleware on this app (tests/test_api_middleware_asgi.py).
@@ -198,8 +197,8 @@ def build_api_app(cfg: Config | None = None) -> FastAPI:
         openapi_url="/openapi.json",
     )
 
-    # Three pure-ASGI middleware (NOT BaseHTTPMiddleware — it breaks the
-    # /events/stream SSE with spurious 500s on disconnect; see the class docs).
+    # Three pure-ASGI middleware (NOT BaseHTTPMiddleware — it breaks streaming
+    # responses with spurious 500s on disconnect; see the class docs).
     # Starlette applies middleware LIFO by add order, so the LAST added is
     # OUTERMOST. Add innermost→outermost: access_log (closest to the route, so it
     # sees the final status, incl. ExceptionMiddleware-converted 4xx) → trace_id

@@ -1,9 +1,9 @@
 """The API middleware must stay *pure ASGI* — never Starlette BaseHTTPMiddleware.
 
 ``BaseHTTPMiddleware`` pumps the response body through an anyio memory stream, which
-breaks long-lived streaming responses: a client disconnect on ``GET /events/stream``
+breaks long-lived streaming responses such as Chat message SSE
 surfaces as ``RuntimeError("No response returned")`` and uvicorn logs a spurious HTTP
-500 (Sentry MENS-MACOS-15 — ~143 of the events/stream 500s were exactly this teardown).
+500. These tests pin the transport behavior without depending on a product event route.
 These tests pin the fix: (1) the API app carries no ``BaseHTTPMiddleware``, and (2) an
 SSE response streams cleanly *through* the three pure-ASGI middleware. The middleware's
 actual behaviour (trace id, access log, origin/host guard) stays covered by

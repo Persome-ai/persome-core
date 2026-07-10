@@ -53,11 +53,6 @@ Example stdio client configuration:
 | `attention_trajectory` | Read the derived attention path used by state formation. |
 | `get_schema` | Return the Markdown memory schema. |
 
-## Observability
-
-`parser_stats` exposes parser hit/miss telemetry. Product intent lifecycle and
-recall-budget tools are not part of the paper runtime's MCP surface.
-
 ## Transport
 
 ```toml

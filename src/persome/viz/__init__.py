@@ -1,1 +1,1 @@
-"""Visualization precomputes for the /dev/memory dashboard (zero-LLM, read-only)."""
+"""Visualization precomputes for the /model explorer (zero-LLM, read-only)."""

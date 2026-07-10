@@ -25,7 +25,6 @@ from ..logger import get
 from ..prompts import load as load_prompt
 from ..store import files as files_mod
 from ..store import fts
-from ..store import parser_ticks as parser_ticks_store
 from ..timeline import attention_trajectory as attention_traj
 from . import captures as captures_mod
 
@@ -1266,31 +1265,6 @@ def build_server(cfg: Config | None = None):  # type: ignore[no-untyped-def]
         directly.
         """
         return json.dumps(_get_schema(), ensure_ascii=False)
-
-    @server.tool()
-    def parser_stats(since: str = "", until: str = "") -> str:
-        """Per-app message-parser hit-rate telemetry.
-
-        The timeline aggregator records one tick per window, bucketed by app
-        bundle_id: HIT (a registered per-app parser rendered a non-empty
-        conversation), MISS (the app had a parser but it declined/rendered
-        empty/raised), or FALLBACK (no app in the window had a parser). Use this
-        to confirm the parsers are firing and to catch drift — e.g. a 飞书 UI
-        revision that breaks the parser shows up as HIT decaying into MISS for
-        bundle com.electron.lark.
-
-        Returns: total, by_outcome {hit, miss, fallback}, by_bundle
-        {<bundle>: {hit, miss, fallback}}, and hit_rate (hit ÷ total).
-
-        Arguments:
-          since — ISO8601 lower bound (inclusive); default: all time.
-          until — ISO8601 upper bound (exclusive); default: all time.
-        """
-        with fts.cursor() as conn:
-            return json.dumps(
-                parser_ticks_store.stats(conn, since=since or "", until=until or "￿"),
-                ensure_ascii=False,
-            )
 
     # ─── Agent-Native Persome: memory write-back (the loop, Phase 3) ──────────────────────
     from . import memory_write as _memory_write

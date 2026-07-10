@@ -8,40 +8,22 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
-from typing import Annotated, Any
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
 
 from .. import __version__, paths
-from .. import events as events_mod
-from ..capture import ax_capture, scheduler, screenshot_crypto
+from ..capture import ax_capture, scheduler
 from ..config import Config
 from ..config import load as load_config
 from ..logger import get
-from ..mcp import captures as captures_mod
-from ..mcp.server import (
-    _get_schema,
-    _list_memories,
-    _read_memory,
-    _recent_activity,
-    _search,
-)
-from ..store import entries as entries_mod
-from ..store import fts, index_md
-from ..store import parser_ticks as parser_ticks_store
-from ..timeline import aggregator as timeline_aggregator
-from ..timeline import attention_trajectory as attention_traj
-from ..timeline import store as timeline_store
-from .models import (
-    ApiResponse,
-    CaptureIngestBody,
-    ModelPing,
-)
+from ..model import ActivitySource, build_snapshot, normalize_activity_identity
+from ..store import fts
+from .chat_routes import router as chat_router
+from .models import ApiResponse, CaptureIngestBody, ModelPing
 
 logger = get("persome.api")
 
@@ -258,525 +240,78 @@ def status() -> ApiResponse:
     return ApiResponse(data=data)
 
 
-# ─── Memories ──────────────────────────────────────────────────────────────
-
-
-@router.get("/memories", response_model=ApiResponse, tags=["memory"])
-def list_memories(
-    include_dormant: Annotated[
-        bool, Query(description="是否包含休眠文件（长时间无更新的文件）")
-    ] = False,
-    include_archived: Annotated[
-        bool, Query(description="是否包含归档文件（已被新版替代的过期文件）")
-    ] = False,
-) -> ApiResponse:
-    """列出所有记忆文件及其元数据（描述、标签、状态、条目数等）。"""
-    with fts.cursor() as conn:
-        rows = _list_memories(
-            conn, include_dormant=include_dormant, include_archived=include_archived
-        )
-    return ApiResponse(data=rows)
-
-
-@router.get("/memories/{path:path}", response_model=ApiResponse, tags=["memory"])
-def read_memory(
-    path: Annotated[str, Path(description="记忆文件路径，如 user-profile.md")],
-    since: Annotated[
-        str | None,
-        Query(description="起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"),
-    ] = None,
-    until: Annotated[
-        str | None,
-        Query(description="结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略"),
-    ] = None,
-    tags: Annotated[
-        list[str] | None, Query(description="按标签过滤，只返回包含任一指定标签的条目")
-    ] = None,
-    tail_n: Annotated[int | None, Query(description="只返回最近 N 条条目")] = None,
-) -> ApiResponse:
-    """读取指定记忆文件的内容和条目列表。"""
-    with fts.cursor() as conn:
-        result = _read_memory(conn, path=path, since=since, until=until, tags=tags, tail_n=tail_n)
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return ApiResponse(data=result)
-
-
-class MemoryAppendRequest(BaseModel):
-    """Body for the Agent-Native memory write-back route (Phase 3)."""
-
-    content: str
-    tags: list[str] = []
-    run_id: str = ""
-
-
-@router.post("/memories/append", response_model=ApiResponse, tags=["memory"])
-def append_memory(body: MemoryAppendRequest) -> ApiResponse:
-    """Write a durable agent finding back into Persome memory (Agent-Native Persome, Phase 3).
-
-    Funnels through the canonical ``entries.append_entry`` writer (same integrity gate /
-    write-inversion as every other writer) and force-tags the entry ``source:agent-run`` (+
-    ``run:<run_id>`` when provided). 422 on empty content. The HTTP twin of the MCP ``remember``
-    tool. Spec: docs/superpowers/specs/2026-06-25-agent-native-persome-design.md §6.
-    """
-    from ..mcp import memory_write
-
-    try:
-        with fts.cursor() as conn:
-            result = memory_write.remember(
-                conn, content=body.content, tags=body.tags, run_id=body.run_id
-            )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return ApiResponse(data=result)
-
-
-# ─── Search & Activity ─────────────────────────────────────────────────────
-
-
-@router.get("/search", response_model=ApiResponse, tags=["memory"])
-def search(
-    query: Annotated[
-        str,
-        Query(
-            description="搜索文本，支持自然语言/改写查询（语义匹配），也支持关键词，如 'Vanessa 什么时候开会'"
-        ),
-    ],
-    paths: Annotated[
-        list[str] | None,
-        Query(
-            description="限制搜索范围到指定文件路径，支持 glob 如 event-*.md、user-*.md。可传多个"
-        ),
-    ] = None,
-    since: Annotated[
-        str | None,
-        Query(description="起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"),
-    ] = None,
-    until: Annotated[
-        str | None,
-        Query(description="结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略"),
-    ] = None,
-    top_k: Annotated[int, Query(ge=1, le=50, description="返回结果数量上限，范围 1~50")] = 5,
-    include_superseded: Annotated[bool, Query(description="是否包含已被替代的条目")] = False,
-) -> ApiResponse:
-    """对记忆条目进行混合语义检索（BM25 ⊕ dense 向量 → RRF 融合），按相关性排序返回。
-
-    配了 embedding 端点（OPENAI_*）时按语义匹配——可用自然语言/改写查询，不必照抄原词；
-    否则 fail-open 退化为 BM25 关键词检索（同一调用）。
-    """
-    with fts.cursor() as conn:
-        result = _search(
-            conn,
-            query=query,
-            paths=paths,
-            since=since,
-            until=until,
-            top_k=top_k,
-            include_superseded=include_superseded,
-        )
-    return ApiResponse(data=result)
-
-
-@router.get("/activity", response_model=ApiResponse, tags=["memory"])
-def recent_activity(
-    since: Annotated[
-        str | None,
-        Query(description="起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"),
-    ] = None,
-    limit: Annotated[int, Query(ge=1, le=200, description="返回条目数量上限，范围 1~200")] = 20,
-    prefix_filter: Annotated[
-        list[str] | None, Query(description="按文件路径前缀过滤，如 ['event-', 'project-']")
-    ] = None,
-) -> ApiResponse:
-    """按时间倒序获取最近的记忆条目，用于快速回顾近期活动。"""
-    with fts.cursor() as conn:
-        result = _recent_activity(conn, since=since, limit=limit, prefix_filter=prefix_filter)
-    return ApiResponse(data=result)
-
-
-# ─── Captures ──────────────────────────────────────────────────────────────
+# ─── Capture ingest ───────────────────────────────────────────────────────
 
 
 @router.post("/captures/ingest", response_model=ApiResponse, tags=["capture"])
 def ingest_capture(body: CaptureIngestBody) -> ApiResponse:
-    """接收 Swift "Persome" 主程序采集的一帧 capture，跑富化→落库→意图快路 hook。
+    """接收可信本地生产者采集的一帧 capture，完成富化、去重和持久化。
 
     采集层（AX 树 + 焦点窗口截图）已搬进持有 Accessibility / Screen-Recording 的 Swift
     进程（``capture.source = "ingest"``）；daemon 自身不再 spawn watcher、不再抓屏，因而
-    不需要任何系统权限。落库 / 去重 / hook 与 daemon 自采路径完全一致（共用同一 runner）。
+    不需要任何系统权限。落库和去重与 daemon 自采路径共用同一 runner。
     """
     result = scheduler.ingest_capture(_get_cfg(), body.model_dump())
     return ApiResponse(data=result)
 
 
-@router.get("/captures/current", response_model=ApiResponse, tags=["capture"])
-def current_context(
-    app_filter: Annotated[
-        str | None,
-        Query(description="按应用名称过滤，如 Feishu、WeChat、Tabbit Browser。不填则返回所有应用"),
-    ] = None,
-    headline_limit: Annotated[int, Query(ge=1, le=20, description="摘要数量上限")] = 5,
-    fulltext_limit: Annotated[int, Query(ge=1, le=10, description="全文数量上限")] = 3,
-    timeline_limit: Annotated[int, Query(ge=1, le=50, description="时间线块数量上限")] = 8,
-) -> ApiResponse:
-    """获取当前屏幕捕获上下文，包括最近的捕获摘要、完整文本和时间线块。"""
-    result = captures_mod.current_context(
-        app_filter=app_filter,
-        headline_limit=headline_limit,
-        fulltext_limit=fulltext_limit,
-        timeline_limit=timeline_limit,
-    )
-    return ApiResponse(data=result)
+# ─── Paper model ──────────────────────────────────────────────────────────
 
 
-@router.get("/captures", response_model=ApiResponse, tags=["capture"])
-def search_captures(
-    query: Annotated[str, Query(description="搜索关键词，支持多词空格分隔，如 'Feishu 会议'")],
-    since: Annotated[
-        str | None,
-        Query(description="起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"),
-    ] = None,
-    until: Annotated[
-        str | None,
-        Query(description="结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略"),
-    ] = None,
-    app_name: Annotated[
-        str | None, Query(description="按应用名称过滤，如 Feishu、WeChat、Tabbit Browser")
-    ] = None,
-    limit: Annotated[int, Query(ge=1, le=50, description="返回结果数量上限，范围 1~50")] = 10,
-) -> ApiResponse:
-    """对原始屏幕捕获记录进行 BM25 全文搜索。"""
-    results = captures_mod.search_captures(
-        query=query, since=since, until=until, app_name=app_name, limit=limit
-    )
-    return ApiResponse(data={"query": query, "results": results})
-
-
-@router.get("/captures/recent", response_model=ApiResponse, tags=["capture"])
-def read_recent_capture(
-    at: Annotated[
-        str | None,
-        Query(
-            description="目标时间，ISO 格式如 2026-05-18T14:30:00+08:00，或简写如 14:30。不填则取最新"
-        ),
-    ] = None,
-    file_stem: Annotated[
-        str | None,
-        Query(
-            description="精确捕获 ID（headline/搜索结果里的 file_stem）。给定时按 ID 精确取，忽略 at/app_name 的就近匹配——避免同分钟/同目录的错配"
-        ),
-    ] = None,
-    app_name: Annotated[
-        str | None, Query(description="按应用名称过滤，如 Feishu、WeChat、Tabbit Browser")
-    ] = None,
-    window_title_substring: Annotated[
-        str | None, Query(description="按窗口标题子串过滤，如 'Pull Request'、'CLAUDE.md'")
-    ] = None,
-    include_screenshot: Annotated[
-        bool, Query(description="是否在响应中包含截图 base64。开启后响应体积会显著增大")
-    ] = False,
-    include_ax_tree: Annotated[
-        bool,
-        Query(
-            description="渐进式披露『展开』：返回完整 ax_tree（含 visible_text 折叠掉的浏览器外壳——书签/标签/扩展）。体积大、按需开启；Agent 需要明细时才用"
-        ),
-    ] = False,
-    max_age_minutes: Annotated[
-        int,
-        Query(
-            ge=1,
-            le=1440,
-            description="当使用 at 参数时，允许的最大时间偏差（分钟）。如 at=14:30 且 max_age_minutes=15，则匹配 14:15~14:45 之间的捕获",
-        ),
-    ] = 15,
-) -> ApiResponse:
-    """读取最近一次的屏幕捕获详情。给定 file_stem 时按 ID 精确取，否则按时间/应用/窗口标题就近匹配。
-
-    返回的 ``visible_text`` 是解析后的可见文本；``text_source`` 标明它来自
-    ``ax``（AX 树）还是 ``ocr``（微信等 AX-poor 应用的屏幕 OCR），``ocr`` 块给出
-    OCR 状态（``not_run`` / ``submitted_empty`` / ``recognized``），``ax`` 块给出
-    AX 抓取状态（节点数、模式、是否仅抓到窗口标题帧）。浏览器的 ``visible_text``
-    只含网页正文 + 一行外壳摘要（渐进式披露）；``include_ax_tree=1`` 取回完整结构。
-    """
-    if file_stem:
-        result = captures_mod.read_capture_by_stem(
-            file_stem, include_screenshot=include_screenshot, include_ax_tree=include_ax_tree
-        )
-    else:
-        result = captures_mod.read_recent_capture(
-            at=at,
-            app_name=app_name,
-            window_title_substring=window_title_substring,
-            include_screenshot=include_screenshot,
-            include_ax_tree=include_ax_tree,
-            max_age_minutes=max_age_minutes,
-        )
-    if result is None:
-        raise HTTPException(status_code=404, detail="no matching capture found")
-    return ApiResponse(data=result)
-
-
-# ─── Timeline ──────────────────────────────────────────────────────────────
-
-
-@router.get("/timeline", response_model=ApiResponse, tags=["timeline"])
-def list_timeline(
-    since: Annotated[
-        datetime | None,
-        Query(description="开始时间（ISO 8601），如 2026-05-01T00:00:00+08:00"),
-    ] = None,
-    until: Annotated[
-        datetime | None,
-        Query(description="结束时间（ISO 8601），如 2026-05-20T23:59:59+08:00"),
-    ] = None,
-    limit: Annotated[int, Query(ge=1, le=200, description="最多返回条数，范围 1~200")] = 50,
-) -> ApiResponse:
-    """查询 timeline 原始块列表，支持时间范围过滤，按时间倒序返回。"""
-    with fts.cursor() as conn:
-        blocks = timeline_store.query_range(conn, since, until, limit)
-    return ApiResponse(
-        data=[
-            {
-                "id": b.id,
-                "start_time": b.start_time.isoformat(),
-                "end_time": b.end_time.isoformat(),
-                "timezone": b.timezone,
-                "entries": b.entries,
-                "apps_used": b.apps_used,
-                "capture_count": b.capture_count,
-                "created_at": b.created_at.isoformat() if b.created_at else None,
-                # Legacy-only (#544 保列停写): new blocks always carry [];
-                # populated values exist only on pre-R4 historical rows. Do
-                # NOT build new consumers on this field — read /intents (the
-                # unified intent stream) instead.
-                "helpful_intent_tags": b.helpful_intent_tags,
-                # Attention-locus summary (Step 1) — the dominant focused
-                # surface of the window + its rung/confidence.
-                "attention_surface": b.attention_surface,
-                "attention_rung": b.attention_rung,
-                "attention_confidence": b.attention_confidence,
-            }
-            for b in blocks
-        ]
-    )
-
-
-@router.get("/attention/trajectory", response_model=ApiResponse, tags=["timeline"])
-def attention_trajectory(
-    since: Annotated[
-        datetime | None, Query(description="开始时间（ISO 8601）。不填则用最近 hours 小时")
-    ] = None,
-    until: Annotated[
-        datetime | None, Query(description="结束时间（ISO 8601）。不填则到现在")
-    ] = None,
-    hours: Annotated[int, Query(ge=1, le=168, description="since 不填时回看的小时数")] = 24,
-) -> ApiResponse:
-    """注意力轨迹 + dwell：把每个 timeline 块的 dominant locus 聚合成
-    ``by_dwell``（按总停留时长排序的 surface）+ ``trajectory``（时间顺序路径）。"""
-    now = datetime.now().astimezone()
-    start = since or (now - timedelta(hours=hours))
-    with fts.cursor() as conn:
-        spans = attention_traj.attention_trajectory(conn, start, until)
-    payload = attention_traj.trajectory_summary(spans)
-    payload["window"] = {"since": start.isoformat(), "until": (until or now).isoformat()}
-    return ApiResponse(data=payload)
-
-
-# ─── Rewind (截图回放) — spec E6/#9 ──────────────────────────────────────────
-
-
-def _rewind_enabled() -> bool:
-    """Gate for the Rewind read-only endpoints.
-
-    Optional feature (spec E6/#9): off by default. Read via ``getattr`` so a
-    ``Config`` without the field still resolves (the field is added later by the
-    owner). When off, both Rewind endpoints 404 — indistinguishable from absent.
-    """
-    return bool(getattr(_get_cfg(), "rewind_enabled", False))
-
-
-# Cheap `has_screenshot` detection for the day view: scan the raw capture bytes for the
-# screenshot field marker instead of `json.loads`'ing the (now-large) capture. A present
-# screenshot is `"image_base64": "<value>"`; a stripped/absent one has no non-empty value
-# (the 24h hygiene pass removes it). A raw-bytes substring check is correct (unlike a size
-# heuristic — big AX trees rival small screenshots) and ~140ms for a full day's captures.
-_SHOT_MARK = b'"image_base64": "'
-_EMPTY_SHOT = b'"image_base64": ""'
-
-
-def _parse_day(date: str) -> tuple[datetime, datetime]:
-    """Parse ``YYYY-MM-DD`` into the local-day ``[start, end)`` window.
-
-    Raises ``HTTPException(404)`` on a malformed date so a bad ``date`` is a
-    clean not-found, never a 500. The window is anchored in the local timezone
-    so it lines up with capture stems (which carry a local offset).
-    """
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d")
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=404, detail=f"invalid date '{date}'") from exc
-    tz = datetime.now().astimezone().tzinfo
-    start = day.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=tz)
-    end = start + timedelta(days=1)
-    return start, end
-
-
-@router.get("/rewind/day", response_model=ApiResponse, include_in_schema=False, tags=["rewind"])
-def rewind_day(
-    date: Annotated[str, Query(description="目标日期 YYYY-MM-DD（本地时区）")],
-) -> ApiResponse:
-    """Rewind 日视图：当天的 timeline_block 列表 + 每块关联的 capture stems。
-
-    每块给出"发生了什么"（已有的 entries / apps_used / focus + attention 摘要字段）
-    加上经 ``aggregator.captures_in_window`` 按块时间窗解析出的 capture **标识**
-    （stem + 是否有可用截图，**不内联图字节** — 截图走 ``/rewind/screenshot``）。
-
-    可选 feature：``rewind_enabled`` 关（默认）→ 404。不存在的 date → 干净 404。
-    """
-    if not _rewind_enabled():
-        raise HTTPException(status_code=404, detail="rewind disabled")
-
-    start, end = _parse_day(date)
-
-    with fts.cursor() as conn:
-        blocks = timeline_store.query_range(conn, start, end, limit=200)
-
-    # Resolve captures with ONE directory scan (not one per block). The old code called
-    # captures_in_window per block (a full iterdir each, 200 blocks) which hangs for >30s
-    # on a real buffer of ~9k captures. Pre-parse each stem to its datetime once, keep
-    # only the day's captures, and detect has_screenshot from a raw-bytes marker scan (no
-    # json.loads of the now-large capture). The per-block match below is then an in-memory
-    # timestamp compare.
-    day_caps: list[tuple[datetime, str, bool]] = []
-    buf = paths.capture_buffer_dir()
-    if buf.exists():
-        for p in buf.iterdir():
-            if p.suffix != ".json" or not p.is_file():
-                continue
-            ts = timeline_aggregator._stem_to_dt(p.stem)
-            if ts is None or not (start <= ts < end):
-                continue
-            try:
-                raw = p.read_bytes()
-            except OSError:
-                continue
-            has_shot = _SHOT_MARK in raw and _EMPTY_SHOT not in raw
-            day_caps.append((ts, p.stem, has_shot))
-    day_caps.sort(key=lambda c: c[0])
-
-    items: list[dict[str, Any]] = []
-    for b in blocks:
-        captures: list[dict[str, Any]] = [
-            {"stem": stem, "has_screenshot": has_shot}
-            for (ts, stem, has_shot) in day_caps
-            if b.start_time <= ts < b.end_time
-        ]
-        items.append(
-            {
-                "id": b.id,
-                "start_time": b.start_time.isoformat(),
-                "end_time": b.end_time.isoformat(),
-                "timezone": b.timezone,
-                "entries": b.entries,
-                "apps_used": b.apps_used,
-                "capture_count": b.capture_count,
-                "attention_surface": b.attention_surface,
-                "attention_rung": b.attention_rung,
-                "attention_confidence": b.attention_confidence,
-                "captures": captures,
-            }
-        )
-    return ApiResponse(data={"date": date, "blocks": items})
-
-
-@router.get("/rewind/screenshot", include_in_schema=False, tags=["rewind"])
-def rewind_screenshot(
-    stem: Annotated[str, Query(description="capture stem（/rewind/day 给出的标识）")],
-) -> Response:
-    """Rewind 截图字节：该 capture 的截图原样像素（经 ``read_screenshot`` 解密）。
-
-    返回 ``image/jpeg`` 字节，或在缺图 / 无 key / 未知 stem 时 404（不崩、不 500）。
-    与块视图语义对齐：块给"发生了什么"，截图给"原样像素"。
-
-    可选 feature：``rewind_enabled`` 关（默认）→ 404。
-    """
-    if not _rewind_enabled():
-        raise HTTPException(status_code=404, detail="rewind disabled")
-
-    # Path-traversal guard (mirrors read_capture_by_stem): a stem is a bare
-    # filename, never a path.
-    if not stem or "/" in stem or "\\" in stem or ".." in stem:
-        raise HTTPException(status_code=404, detail="no such capture")
-    path = paths.capture_buffer_dir() / f"{stem}.json"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="no such capture")
-    try:
-        data = json.loads(path.read_bytes())
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=404, detail="capture unreadable") from exc
-    if not isinstance(data, dict):
-        raise HTTPException(status_code=404, detail="capture unreadable")
-
-    # read_screenshot is the one decode chokepoint: decrypts a sealed payload
-    # when the key is present, returns plaintext bytes verbatim, and yields None
-    # for a stripped / keyless / missing screenshot (never raises).
-    img = screenshot_crypto.read_screenshot(data)
-    if img is None:
-        raise HTTPException(status_code=404, detail="no screenshot")
-    return Response(content=img, media_type="image/jpeg")
-
-
-# ─── Dev ops dashboard ───────────────────────────────────────────────────────
-
-
-def _dev_enabled() -> bool:
-    """Gate for the dev ops dashboard. The Persome app sets ``[dev] enabled`` true
-    for a ``dev``-plan account; ``PERSOME_DEV=1`` forces it on locally. Off by
-    default so a normal account never exposes it."""
-    if os.environ.get("PERSOME_DEV") or os.environ.get("MENS_DEV"):  # Mens is the legacy name
-        return True
-    try:
-        return bool(load_config().dev.enabled)
-    except Exception:  # noqa: BLE001
-        return False
-
-
-@router.get("/dev/memory", include_in_schema=False, tags=["dev"])
-def dev_memory_view() -> HTMLResponse:
-    """The memory-rebuild §7-6 记忆图: the REAL relation graph + schema tower
-    rendered as the ontology-three canvas (mockup
-    2026-07-02-memory-ontology-three.html adapted to live data via
-    /dev/memory-graph). Same dev gate + same rebuild-free override pattern
-    (<root>/dev_memory.html) as the ops dashboard; embedded there as the
-    记忆图 tab."""
-    if not _dev_enabled():
-        raise HTTPException(status_code=404, detail="not found")
-    override = paths.root() / "dev_memory.html"
-    try:
-        if override.is_file():
-            return HTMLResponse(override.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        pass
-    from .dev_memory_view import MEMORY_VIEW_HTML
+@router.get("/model", response_class=HTMLResponse, tags=["model"])
+def model_view() -> HTMLResponse:
+    """Render the local Point/Line/Face/Volume/Root model explorer."""
+    from .model_view import MEMORY_VIEW_HTML
 
     return HTMLResponse(MEMORY_VIEW_HTML)
 
 
-@router.get("/dev/memory-graph", include_in_schema=False, tags=["dev"])
-def dev_memory_graph() -> dict[str, Any]:
-    """Read-only JSON for the 记忆图 (§7-6): nodes (USER + roster identities +
+_MODEL_ASSETS = {
+    "three.module.js",
+    "jsm/controls/OrbitControls.js",
+    "jsm/geometries/ConvexGeometry.js",
+    "jsm/math/ConvexHull.js",
+    "jsm/renderers/CSS2DRenderer.js",
+}
+
+
+def _model_asset_path(asset_path: str) -> Path | None:
+    if asset_path not in _MODEL_ASSETS:
+        return None
+    roots = (
+        Path(__file__).resolve().parents[1] / "_bundled" / "model_assets",
+        Path(__file__).resolve().parents[3] / "resources" / "model_assets",
+    )
+    for root in roots:
+        candidate = root / asset_path
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+@router.get("/model/assets/{asset_path:path}", include_in_schema=False, tags=["model"])
+def model_asset(asset_path: str) -> Response:
+    """Serve the pinned Three.js runtime bundled with the Python package."""
+    path = _model_asset_path(asset_path)
+    if path is None:
+        raise HTTPException(status_code=404, detail="no such model asset")
+    return Response(content=path.read_bytes(), media_type="text/javascript")
+
+
+@router.get("/model/graph", tags=["model"])
+def model_graph() -> dict[str, Any]:
+    """Read-only model graph: nodes (USER + roster identities +
     Activity endpoints), relation_edges (both statuses — the shadow/ACTIVE
     split IS the point), and the schema_faces tower, each carrying its
     bitemporal fields so the client can replay f(T) without refetching.
     Zero-LLM; fail-open per section (a store predating a table contributes
     an empty list)."""
-    if not _dev_enabled():
-        raise HTTPException(status_code=404, detail="not found")
     from ..evomem import identity as identity_mod
     from ..store import fts as fts_store
 
     edges: list[dict[str, Any]] = []
     faces: list[dict[str, Any]] = []
+    snapshot: dict[str, Any]
     with fts_store.cursor() as conn:
         conn.row_factory = sqlite3.Row
         try:
@@ -800,11 +335,15 @@ def dev_memory_graph() -> dict[str, Any]:
                     "src_kind": r["src_kind"],
                     "dst_kind": r["dst_kind"],
                     "polarity": r["polarity"] or "0",
+                    "source_kind": r["source_kind"],
+                    "source_id": r["source_id"],
+                    "source_receipt": r["source_receipt"],
                 }
                 for r in conn.execute(
                     "SELECT src_identity, dst_identity, predicate, label, status, provenance,"
                     " confidence, observations, recall_count, valid_from, valid_to,"
-                    " last_observed_at, src_kind, dst_kind, polarity FROM relation_edges"
+                    " last_observed_at, src_kind, dst_kind, polarity, source_kind, source_id,"
+                    " source_receipt FROM relation_edges"
                 )
             ]
         except Exception:  # noqa: BLE001 — table may predate this build
@@ -855,6 +394,7 @@ def dev_memory_graph() -> dict[str, Any]:
             ]
         except Exception:  # noqa: BLE001
             faces = []
+        snapshot = build_snapshot(conn)
 
     try:
         roster = identity_mod.load_roster(load_config())
@@ -941,7 +481,7 @@ def dev_memory_graph() -> dict[str, Any]:
     # face clusters), precomputed to <root>/sem_facts.json by `persome memory-viz`
     # (src/persome/viz/sem_layout.py). XZ = semantic layout, y = normalized deposition time
     # (driven by the frontend's as-of slider), brightness ∝ connection degree. Fail-open:
-    # absent/corrupt file → {} and the dashboard falls back to the entity force layout.
+    # absent/corrupt file → {} and the explorer falls back to the entity force layout.
     sem_geo: dict = {}
     try:
         from .. import paths as _paths2
@@ -958,23 +498,21 @@ def dev_memory_graph() -> dict[str, Any]:
         "faces": faces,
         "sem_geo": sem_geo,
         "search": search_state,
+        "model": snapshot,
     }
 
 
-@router.get("/dev/memory-node", include_in_schema=False, tags=["dev"])
-def dev_memory_node(id: str) -> dict[str, Any]:
+@router.get("/model/node", tags=["model"])
+def model_node(id: str) -> dict[str, Any]:
     """Raw receipts behind one graph node (§2.1 每个向量指回符号收据 — the
     click-through from the 记忆图 to the symbolic layer). Lazy per-node fetch
     so the graph payload stays lean. Zero-LLM, read-only, fail-open:
 
-    - ``event:<intents.id>`` → the minting intent row (kind/status/rationale/
-      participants/ts);
-    - any other identity → the latest ACTIVE evo_nodes of its ``person-*.md``
+    - ``event:<source-kind>:<source-id>`` → the canonical Activity source;
+    - any other identity → the latest ACTIVE evo_nodes of its typed entity file
       entity file (newest first, bounded, truncated) — the consolidation
       trail the point was distilled from.
     """
-    if not _dev_enabled():
-        raise HTTPException(status_code=404, detail="not found")
     from ..store import fts as fts_store
 
     raw: list[dict[str, Any]] = []
@@ -983,30 +521,42 @@ def dev_memory_node(id: str) -> dict[str, Any]:
         with fts_store.cursor() as conn:
             conn.row_factory = sqlite3.Row
             if id.startswith("event:"):
-                source = "intents"
-                row = conn.execute(
-                    "SELECT ts, kind, status, rationale, payload FROM intents WHERE id = ?",
-                    (id.removeprefix("event:"),),
-                ).fetchone()
-                if row is not None:
-                    try:
-                        with_people = json.loads(row["payload"] or "{}").get("with") or []
-                    except Exception:  # noqa: BLE001
-                        with_people = []
-                    text = f"[{row['kind']}·{row['status']}] {row['rationale'] or ''}"
-                    if with_people:
-                        text += f"（与：{'、'.join(str(p) for p in with_people)}）"
-                    raw.append({"ts": row["ts"], "text": text[:300]})
-            elif id != "self":
-                source = f"person-{id}.md"
-                for row in conn.execute(
-                    "SELECT content, memory_at FROM evo_nodes"
-                    " WHERE file_name = ? AND is_latest = 1 AND status = 'active'"
-                    " ORDER BY memory_at DESC LIMIT 5",
-                    (source,),
-                ):
+                normalized = normalize_activity_identity(id)
+                event = next(
+                    (
+                        item
+                        for item in ActivitySource(conn).events()
+                        if item.stable_id == normalized
+                    ),
+                    None,
+                )
+                if event is not None:
+                    source = event.source_receipt
                     raw.append(
-                        {"ts": row["memory_at"], "text": (row["content"] or "").strip()[:300]}
+                        {
+                            "ts": event.occurred_at,
+                            "text": event.summary[:300],
+                            "receipt": event.source_receipt,
+                        }
+                    )
+            elif id != "self":
+                from ..evomem.person_graph import _slug
+
+                slug = _slug(id)
+                candidates = [f"{kind}-{slug}.md" for kind in ("person", "org", "project", "tool")]
+                for row in conn.execute(
+                    "SELECT content, memory_at, file_name, node_id FROM evo_nodes"
+                    " WHERE file_name IN (?, ?, ?, ?) AND is_latest = 1 AND status = 'active'"
+                    " ORDER BY memory_at DESC LIMIT 5",
+                    candidates,
+                ):
+                    source = str(row["file_name"])
+                    raw.append(
+                        {
+                            "ts": row["memory_at"],
+                            "text": (row["content"] or "").strip()[:300],
+                            "receipt": f"⟨{row['node_id']}:{row['file_name']}⟩",
+                        }
                     )
     except Exception:  # noqa: BLE001 — receipts decorate the view, never 500 it
         raw = []
@@ -1068,290 +618,5 @@ def _node_tree(root: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         return {"id": root, "edges": []}
 
-
-@router.get("/parser/stats", response_model=ApiResponse, tags=["parser"])
-def parser_hit_stats(
-    since: Annotated[str | None, Query(description="ISO8601 起始时间（含），省略=不限")] = None,
-    until: Annotated[str | None, Query(description="ISO8601 结束时间（不含），省略=不限")] = None,
-) -> ApiResponse:
-    """Per-app 解析器命中率埋点统计（通用可观测层）。
-
-    timeline aggregator 每构建一个 block，就按 ``bundle_id`` 落一行 ``parser_ticks``：
-    ``hit``（解析器渲染出非空会话）/ ``miss``（有解析器但 declined/空/抛错）/
-    ``fallback``（窗口内无任何带解析器的 app）。返回 ``total`` / ``by_outcome`` /
-    ``by_bundle``（按 bundle 分桶）/ ``hit_rate``（hit ÷ total）。用来证明解析器在
-    生效，并在飞书改版导致语义类漂移时及早告警（同一 bundle 的 hit 衰减成 miss）。
-    """
-    with fts.cursor() as conn:
-        data = parser_ticks_store.stats(conn, since=since or "", until=until or "￿")
-    return ApiResponse(data=data)
-
-
-# ─── Reference ─────────────────────────────────────────────────────────────
-
-
-@router.get("/schema", response_model=ApiResponse, tags=["reference"])
-def get_schema() -> ApiResponse:
-    """获取 MCP 服务器暴露的工具 schema（内存查询、搜索、捕获等接口说明）。"""
-    return ApiResponse(data=_get_schema())
-
-
-@router.get("/config", response_model=ApiResponse, tags=["reference"])
-def get_config() -> ApiResponse:
-    """获取当前运行配置，包括各阶段 LLM 模型、捕获参数、路径设置等。"""
-    cfg = _get_cfg()
-    # Serialize dataclasses recursively
-    import dataclasses
-
-    def _serialize(obj: Any) -> Any:
-        if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-            return {k: _serialize(v) for k, v in dataclasses.asdict(obj).items()}
-        if isinstance(obj, dict):
-            return {k: _serialize(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [_serialize(v) for v in obj]
-        return obj
-
-    return ApiResponse(data=_serialize(cfg))
-
-
-@router.get("/config/raw", response_model=ApiResponse, tags=["reference"])
-def get_config_raw() -> ApiResponse:
-    """返回 ~/.persome/config.toml 的原始文本，供 UI 编辑。"""
-    cfg_path = paths.config_file()
-    if not cfg_path.exists():
-        return ApiResponse(data={"path": str(cfg_path), "content": ""})
-    return ApiResponse(
-        data={"path": str(cfg_path), "content": cfg_path.read_text(encoding="utf-8")}
-    )
-
-
-@router.get("/config/debug-hud", response_model=ApiResponse, tags=["reference"])
-def get_debug_hud_config() -> ApiResponse:
-    """Return the debug HUD's content allowlist (``[debug_hud] show``).
-
-    Re-reads ``config.toml`` fresh each call (via ``load_config()`` rather than
-    the cached cfg) so edits apply without a daemon restart — the HUD polls
-    this endpoint and re-renders. See ``config.DebugHudConfig``.
-    """
-    return ApiResponse(data={"show": load_config().debug_hud.show})
-
-
-class _DebugHudBody(BaseModel):
-    show: list[str]
-
-
-@router.put("/config/debug-hud", response_model=ApiResponse, tags=["reference"])
-def put_debug_hud_config(body: _DebugHudBody) -> ApiResponse:
-    """Persist the debug HUD allowlist (``[debug_hud] show``) to config.toml.
-
-    Lets the app's in-HUD gear menu change what the panel shows with clicks —
-    no hand-editing. Writes a targeted, formatting-preserving edit (see
-    ``config.set_debug_hud_show``), filters to known keys, validates the result
-    parses, then clears the cached cfg so reads reflect it immediately.
-    """
-    import tomllib as _toml
-
-    from ..config import DEBUG_HUD_KEYS, set_debug_hud_show
-
-    show = [k for k in body.show if k in DEBUG_HUD_KEYS]
-    cfg_path = paths.config_file()
-    text = cfg_path.read_text(encoding="utf-8") if cfg_path.exists() else ""
-    new_text = set_debug_hud_show(text, show)
-    try:
-        _toml.loads(new_text)
-    except _toml.TOMLDecodeError as exc:  # defensive; our edit is well-formed
-        raise HTTPException(status_code=500, detail=f"TOML write error: {exc}") from exc
-
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    cfg_path.write_text(new_text, encoding="utf-8")
-    global _cfg
-    _cfg = None
-    return ApiResponse(data={"show": show})
-
-
-class _UpdateConfigBody(BaseModel):
-    content: str
-
-
-@router.put("/config/raw", response_model=ApiResponse, tags=["reference"])
-def put_config_raw(body: _UpdateConfigBody) -> ApiResponse:
-    """把 UI 传上来的 TOML 文本写入 config.toml。
-
-    - 写盘前 ``tomllib.loads`` 做语法校验；解析失败返回 400，原文件不动。
-    - 写完后清掉 ``api/routes`` 与 ``api/chat_routes`` 里的模块级 _cfg 缓存，
-      下一次 HTTP 调用会重新 ``config.load()``。
-    - 已经在后台 loop 里持有 cfg 引用的任务（timeline / reducer / capture / …）
-      **不会**自动 reload；那条路径由前端在 PUT 完成后调 daemon stop+start 解决。
-    """
-    import tomllib as _toml
-
-    try:
-        _toml.loads(body.content)
-    except _toml.TOMLDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"TOML parse error: {exc}") from exc
-
-    cfg_path = paths.config_file()
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    cfg_path.write_text(body.content, encoding="utf-8")
-
-    # 清两处缓存，让 HTTP 路由下次调用立刻读到新值（chat 也会受益）
-    global _cfg
-    _cfg = None
-    try:
-        from . import chat_routes as _chat_routes
-
-        _chat_routes.set_config(None)
-    except Exception:
-        pass
-
-    return ApiResponse(data={"path": str(cfg_path), "bytes": len(body.content)})
-
-
-# ─── Daemon control ────────────────────────────────────────────────────────
-
-
-@router.post("/daemon/pause", response_model=ApiResponse, tags=["control"])
-def pause_capture() -> ApiResponse:
-    """暂停屏幕捕获，写入暂停标志文件。"""
-    paths.ensure_dirs()
-    paths.paused_flag().write_text(datetime.now().isoformat())
-    return ApiResponse(data={"capture": "paused"})
-
-
-@router.post("/daemon/resume", response_model=ApiResponse, tags=["control"])
-def resume_capture() -> ApiResponse:
-    """恢复屏幕捕获，删除暂停标志文件。"""
-    import contextlib
-
-    with contextlib.suppress(FileNotFoundError):
-        paths.paused_flag().unlink()
-    return ApiResponse(data={"capture": "active"})
-
-
-@router.post("/daemon/capture-once", response_model=ApiResponse, tags=["control"])
-def capture_once() -> ApiResponse:
-    """手动触发一次屏幕捕获，返回捕获文件路径。"""
-    cfg = _get_cfg()
-    provider = ax_capture.create_provider(
-        depth=cfg.capture.ax_depth, timeout=cfg.capture.ax_timeout_seconds
-    )
-    path = scheduler.capture_once(cfg.capture, provider)
-    if path:
-        return ApiResponse(data={"path": str(path)})
-    raise HTTPException(status_code=500, detail="capture skipped or failed")
-
-
-# ─── Index management ──────────────────────────────────────────────────────
-
-
-@router.post("/indices/rebuild", response_model=ApiResponse, tags=["admin"])
-def rebuild_index() -> ApiResponse:
-    """重建记忆文件的 FTS5 索引和文件元数据索引。"""
-    with fts.cursor() as conn:
-        files_count, entry_count = entries_mod.rebuild_index(conn)
-        index_md.rebuild(conn)
-    return ApiResponse(data={"files": files_count, "entries": entry_count})
-
-
-@router.post("/indices/rebuild-captures", response_model=ApiResponse, tags=["admin"])
-def rebuild_captures_index() -> ApiResponse:
-    """将 capture-buffer 目录下的所有 JSON 捕获文件重新索引到 captures_fts 表。"""
-    import json
-
-    buf = paths.capture_buffer_dir()
-    if not buf.exists():
-        raise HTTPException(status_code=404, detail="no capture-buffer directory")
-
-    files = sorted(p for p in buf.iterdir() if p.is_file() and p.suffix == ".json")
-    if not files:
-        raise HTTPException(status_code=404, detail="capture-buffer is empty")
-
-    indexed = 0
-    skipped = 0
-    with fts.cursor() as conn:
-        for p in files:
-            try:
-                data = json.loads(p.read_text())
-            except (OSError, json.JSONDecodeError):
-                skipped += 1
-                continue
-            meta = data.get("window_meta") or {}
-            focused = data.get("focused_element") or {}
-            try:
-                fts.insert_capture(
-                    conn,
-                    id=p.stem,
-                    timestamp=data.get("timestamp", ""),
-                    app_name=meta.get("app_name") or "",
-                    bundle_id=meta.get("bundle_id") or "",
-                    window_title=meta.get("title") or "",
-                    focused_role=focused.get("role") or "",
-                    focused_value=focused.get("value") or "",
-                    visible_text=data.get("visible_text") or "",
-                    url=data.get("url") or "",
-                )
-                indexed += 1
-            except Exception:
-                skipped += 1
-
-    return ApiResponse(data={"indexed": indexed, "skipped": skipped, "total": len(files)})
-
-
-@router.get(
-    "/events/stream",
-    response_class=EventSourceResponse,
-    responses={
-        200: {
-            "description": (
-                "Pipeline 阶段事件的 SSE 流。每帧为 ``data: <json>\\n\\n``，"
-                "其中 ``<json>`` 至少包含 ``stage`` 和 ``type`` 字段，附加 payload "
-                "随 stage/type 组合不同（如 classifier/stage_start 携带 session_id）。"
-            ),
-            "content": {
-                "text/event-stream": {
-                    "schema": {
-                        "type": "object",
-                        "additionalProperties": True,
-                        "required": ["stage", "type"],
-                        "properties": {
-                            "stage": {
-                                "type": "string",
-                                "description": "事件来源阶段，如 classifier / pattern_detector",
-                            },
-                            "type": {
-                                "type": "string",
-                                "description": "事件子类型，如 stage_start / stage_end / tool_call",
-                            },
-                        },
-                    }
-                }
-            },
-        }
-    },
-)
-async def events_stream() -> EventSourceResponse:
-    """Server-Sent Events stream of live agent activity.
-
-    Clients receive newline-delimited ``data: <json>\\n\\n`` frames for every
-    LLM tool call, text chunk, and stage lifecycle event.
-
-    Uses ``EventSourceResponse`` (sse_starlette) rather than a plain
-    ``StreamingResponse``: when the FastAPI app is mounted under the FastMCP
-    Starlette server, a plain streaming response is buffered and never reaches
-    the client, so subscribers saw zero frames even while events were
-    published. ``EventSourceResponse`` flushes each event immediately and emits
-    keepalive pings — the same path the working chat SSE uses.
-    """
-
-    async def _generate() -> AsyncIterator[dict[str, str]]:
-        async with events_mod.subscribe() as sub:
-            async for event in sub:
-                yield {"data": json.dumps(event)}
-
-    return EventSourceResponse(_generate())
-
-
-from .chat_routes import router as chat_router  # noqa: E402
 
 router.include_router(chat_router)

@@ -75,6 +75,7 @@ packages = ["src/persome"]
 "resources/mac-ax-watcher.swift" = "persome/_bundled/mac-ax-watcher.swift"
 "resources/build-mac-ax-watcher.sh" = "persome/_bundled/build-mac-ax-watcher.sh"
 "resources/mac-url-handlers.swift" = "persome/_bundled/mac-url-handlers.swift"
+"resources/model_assets" = "persome/_bundled/model_assets"
 
 [dependency-groups]
 dev = [

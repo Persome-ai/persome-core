@@ -11,7 +11,7 @@ Deterministic, zero-LLM, zero-network; all data synthetic. Pins:
   co-membership + ACTIVE relation_edges mention bridging, w=0.6,
   ``edge_source="graph"``);
 - idempotency (rerun on an unchanged store → byte-identical output);
-- /dev/memory-graph surfacing the file as ``sem_geo`` (fail-open when absent);
+- /model/graph surfacing the file as ``sem_geo`` (fail-open when absent);
 - the dashboard page's <script type="module"> block parsing under
   ``node --check`` — the JS lives inside a Python string, so py-level tests
   alone would stay green while the browser renders a blank page on a
@@ -215,13 +215,12 @@ class TestIdempotency:
 
 
 class TestRouteSurfacesSemGeo:
-    """/dev/memory-graph carries the precomputed file as ``sem_geo`` (fail-open)."""
+    """/model/graph carries the precomputed file as ``sem_geo`` (fail-open)."""
 
     def test_sem_geo_rides_the_graph_payload(self, ac_root, monkeypatch):
         from persome.api import routes
 
-        monkeypatch.setattr(routes, "_dev_enabled", lambda: True)
-        g = routes.dev_memory_graph()
+        g = routes.model_graph()
         assert g["sem_geo"] == {}  # absent file → empty, view falls back
 
         ids = _seed_facts([f"事实 {i}" for i in range(6)])
@@ -233,16 +232,15 @@ class TestRouteSurfacesSemGeo:
                 embedded_at="2026-01-05T10:00:00+00:00",
             )
         sem_layout.generate(paths.index_db(), paths.root() / "sem_facts.json")
-        g = routes.dev_memory_graph()
+        g = routes.model_graph()
         assert len(g["sem_geo"]["facts"]) == 6
         assert g["sem_geo"]["edge_source"] == "vectors"
 
     def test_corrupt_file_is_fail_open(self, ac_root, monkeypatch):
         from persome.api import routes
 
-        monkeypatch.setattr(routes, "_dev_enabled", lambda: True)
         (paths.root() / "sem_facts.json").write_text("{not json", encoding="utf-8")
-        assert routes.dev_memory_graph()["sem_geo"] == {}
+        assert routes.model_graph()["sem_geo"] == {}
 
 
 class TestPageJavaScriptParses:
@@ -252,7 +250,7 @@ class TestPageJavaScriptParses:
 
     @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
     def test_module_scripts_pass_node_check(self, tmp_path):
-        from persome.api.dev_memory_view import MEMORY_VIEW_HTML
+        from persome.api.model_view import MEMORY_VIEW_HTML
 
         blocks = re.findall(r'<script type="module">(.*?)</script>', MEMORY_VIEW_HTML, re.S)
         assert blocks, "the page must carry at least one module script"

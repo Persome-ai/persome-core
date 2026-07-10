@@ -1,8 +1,8 @@
-"""Semantic fact-space layout precompute for the /dev/memory 3D dashboard.
+"""Semantic fact-space layout precompute for the /model 3D explorer.
 
 Reads the user's own ``index.db`` (read-only, fail-open per table) and writes
-``<root>/sem_facts.json`` — the payload ``routes.dev_memory_graph`` surfaces as
-``sem_geo`` and the dashboard's ``renderSemSpace`` renders as the unified
+``<root>/sem_facts.json`` — the payload ``routes.model_graph`` surfaces as
+``sem_geo`` and the model explorer's ``renderSemSpace`` renders as the unified
 semantic fact-space: a fact point cloud (XZ = semantic layout, brightness ∝
 connection degree) + k-NN connections + emergent faces (spatial-cluster convex
 hulls linked to a trunk apex) + Y-as-emergence-level, with the bottom as-of

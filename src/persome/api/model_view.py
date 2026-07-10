@@ -1,4 +1,4 @@
-"""The /dev memory-graph 3D view (memory-rebuild spec §7-6 可视化).
+"""The paper runtime's local 3D personal-model view.
 
 Adapted from ``docs/superpowers/mockups/2026-07-02-memory-ontology-three.html``
 — the 定稿模型 canvas is the ACCEPTANCE AUTHORITY. The visual language is the
@@ -26,9 +26,8 @@ Cartesian product covered, no overloads, no gaps):
 - **time scrubber + ▶** — client-side f(T) over the REAL bitemporal fields;
   edges carry evidence-time ``valid_from`` so the axis has real depth.
 
-Served by ``GET /dev/memory`` behind the same dev gate as the ops dashboard,
-with the same rebuild-free override (``<root>/dev_memory.html``). The dashboard
-embeds it as the 记忆图 tab (lazy iframe).
+Served by ``GET /model``. All JavaScript modules and model data are loaded from
+the same loopback server, so the page remains functional without network access.
 """
 
 MEMORY_VIEW_HTML = r"""<!doctype html>
@@ -44,22 +43,22 @@ MEMORY_VIEW_HTML = r"""<!doctype html>
   .wrap{display:flex;height:100%}
   .canvas{position:relative;flex:1;overflow:hidden}
   #view{position:absolute;inset:0;background:radial-gradient(ellipse 90% 75% at 50% 32%,#191c24 0%,#101218 45%,#0a0b0f 100%)}
-  .toolbar{position:absolute;top:12px;left:12px;z-index:6;display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:70%}
+  .toolbar{position:absolute;top:12px;left:12px;z-index:8;display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:70%}
   .toolbar span.lbl{color:var(--dim);font-size:11px}
   .toolbar button{background:rgba(23,26,33,.9);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;cursor:pointer}
   .toolbar button.on{border-color:var(--user);color:#fff}
-  .timebar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:10px;background:rgba(23,26,33,.95);border:1px solid var(--line);border-radius:10px;padding:8px 14px}
+  .timebar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;background:rgba(23,26,33,.95);border:1px solid var(--line);border-radius:10px;padding:8px 14px}
   .timebar input[type=range]{width:300px;accent-color:var(--user)}
   .timebar #tlabel{font-size:12px;min-width:96px}
   .timebar button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 9px;cursor:pointer}
-  .legend{position:absolute;top:52px;right:12px;z-index:5;background:rgba(23,26,33,.92);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:12px;max-width:255px;max-height:70vh;overflow:auto}
+  .legend{position:absolute;top:52px;right:12px;z-index:7;background:rgba(23,26,33,.92);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:12px;max-width:255px;max-height:70vh;overflow:auto}
   .legend .row{display:flex;align-items:center;gap:7px;margin:3px 0;color:var(--dim)}
   .legend .sec{margin-top:7px;color:var(--ink);font-weight:600;font-size:11px}
   .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .bar{width:20px;height:0;border-top:3px solid;flex:none}
-  .stats{position:absolute;top:12px;right:12px;z-index:5;background:rgba(23,26,33,.92);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:12px;color:var(--dim);max-width:255px}
+  .stats{position:absolute;top:12px;right:12px;z-index:7;background:rgba(23,26,33,.92);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:12px;color:var(--dim);max-width:255px}
   .stats b{color:var(--ink)}
-  .detail{position:absolute;bottom:64px;left:12px;z-index:6;background:rgba(23,26,33,.95);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:12.5px;color:var(--dim);max-width:360px;max-height:52vh;overflow:auto;display:none}
+  .detail{position:absolute;bottom:64px;left:12px;z-index:8;background:rgba(23,26,33,.95);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:12.5px;color:var(--dim);max-width:360px;max-height:52vh;overflow:auto;display:none}
   .detail h3{margin:0 0 5px;font-size:13px;color:var(--user)}
   .detail b{color:var(--ink)}
   .lbl3d{font-size:11px;font-weight:500;letter-spacing:.2px;color:rgba(236,239,245,.94);text-shadow:0 1px 3px rgba(0,0,0,.92);pointer-events:none;white-space:nowrap;background:rgba(10,12,17,.5);padding:1px 6px;border-radius:6px;transition:opacity .18s ease}
@@ -68,11 +67,21 @@ MEMORY_VIEW_HTML = r"""<!doctype html>
   .lbl3d.hide{display:none}
   .lbl3d.hl{background:rgba(42,33,62,.92);box-shadow:0 0 0 1px var(--user);color:#fff;z-index:20}
   #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--fork);padding:40px;text-align:center;white-space:pre-wrap;z-index:9}
+  @media(max-width:700px){
+    .toolbar{top:8px;left:8px;right:8px;max-width:none;gap:4px}
+    .toolbar span.lbl{display:none}
+    .toolbar button{padding:4px 6px;font-size:11px}
+    .stats{top:88px;left:8px;right:8px;max-width:none;font-size:10px;padding:6px 8px}
+    .legend{display:none}
+    .timebar{left:8px;right:8px;bottom:8px;transform:none;gap:6px;padding:7px 9px}
+    .timebar input[type=range]{width:auto;min-width:0;flex:1}
+    .detail{left:8px;right:8px;bottom:60px;max-width:none}
+  }
 </style>
 <script type="importmap">
 {"imports":{
-  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three":"/model/assets/three.module.js",
+  "three/addons/":"/model/assets/jsm/"
 }}
 </script>
 </head>
@@ -101,20 +110,20 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {CSS2DRenderer, CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {ConvexGeometry} from 'three/addons/geometries/ConvexGeometry.js';
 const errBox=document.getElementById('err');
-window.addEventListener('error',e=>{errBox.style.display='flex';errBox.textContent='加载/渲染出错（多半是没联网加载 Three CDN）。\n'+e.message;});
+window.addEventListener('error',e=>{errBox.style.display='flex';errBox.textContent='加载/渲染出错。\n'+e.message;});
 
 // ── 真数据（可重取——实时轮询长大，延时摄影用）──────────────────────
-let nodes=[], edges=[], faces=[], searchState={}, byId={}, semGeo={facts:[],edges:[],faces:[]};
+let nodes=[], edges=[], faces=[], searchState={}, modelSnapshot={points:[]}, byId={}, semGeo={facts:[],edges:[],faces:[]};
 function ingest(data){
   nodes=data.nodes||[]; edges=data.edges||[]; faces=data.faces||[]; semGeo=data.sem_geo||{facts:[],edges:[],faces:[]};
-  searchState=data.search||{}; byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
+  searchState=data.search||{}; modelSnapshot=data.model||{points:[]}; byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
 }
 // ── 统一语义 fact-空间（用户 2026-07-07 拍板的模型 · Y=涌现层级）──────────────
 // 最小单元=fact（和力导向图里同一种单元，只是换了坐标域）。坐标：XZ 平面=语义(embedding)；
 // Y 轴=涌现层级（点/fact 在语义地板 Y=0 → 面/Schema 浮在成员簇正上方 → 体在更高处）。时间不占
 // 空间轴，改由底部 as-of 拖动条驱动（拖它=按沉积时间淡入 fact，延时摄影）。fact 间连接=k-NN 语义
 // 相似边；连接之上涌现：面=成员事实卷成的华盖（伞骨=成员→面节点），体=面的面（更高一层）。
-const SPLANE=7.5, FACE_Y=1.9, BODY_Y=3.3; // 语义半宽；面/体的涌现高度
+const SPLANE=5.2, FACE_Y=1.9, BODY_Y=3.3; // 语义半宽；面/体的涌现高度
 let semFPos=[]; // 每个 fact 的地板位置（下标对齐 semGeo.facts）
 function curFrac(){ // as-of 拖动条 → 时间分数（now=1）；fact.y∈[0,1] 是归一化沉积时间
   try{ if(typeof slider!=='undefined' && +slider.value<STEPS) return +slider.value/STEPS; }catch(e){}
@@ -133,10 +142,10 @@ function renderSemSpace(){
   //    不糊成墙。fact→面 着色表先建好，供 ③ 用。
   const factHue={}; // fact 下标 → 所属面的色相
   const vfaces=[];
-  for(const fc of (semGeo.faces||[])){const isBody=fc.level===2;
+  for(const fc of (semGeo.faces||[])){const isBody=fc.level>=2;
     const mem=(fc.members||[]).filter(i=>semFPos[i]&&vis[i]);if(mem.length<3)continue;
     const hue=hash(fc.id); (fc.members||[]).forEach(i=>{factHue[i]=hue;});
-    if(isBody?!showBody:!showSchema)continue;
+    if((fc.level===1&&!showSchema)||(fc.level===2&&!showBody))continue;
     const cen=mem.reduce((s,i)=>s.add(semFPos[i].clone()),new THREE.Vector3()).multiplyScalar(1/mem.length);
     vfaces.push({fc,isBody,mem,cen,hue});}
   vfaces.sort((a,b)=>a.mem.length-b.mem.length); // 小的在下、大的在上
@@ -153,8 +162,8 @@ function renderSemSpace(){
     graph.add(edgeMesh(new THREE.Vector3(cen.x,0,cen.z),apex,col,0.01,0.45)); // 主干：地板质心→面（上下链接）
     const fn=new THREE.Sprite(new THREE.SpriteMaterial({map:circleTex,color:col,transparent:true,opacity:0.95,depthWrite:false}));
     fn.scale.setScalar(isBody?0.32:0.18);fn.position.copy(apex);fn.renderOrder=3;fn.userData={kind:'face',id:fc.id};graph.add(fn);(isBody?bodyMeshes:faceMeshes).push(fn);
-    const lab=mkLabel((isBody?'体◆':'面▸')+(fc.sig||'').replace(/^用户/,'').slice(0,14)+'·'+mem.length,'sm','#'+col.getHexString(),44,1,'涌现自 '+mem.length+' 个事实（空间簇）：'+(fc.sig||''),{kind:'face',id:fc.id});
-    lab.position.copy(apex.clone().add(new THREE.Vector3(0,0.2,0)));graph.add(lab);labels3d.push(lab);});
+    const lab=mkLabel(faceMark(fc.level)+(fc.sig||'').replace(/^用户/,'').slice(0,14)+'·'+mem.length,'sm','#'+col.getHexString(),44,1,'涌现自 '+mem.length+' 个事实（空间簇）：'+(fc.sig||''),{kind:'face',id:fc.id});
+    lab.position.copy(apex.clone().add(new THREE.Vector3(0,0.2,0)));graph.add(lab);});
   // ③ 每个 fact 一个节点（地板；色相=所属面/社区，亮度/大小 ∝ 连接度=重要度；悬停→详情）
   const deg=new Array(semGeo.facts.length).fill(0);
   for(const [a,b] of (semGeo.edges||[])){if(deg[a]!=null)deg[a]++;if(deg[b]!=null)deg[b]++;}
@@ -169,7 +178,7 @@ function renderSemSpace(){
     const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:circleTex,color:col,transparent:true,opacity:op,depthWrite:false}));
     sp.scale.setScalar(sz);sp.position.copy(pos);sp.renderOrder=2;sp.userData={kind:'fact',fi:i,baseOp:op,baseScale:sz,target:pos.clone(),glow:g};graph.add(sp);nodeSprites.push(sp);
     if(d>0.55){const t=semGeo.facts[i].t||'';const lab=mkLabel(t.slice(0,16),'sm ghost','#'+col.getHexString(),50+Math.round(d*20),1,t,{kind:'fact',id:i});
-      lab.position.copy(pos.clone().add(new THREE.Vector3(0,sz+0.12,0)));graph.add(lab);labels3d.push(lab);}}
+      lab.position.copy(pos.clone().add(new THREE.Vector3(0,sz+0.12,0)));graph.add(lab);}}
 }
 // 2D 凸包（Andrew monotone chain）：只保留外边界顶点 → 面 surface 无内部尖刺
 function hull2d(pts){if(pts.length<3)return pts.slice();
@@ -177,7 +186,7 @@ function hull2d(pts){if(pts.length<3)return pts.slice();
   const lo=[];for(const q of p){while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q);}
   const up=[];for(let i=p.length-1;i>=0;i--){const q=p[i];while(up.length>=2&&cr(up[up.length-2],up[up.length-1],q)<=0)up.pop();up.push(q);}
   lo.pop();up.pop();return lo.concat(up);}
-ingest(await (await fetch('/dev/memory-graph')).json());
+ingest(await (await fetch('/model/graph')).json());
 
 // ── 轴 ↔ 通道（spec §7-6 完备分类）────────────────────────────────
 const kcls=n=>n.kind==='self'?'user':(n.kind==='event'?'occ':'cont');
@@ -267,8 +276,10 @@ const edgeHist=e=>closed(e.valid_to);
 // ── Three 场景（mockup 同款内敛风）────────────────────────────────
 const view=document.getElementById('view');
 const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x0b0c10,0.03);
-const camera=new THREE.PerspectiveCamera(50,view.clientWidth/view.clientHeight,0.1,100); camera.position.set(0,8.5,10.5); // 45° 俯视：水平的语义地板 + 面 surface 才读得出
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true}); renderer.setPixelRatio(devicePixelRatio); renderer.setSize(view.clientWidth,view.clientHeight);
+const camera=new THREE.PerspectiveCamera(50,view.clientWidth/view.clientHeight,0.1,100);
+const cameraScale=camera.aspect<0.65?1.65:(camera.aspect<1?1.25:1);
+camera.position.set(0,8.5*cameraScale,10.5*cameraScale); // 窄屏后退；45° 俯视保留语义地板 + 面 surface
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true}); renderer.setPixelRatio(devicePixelRatio); renderer.setSize(view.clientWidth,view.clientHeight);
 renderer.toneMapping=THREE.ACESFilmicToneMapping; view.appendChild(renderer.domElement);
 const labelRenderer=new CSS2DRenderer(); labelRenderer.setSize(view.clientWidth,view.clientHeight); labelRenderer.domElement.style.cssText='position:absolute;top:0;pointer-events:none'; view.appendChild(labelRenderer.domElement);
 const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.dampingFactor=.08; controls.target.set(0,1.4,0); controls.update();
@@ -351,13 +362,14 @@ function faceKey(sig){sig=(sig||'').trim();
   const m=sig.match(/[「『“"']([^」』”"']{2,16})[」』”"']/);
   if(m)return m[1];
   return sig.replace(/^用户(倾向于|擅长|正在|会|对|以|建立了|是|发现|采用)?/,'').slice(0,11);}
+function faceMark(level){return level===3?'根◎':(level===2?'体◆':'面▸');}
 function faceFull(f,pfx){return pfx+(f.signature||'')+`  [${f.provenance}${f.status==='active'?'·转正✓':'·shadow'}]`;}
 // 面/体的 n-case 分派（spec §7-6 完备表）：n≥3 凸包 · n=2 梭 · n=1 光环 · n=0 塔板
 function renderFace(f,anchorPts,col,both,o,tagPrefix){
   const hex='#'+col.getHexString();
   const tag=tagPrefix+faceKey(f.signature)+(f.status==='active'?' ✓':'');
   const full=faceFull(f,tagPrefix), fprio=40+Math.min(f.observations||1,10);
-  const isBody=f.level===2;
+  const isBody=f.level>=2;
   const frameOp=(both||isBody?0.85:0.45)*o, fillOp=(isBody?0.03:(both?0.15:0.05))*o;
   // ★ 真实语义位置优先：面若带 fact_pts（成员事实的真实 embedding 相对位置），就把每个事实画在
   // 它的真实位置上、凸包连成簇 = 面从事实的真实语义分布中涌现（不再凭空造花瓣/凸包锚点）。
@@ -408,6 +420,28 @@ function renderFace(f,anchorPts,col,both,o,tagPrefix){
   return false; // n=0：塔板 fallback（调用方收集）
 }
 
+function renderModelTower(items,z=-2.7){
+  const byLevel={1:[],2:[],3:[]};
+  items.forEach(f=>(byLevel[f.level]||byLevel[1]).push(f));
+  for(const lvl of [1,2,3]){
+    const row=byLevel[lvl], y=1.9+(lvl-1)*0.85;
+    row.forEach((f,i)=>{
+      const x=(i-(row.length-1)/2)*1.15;
+      const both=f.provenance==='both', col=idColor(f.id), root=lvl===3;
+      const radius=root?0.5:0.34+Math.min(f.observations||1,6)*0.03;
+      const plate=new THREE.Mesh(new THREE.CircleGeometry(radius,32),
+        new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:both||root?0.52:0.18,side:THREE.DoubleSide,depthWrite:false}));
+      plate.rotation.x=-Math.PI/2;plate.position.set(x,y,z);plate.userData={kind:'face',id:f.id};graph.add(plate);(lvl>=2?bodyMeshes:faceMeshes).push(plate);
+      const ring=new THREE.Mesh(new THREE.RingGeometry(radius+0.02,radius+0.06,32),
+        new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:both||root?0.92:0.4,side:THREE.DoubleSide,depthWrite:false}));
+      ring.rotation.x=-Math.PI/2;ring.position.set(x,y,z);graph.add(ring);
+      const pfx=faceMark(lvl);
+      const lab=mkLabel(pfx+faceKey(f.signature)+(f.status==='active'?' ✓':''),both||root?'sm':'sm ghost','#'+col.getHexString(),50+lvl*10,1,faceFull(f,pfx),{kind:'face',id:f.id});
+      lab.position.set(x,y+0.15,z);graph.add(lab);
+    });
+  }
+}
+
 function build(){
   while(graph.children.length){const o=graph.children.pop();o.traverse(x=>{if(x.isCSS2DObject&&x.element)x.element.remove();});}
   nodeSprites=[];faceMeshes=[];bodyMeshes=[];placedLabels=[];labels3d=[];
@@ -415,7 +449,10 @@ function build(){
   // fact 间连接 + 连接上涌现的面/体。有 sem_geo 时只渲这一个，跳过旧力导向实体图。
   if((semGeo.facts||[]).length){
     renderSemSpace();
-    const nf=semGeo.facts.length, ne=(semGeo.edges||[]).length, nfc=(semGeo.faces||[]).length, nb=(semGeo.faces||[]).filter(f=>f.level===2).length;
+    const modelFaces=faces.filter(faceVisible);
+    renderModelTower(modelFaces);
+    const nf=semGeo.facts.length, ne=(semGeo.edges||[]).length;
+    const nface=modelFaces.filter(f=>f.level===1).length, nvolume=modelFaces.filter(f=>f.level===2).length, nroot=modelFaces.filter(f=>f.level===3).length;
     document.getElementById('legend').innerHTML=
       '<div class="sec">点 = 事实（最小单元）· 在语义地板</div>'+
       '<div class="row"><span class="dot" style="background:#7aa0ff"></span>色相 = 所属面（空间簇），亮/大 = 连接度高</div>'+
@@ -431,10 +468,11 @@ function build(){
       '<div class="row"><span class="bar" style="border-color:#b58bd6"></span>主干 = 事实簇 → 面（点→面 上下链接）</div>'+
       '<div class="row" style="opacity:.8">越大的面升得越高 → 纵向层级梯度</div>'+
       '<div class="row"><span class="dot" style="background:#d6b58b"></span>体◆ = 面的面（更高一层涌现，成体才出现）</div>'+
+      '<div class="row"><span class="dot" style="background:#c65cff"></span>根◎ = 单一模型顶点（可展开回收据）</div>'+
       '<div class="row" style="opacity:.7">悬停任一点 → 右侧看事实内容 + 邻居 + 所属面</div>';
     document.getElementById('stats').innerHTML=
-      `事实(点) <b>${nf}</b> · 语义连接(边) <b>${ne}</b> · 面/体(涌现) <b>${nfc}</b>（含体 ${nb}）<br>`+
-      `<span style="font-size:11px">XZ=语义空间 · Y=涌现层级(点→面→体) · 时间=底部拖动条 · 点亮度∝连接度 · 悬停看内容</span>`;
+      `事实(点) <b>${nf}</b> · 语义连接(边) <b>${ne}</b> · 面 <b>${nface}</b> · 体 <b>${nvolume}</b> · 根 <b>${nroot}</b><br>`+
+      `<span style="font-size:11px">XZ=语义空间 · Y=涌现层级(点→面→体→根) · 时间=底部拖动条 · 点亮度∝连接度 · 悬停看内容</span>`;
     return;
   }
   const st=computeState();
@@ -495,19 +533,19 @@ function build(){
   const plates=[];
   const visFaces=faces.filter(faceVisible);
   visFaces.forEach(f=>{
-    const isBody=f.level===2;
-    if(isBody?!showBody:!showSchema)return;
+    const isBody=f.level>=2;
+    if((f.level===1&&!showSchema)||(f.level===2&&!showBody))return;
     const both=f.provenance==='both';
     const col=idColor(f.id);
     const o=fOp(f.id);
     // 角=可见非孤儿锚点（孤儿在外壳，不参与涌现簇的形状）
     const anchorPts=(f.anchors||[]).filter(a=>P[a]&&touched.has(a)&&!shadowIds.has(a)).map(a=>P[a].clone());
     if(isBody&&anchorPts.length>=1)anchorPts.push(P['self'].clone()); // §1.5-3 体锚根
-    if(!renderFace(f,anchorPts,col,both,o,isBody?'体◆':'面▸'))plates.push(f);
+    if(!renderFace(f,anchorPts,col,both,o,faceMark(f.level)))plates.push(f);
   });
-  const byLevel={1:[],2:[]};
+  const byLevel={1:[],2:[],3:[]};
   plates.forEach(f=>{(byLevel[f.level]||byLevel[1]).push(f);});
-  for(const lvl of [1,2]){
+  for(const lvl of [1,2,3]){
     const row=byLevel[lvl];const y=1.9+(lvl-1)*0.85;
     row.forEach((f,i)=>{
       const x=(i-(row.length-1)/2)*1.15;
@@ -520,7 +558,7 @@ function build(){
       const ring=new THREE.Mesh(new THREE.RingGeometry(0.36,0.4,32),
         new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:(both?0.9:0.35)*o,side:THREE.DoubleSide,depthWrite:false}));
       ring.rotation.x=-Math.PI/2;ring.position.set(x,y,0);graph.add(ring);
-      const pfx=(lvl===2?'体◆':'面▸');
+      const pfx=faceMark(lvl);
       const lab=mkLabel(pfx+faceKey(f.signature)+(f.status==='active'?' ✓':''),both?'sm':'sm ghost','#'+col.getHexString(),40+Math.min(f.observations||1,10),o,faceFull(f,pfx),{kind:'face',id:f.id});
       lab.position.set(x,y+0.14,0);graph.add(lab);
     });
@@ -561,9 +599,11 @@ function showDetail(kind,id){
     const deg=nb.length;
     const mem=(semGeo.faces||[]).filter(fc=>(fc.members||[]).includes(fi));
     const nbHtml=nb.slice(0,8).map(([j,w])=>`<div style="margin:2px 0;font-size:12px;opacity:${0.5+w*0.5}"><span style="color:var(--dim)">~${w.toFixed(2)}</span> ${(semGeo.facts[j]||{}).t||''}</div>`).join('')||'<span style="color:var(--dim)">无</span>';
-    const memHtml=mem.length?mem.map(fc=>`<div style="margin:2px 0;color:${fc.level===2?'var(--live)':'var(--ink)'};font-size:12px">${fc.level===2?'体◆':'面▸'} ${fc.sig||''}（涌现自 ${(fc.members||[]).length} 个事实）</div>`).join(''):'<span style="color:var(--dim)">尚未涌现出面</span>';
+    const memHtml=mem.length?mem.map(fc=>`<div style="margin:2px 0;color:${fc.level>=2?'var(--live)':'var(--ink)'};font-size:12px">${faceMark(fc.level)} ${fc.sig||''}（涌现自 ${(fc.members||[]).length} 个事实）</div>`).join(''):'<span style="color:var(--dim)">尚未涌现出面</span>';
+    const point=(modelSnapshot.points||[]).find(p=>(p.content||'')===(f.t||''));
+    const receiptHtml=point&&point.receipt?`<div style="margin:7px 0;color:var(--dim)"><b>Receipt</b> <code>${point.receipt}</code></div>`:'';
     detail.innerHTML=`<h3>事实（点）</h3><div style="font-size:13px;line-height:1.5;margin:4px 0 8px">${f.t||''}</div>`+
-      `<b>语义连接</b> ${deg} 条 · 时间 ${(f.t2||'').slice(0,10)||'—'}<br>`+
+      `<b>语义连接</b> ${deg} 条 · 时间 ${(f.t2||'').slice(0,10)||'—'}<br>${receiptHtml}`+
       `<div style="color:var(--ink);font-weight:600;font-size:11px;margin:8px 0 2px">最相近的事实（k-NN 邻居）</div>${nbHtml}`+
       `<div style="color:var(--ink);font-weight:600;font-size:11px;margin:8px 0 2px">上级 · 归纳出的规律（Schema▸ / 体◆）</div>${memHtml}`;
     detail.style.display='block';return;}
@@ -575,10 +615,10 @@ function showDetail(kind,id){
     // 上级：这个点归纳成了哪些 Schema（面）/ 体（面的面）——面/体 anchors 含此点即其上级规律
     const mine=faces.filter(f=>(f.anchors||[]).includes(id)).sort((a,b)=>b.level-a.level||(b.observations||0)-(a.observations||0));
     const lin=mine.length?`<div style="color:var(--ink);font-weight:600;font-size:11px;margin:8px 0 2px">上级 · 归纳出的规律（Schema▸ / 体◆）</div>`+
-      mine.map(f=>`<div class="lnk" data-fid="${f.id}" title="${(f.signature||'').replace(/"/g,'&quot;')}" style="cursor:pointer;margin:2px 0;padding-left:2px;color:${f.status==='active'?'var(--live)':'var(--dim)'}">${f.level===2?'体◆':'面▸'} ${faceKey(f.signature)}${f.status==='active'?' ✓转正':' ·shadow'}</div>`).join(''):'';
+      mine.map(f=>`<div class="lnk" data-fid="${f.id}" title="${(f.signature||'').replace(/"/g,'&quot;')}" style="cursor:pointer;margin:2px 0;padding-left:2px;color:${f.status==='active'?'var(--live)':'var(--dim)'}">${faceMark(f.level)} ${faceKey(f.signature)}${f.status==='active'?' ✓转正':' ·shadow'}</div>`).join(''):'';
     detail.innerHTML=`<h3>${n.label}</h3><b>${st}</b> · kind=${n.kind} · 边 ${predLine}${lin}<br><span class="raw" style="color:var(--dim)">原始记忆加载中…</span>`;
     // §2.1 每个点指回符号收据：懒取该点蒸馏自的原始条目
-    fetch('/dev/memory-node?id='+encodeURIComponent(id)).then(r=>r.json()).then(d=>{
+    fetch('/model/node?id='+encodeURIComponent(id)).then(r=>r.json()).then(d=>{
       if(!focus||focus.id!==id)return;
       // 以该点为根的关系树（§3.4 路径即叙事，根=这个事物）
       function treeHtml(node,depth){
@@ -608,7 +648,7 @@ function showDetail(kind,id){
     }).catch(()=>{});}
   else{const f=faces.find(x=>x.id===id);if(!f)return;
     const both=f.provenance==='both';
-    detail.innerHTML=`<h3>${f.level===2?'体◆':'面▸'}${f.signature||''}</h3>统一 schema（level${f.level}）· 由 <b>${f.n_members||0}</b> 个事实聚成（面的点=事实，≥3 才成面）· provenance=<b>${f.provenance}</b>${both?'（双信号转正 ✓）':'（单路 shadow）'} · obs=${f.observations}<br>关于（锚=主体，非点）：${(f.anchors||[]).join('、')||'（无锚·塔板）'}`;}
+    detail.innerHTML=`<h3>${faceMark(f.level)}${f.signature||''}</h3>统一 schema（level${f.level}）· 由 <b>${f.n_members||0}</b> 个事实聚成（面的点=事实，≥3 才成面）· provenance=<b>${f.provenance}</b>${both?'（双信号转正 ✓）':'（单路 shadow）'} · obs=${f.observations}<br>关于（锚=主体，非点）：${(f.anchors||[]).join('、')||'（无锚·塔板）'}`;}
   detail.style.display='block';}
 const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let downXY=null;
 renderer.domElement.addEventListener('pointerdown',e=>downXY={x:e.clientX,y:e.clientY});
@@ -637,7 +677,7 @@ build();  // 首次构建（explode() 挪到脚本末尾触发，避开 spawnSta
 async function refresh(){
   try{
     const atNow=(+slider.value>=STEPS);
-    ingest(await (await fetch('/dev/memory-graph')).json());
+    ingest(await (await fetch('/model/graph')).json());
     computeLayout(); computeTimeline();
     if(atNow){T=t1;tlabel.textContent='now';}
     build();
@@ -705,6 +745,7 @@ function cullLabels(){
     else{el.classList.remove('hide');el.classList.toggle('hl',it.hl);
       let op=it.base*it.fade; if(hover&&!it.hl)op*=0.28;
       el.style.opacity=op; if(!it.hl){occ.push({x0,x1,y0,y1});shown++;}}}
+  window.__persomeLabelHealth={total:labels3d.length,candidates:items.length,shown,camera:camera.position.toArray(),target:controls.target.toArray()};
 }
 // ── 爆炸成图动效：核心闪光 → 冲击波扩散 → 点涟漪式炸出(过冲 pop) → 镜头从近拉开揭全貌 ──
 let spawnStart=0, spawning=false, camStart=null, camEnd=null, flashObj=null, shockObj=null;
@@ -739,10 +780,21 @@ function stepSpawn(){
   labelRenderer.domElement.style.opacity=Math.max(0,Math.min(1,(el-920)/560));
   if(el>TOTAL)endSpawn();
 }
+function sampleRenderedPixels(){
+  if(window.__persomeModelRender&&window.__persomeModelRender.lit>0)return;
+  const gl=renderer.getContext(),w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
+  let lit=0,checked=0;
+  for(let yi=1;yi<10;yi++)for(let xi=1;xi<16;xi++){
+    const p=new Uint8Array(4);
+    gl.readPixels(Math.floor(w*xi/16),Math.floor(h*yi/10),1,1,gl.RGBA,gl.UNSIGNED_BYTE,p);
+    checked++;if(p[0]+p[1]+p[2]>12)lit++;
+  }
+  window.__persomeModelRender={width:w,height:h,checked,lit};
+}
 function tick(){controls.update();
   if(spawning)stepSpawn(); else applyHover();
   cullLabels();
-  renderer.render(scene,camera);labelRenderer.render(scene,camera);requestAnimationFrame(tick);}
+  renderer.render(scene,camera);sampleRenderedPixels();labelRenderer.render(scene,camera);requestAnimationFrame(tick);}
 tick();
 explode();  // 打开/刷新即播放「一点炸开成记忆图」入场动效（此处 spawnStart/spawning 已初始化）
 window.addEventListener('resize',()=>{camera.aspect=view.clientWidth/view.clientHeight;camera.updateProjectionMatrix();renderer.setSize(view.clientWidth,view.clientHeight);labelRenderer.setSize(view.clientWidth,view.clientHeight);});

@@ -58,6 +58,7 @@ persome doctor   # ✓/✗ per prerequisite (env file, key, Swift helpers, AX gr
 
 persome start
 # MCP HTTP endpoint: http://127.0.0.1:8742/mcp
+# Local Point/Line/Face/Volume/Root explorer: http://127.0.0.1:8742/model
 
 # Or use stdio:
 persome mcp

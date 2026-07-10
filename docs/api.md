@@ -1,85 +1,35 @@
 # HTTP API
 
-Persome exposes a loopback HTTP API from the same ASGI application that hosts
-MCP. The generated, machine-readable contract is [`openapi.json`](../openapi.json).
-Regenerate it after route or model changes:
+Persome exposes a deliberately small loopback HTTP API from the same ASGI
+application that hosts MCP. HTTP owns health, trusted capture ingestion, the
+model explorer, and optional Chat. Memory retrieval and correction live in MCP.
+
+The generated contract is [`openapi.json`](../openapi.json). Regenerate it after
+route or model changes:
 
 ```bash
 uv run python scripts/regen_openapi.py
 ```
 
-`tests/test_openapi_drift.py` requires the committed file to byte-match the
+`tests/test_openapi_drift.py` requires the committed file to byte-match the live
 runtime schema.
 
-## Response envelope
-
-Most endpoints return one of these shapes:
-
-```json
-{"success": true, "data": {}}
-```
-
-```json
-{"success": false, "error": "message", "detail": "optional detail"}
-```
-
-Consult OpenAPI for each request and response body. Unknown resources return
-`404`; validation failures return `422`.
-
 ## Runtime routes
-
-### Health and permissions
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Liveness probe. |
-| GET | `/permissions` | macOS Accessibility and Screen Recording state. |
-| GET | `/status` | Daemon, capture, session, memory, and model-provider status. |
+| GET | `/permissions` | macOS Accessibility state. |
+| GET | `/status` | Daemon, capture, session, memory, and provider status. |
+| POST | `/captures/ingest` | Ingest one capture from a trusted local producer. |
+| GET | `/model` | Open the offline Point/Line/Face/Volume/Root explorer. |
+| GET | `/model/graph` | Read visualization data plus the versioned model snapshot. |
+| GET | `/model/node?id=...` | Resolve one graph point to receipts and its relation tree. |
 
-### Capture and state formation
+The model page loads its pinned Three.js modules from `/model/assets/*`. Those
+static routes are package resources and are intentionally omitted from OpenAPI.
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/captures/ingest` | Ingest a capture from a trusted local producer. |
-| GET | `/captures/current` | Recent capture and timeline context. |
-| GET | `/captures` | Search raw captures. |
-| GET | `/captures/recent` | Read the nearest recent capture. |
-| GET | `/timeline` | Query normalized timeline blocks. |
-| GET | `/attention/trajectory` | Query the derived attention trajectory. |
-
-### Memory and retrieval
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/memories` | List durable memory files. |
-| GET | `/memories/{path}` | Read a memory file with optional filters. |
-| POST | `/memories/append` | Explicit, auditable memory write. |
-| GET | `/search` | Search durable memory. |
-| GET | `/activity` | Read recent durable activity. |
-
-### Observability
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/parser/stats` | Read parser telemetry. |
-
-### Reference and maintenance
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/schema` | Read the Markdown memory schema. |
-| GET | `/config` | Read resolved configuration. |
-| GET, PUT | `/config/raw` | Read or replace local TOML configuration. |
-| GET, PUT | `/config/debug-hud` | Read or update observability filters. |
-| POST | `/daemon/pause` | Pause capture. |
-| POST | `/daemon/resume` | Resume capture. |
-| POST | `/daemon/capture-once` | Request one capture. |
-| POST | `/indices/rebuild` | Rebuild the memory index. |
-| POST | `/indices/rebuild-captures` | Rebuild the capture index. |
-| POST | `/consolidate` | Run memory consolidation. |
-| GET | `/events/stream` | Multiplexed server-sent event stream. |
-
-### Optional chat
+## Chat routes
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -87,22 +37,28 @@ Consult OpenAPI for each request and response body. Unknown resources return
 | GET, DELETE | `/chat/sessions/{session_id}` | Read or delete a session. |
 | GET, POST | `/chat/sessions/{session_id}/messages` | Read messages or stream a reply. |
 
-Chat uses the same memory and provenance interfaces as MCP. It is an optional
-consumer of the personal model, not a second model store.
+Chat consumes the same memory and provenance interfaces as MCP. It is not a
+second model store.
+
+## Model contract
+
+`GET /model/graph` includes a `model` object with the same schema returned by the
+MCP `get_model_snapshot` tool and CLI `persome model export`:
+
+```text
+schema_version, generated_at, build,
+points, lines, faces, volumes, root, receipts, stats
+```
+
+Every Line derived from activity carries `source_kind`, `source_id`, and
+`source_receipt`. Legacy `event:<id>` identities are normalized to
+`event:intent:<id>` and are read only when an old `intents` table exists.
 
 ## Security boundary
 
 - The server defaults to `127.0.0.1`.
 - Origin and host guards reject non-loopback browser access.
-- Raw captures and configuration are local sensitive data.
+- `/captures/ingest` assumes a trusted local producer; it is not a public upload API.
+- Model assets and graph data load from the same loopback server with no CDN dependency.
 - LLM and embedding egress only use endpoints configured by the user.
-- `openapi.json` describes the API surface, not an authorization grant.
-
-## Removed product surfaces
-
-The paper runtime does not expose work-thread tracking, meeting assistance,
-computer-use actuation, day-0 filesystem profiling, memoir/book generation, or
-background product run boards. Upgrades do not destructively drop their legacy
-SQLite tables. New databases no longer create them; `ActivitySource` can read a
-legacy `intents` table only to migrate completed historical activity into the
-neutral model contract.
+- Unknown and removed product/admin routes return `404`.

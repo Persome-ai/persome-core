@@ -2,10 +2,9 @@
 
 Regression: events were published from worker threads via a single
 globally-captured loop (``events.init``). When the subscriber lived in a
-*different* loop — the FastMCP/uvicorn HTTP server loop that actually serves
-``/events/stream`` — ``call_soon_threadsafe`` posted to a loop with no
-subscribers and every event was silently dropped (HUD / classifier / intents-debug
-live views received nothing). Subscribers now capture their own loop; publish
+*different* loop — for example a local observer — ``call_soon_threadsafe``
+posted to a loop with no subscribers and every event was silently dropped.
+Subscribers now capture their own loop; publish
 must reach them, with no ``init`` needed.
 """
 

@@ -1,18 +1,15 @@
 """Global event bus for streaming agent activity to live watchers.
 
 Thread-safe: pipeline stages run in ``asyncio.to_thread`` or raw worker threads
-and call ``publish`` from there. The
-SSE endpoint runs in the HTTP server's event loop and drains a per-subscriber
+and call ``publish`` from there. Local subscribers drain their own
 ``asyncio.Queue``.
 
 Each subscriber records **its own** running loop at subscription time, and
 ``publish`` schedules the put on that loop. This is deliberate: the daemon's
-background tasks (where ``init`` used to capture *a* loop) and the FastMCP/
-uvicorn HTTP server that actually serves ``/events/stream`` are not guaranteed
-to share one event loop. Posting to a single globally-captured loop dropped
-every event when the subscriber lived in a different loop — which is why the
-live observability views received nothing. Capturing the
-subscriber's loop removes that coupling entirely.
+background tasks (where ``init`` used to capture *a* loop) and local consumers
+are not guaranteed to share one event loop. Posting to a single globally-captured
+loop dropped every event when the subscriber lived in a different loop. Capturing
+the subscriber's loop removes that coupling entirely.
 """
 
 from __future__ import annotations

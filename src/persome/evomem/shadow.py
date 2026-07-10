@@ -2,10 +2,9 @@
 
 设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
 
-挂点收口：设计稿 §1.3 列举的全部写站点（intent/sink、chat memory_extractor、
-chat tool_handlers、writer/tools、session_reducer、
-schema_miner_stage、cross_domain_sweeper、timeline/aggregator，外加
-intent/schema_feedback）最终都收敛到 ``store/entries.py`` 的三条写路
+挂点收口：当前全部写站点（chat memory_extractor、chat tool_handlers、
+writer/tools、session_reducer、schema_miner_stage、cross_domain_sweeper、
+timeline/aggregator）最终都收敛到 ``store/entries.py`` 的三条写路
 （``append_entry`` / ``supersede_entry`` / ``mark_entry_deleted``）。影子 hook
 挂在这三条写路的锁尾——任何现有/未来 caller 自动被覆盖（设计稿风险 1
 「绕过主写+影子机制的写路径」的最强对冲）。唯一已知绕路站点是
