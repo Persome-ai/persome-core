@@ -1,7 +1,7 @@
 # PyInstaller spec for persome (macOS, single arch).
 #
-# 走 spec 而不是 CLI flag：部分依赖（requests/urllib3 的 contrib 子树、
-# dashscope、sounddevice data）是动态导入的，collect_all / collect_submodules
+# 走 spec 而不是 CLI flag：部分依赖（requests/urllib3 的 contrib 子树）
+# 是动态导入的，collect_all / collect_submodules
 # 在枚举阶段把它们显式收进来，静态扫描看不到。LLM 通路现在全走 Anthropic SDK
 # （httpx 传输），不再有 litellm/tiktoken 的特殊处理。
 #
@@ -44,8 +44,6 @@ datas, binaries, hiddenimports = _merge(
     collect_all("mcp"),
     collect_all("typer"),
     collect_all("rich"),
-    collect_all("dashscope"),
-    collect_all("websocket"),
     # PaddleOCR for on-device OCR (PP-OCRv6 tiny tier) — arm64 macOS only;
     # paddle has no x86_64 macOS wheel, so these are no-ops on x86_64 builds.
     _safe_collect("paddleocr"),
@@ -109,16 +107,6 @@ hiddenimports += hidden_u
 datas += copy_metadata("requests")
 datas += copy_metadata("urllib3")
 hiddenimports += collect_submodules("charset_normalizer")
-
-# Meeting assistant: jieba (keywords), sounddevice (mic)
-# dashscope + websocket 已在上方 _merge() 中 collect_all
-hiddenimports += collect_submodules("jieba")
-hiddenimports += ["sounddevice", "_sounddevice_data"]
-datas_sd, binaries_sd, hidden_sd = collect_all("_sounddevice_data")
-datas += datas_sd
-binaries += binaries_sd
-hiddenimports += hidden_sd
-
 
 a = Analysis(
     ["pyi_entrypoint.py"],

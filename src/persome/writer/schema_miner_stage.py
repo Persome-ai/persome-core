@@ -13,8 +13,8 @@ that closes both gaps for acme (design ``2026-06-06-migration-D2-cognition.md``)
    when it writes them, so a file *is* a natural semantic cluster (design §2.3:
    "同一 topic 文件的事实归一簇，纯启发不引向量/DBSCAN"). A bundle smaller than
    ``min_facts`` is dropped — too few facts can't support a generalisation
-   (aligns with Hy-Memory's ``MIN_FACTS_FOR_INDUCTION``). Wiring the richer dream
-   Stage-1 cross-session clusters in is a later step; it feeds the same
+   (aligns with Hy-Memory's ``MIN_FACTS_FOR_INDUCTION``). Wiring richer
+   cross-session clusters in is a later step; it feeds the same
    :class:`FactBundle` interface, so this stage doesn't change when it lands.
 
 2. **Landing form + lifecycle (idempotent)** — :func:`mine_bundles_and_write`
@@ -470,7 +470,7 @@ def mine_schemas_for_user(
 ) -> SchemaRunResult:
     """Top-level, testable entry point: collect fact bundles, mine, and land them.
 
-    This is the function a dream tick (or a manual/CLI trigger) would call. It
+    This is the function a scheduled tick or manual model build calls. It
     wires :func:`collect_fact_bundles` (the per-file MVP clustering) into
     :func:`mine_bundles_and_write`. Wiring it into the daemon registry is a later
     step — keeping it a plain function here makes the whole chain unit-testable

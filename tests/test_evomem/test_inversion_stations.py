@@ -6,8 +6,8 @@
 harness 见 ``inversion_harness.py``。
 
 站点清单（§1.3；Q2 豁免 ``writer/session_reducer.py`` 与 timeline 的 event 写）：
-intent/sink、chat/memory_extractor、chat/tool_handlers、bootstrap/sink、
-writer/tools（dream/classifier/pattern_detector/consolidator 共用的写工具层）、
+intent/sink、chat/memory_extractor、chat/tool_handlers、
+writer/tools（classifier/pattern_detector/consolidator 共用的写工具层）、
 writer/schema_miner_stage、writer/cross_domain_sweeper、intent/schema_feedback。
 """
 
@@ -133,36 +133,7 @@ def test_station_chat_tool_handlers_set_user_name(
     assert_equivalent(snap_md, snap_evo)
 
 
-# ── 站点 4：bootstrap/sink（preset create + 原子事实 append + P2 重跑退役）───
-
-
-def test_station_bootstrap_sink(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from persome.bootstrap.sink import write
-    from persome.bootstrap.synthesizer import Profile
-
-    profile = Profile(
-        identity_facts=["住在上海", "是工程师"],
-        preference_facts=["偏好 uv"],
-        projects=[{"name": "acme", "facts": ["主仓库是 acme-mono"]}],
-        tools=[],
-        topics=[],
-    )
-
-    def _script() -> None:
-        write(profile, [], fallback_text="")
-        # P2 幂等重跑：retire 上一轮全部 #bootstrap live 条目（mark_entry_deleted
-        # 路径）再重写。
-        write(profile, [], fallback_text="")
-
-    snap_md, snap_evo = run_in_both_modes(monkeypatch, tmp_path, _script)
-    assert {"user-profile.md", "user-preferences.md", "project-acme.md"} <= set(snap_md.memory)
-    # 第二轮确实退役了第一轮（每个事实一活一退）
-    superseded = [r for r in snap_md.entries if r[6] == 1]
-    assert superseded
-    assert_equivalent(snap_md, snap_evo)
-
-
-# ── 站点 5：writer/tools（dream/classifier/pattern_detector/consolidator 写层）─
+# ── 站点 4：writer/tools（classifier/pattern_detector/consolidator 写层）─────
 
 
 def test_station_writer_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -172,11 +143,11 @@ def test_station_writer_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         with fts.cursor() as conn:
             state = tools.CommitState()
             assert tools.tool_create(
-                conn, path="project-dream.md", description="dream file", tags=["proj"], state=state
+                conn, path="project-model.md", description="model file", tags=["proj"], state=state
             )["ok"]
             r1 = tools.tool_append(
                 conn,
-                path="project-dream.md",
+                path="project-model.md",
                 content="observed fact",
                 tags=["alpha"],
                 soft_limit_tokens=20_000,
@@ -187,16 +158,16 @@ def test_station_writer_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
             assert r1["ok"]
             r2 = tools.tool_supersede(
                 conn,
-                path="project-dream.md",
+                path="project-model.md",
                 old_entry_id=r1["id"],
                 new_content="corrected fact",
-                reason="dream consolidation",
-                tags=None,  # dream LLM 常省 tags → 回退继承
+                reason="model consolidation",
+                tags=None,  # LLM may omit tags, so inherit them
                 state=state,
             )
             assert r2["ok"]
             assert tools.tool_flag_compact(
-                conn, path="project-dream.md", reason="getting big", state=state
+                conn, path="project-model.md", reason="getting big", state=state
             )["ok"]
             # 错误面契约不变：缺文件返回 error dict 而非抛错
             assert "error" in tools.tool_append(
@@ -210,7 +181,7 @@ def test_station_writer_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 
     snap_md, snap_evo = run_in_both_modes(monkeypatch, tmp_path, _script)
     assert snap_md.files[0][8] == 1  # needs_compact 在 files 行
-    assert "needs_compact: true" in snap_md.memory["project-dream.md"]
+    assert "needs_compact: true" in snap_md.memory["project-model.md"]
     assert_equivalent(snap_md, snap_evo)
 
 

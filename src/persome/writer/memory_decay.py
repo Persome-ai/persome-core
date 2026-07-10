@@ -10,7 +10,7 @@ coarser summary — precision degrades in tiers, nothing is ever binary-deleted.
 Eligibility is the MECE cell table (spec §2): only **old ∧ weak ∧
 unprotected** entries decay. Protections: conflicted (⚠ pending human
 adjudication — never destroy evidence), non-fact prefixes (event-* / schema-*
-/ intent-* / thread-* have their own lifecycles), and ``decayed:2`` (the
+/ intent-* have their own lifecycles), and ``decayed:2`` (the
 one-line floor — coarser than one line is deletion, which §1.5-4 forbids).
 
 The decay op is a COMPOSITION of existing choke-point verbs (spec §4 — zero

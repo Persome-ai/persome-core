@@ -23,7 +23,7 @@ gating to code:
 
 Everything here is fail-open: an LLM error, malformed JSON, or a store error
 logs a warning and returns ``written=False`` — the session-end chain
-(classifier → pattern detector → workthread) is never disturbed.
+(classifier → pattern detector → model projection) is never disturbed.
 """
 
 from __future__ import annotations
@@ -293,14 +293,19 @@ def gate_delta(
     # 召回损失（LLM 只加富关系 reports_to/part_of/directed）。门控（默认 on）。
     if cooccurrence:
         persons = sorted(
-            {c for e in clean["entities"] if e.get("kind") == "person"
-             and (c := (e.get("ref") or e.get("new_entity")))}
+            {
+                c
+                for e in clean["entities"]
+                if e.get("kind") == "person" and (c := (e.get("ref") or e.get("new_entity")))
+            }
         )
         have = {
-            frozenset((
-                r["src"].get("ref") or r["src"].get("new_entity") or "",
-                r["dst"].get("ref") or r["dst"].get("new_entity") or "",
-            ))
+            frozenset(
+                (
+                    r["src"].get("ref") or r["src"].get("new_entity") or "",
+                    r["dst"].get("ref") or r["dst"].get("new_entity") or "",
+                )
+            )
             for r in clean["relations"]
             if r.get("predicate") == "knows"
         }
@@ -308,11 +313,19 @@ def gate_delta(
             for j in range(i + 1, len(persons)):
                 if frozenset((persons[i], persons[j])) in have:
                     continue
-                clean["relations"].append({
-                    "src": {"ref": persons[i]}, "dst": {"ref": persons[j]},
-                    "predicate": "knows", "label": "共现", "quote": "",
-                    "confidence": 0.6, "polarity": "0", "ended": False, "cooccurrence": True,
-                })
+                clean["relations"].append(
+                    {
+                        "src": {"ref": persons[i]},
+                        "dst": {"ref": persons[j]},
+                        "predicate": "knows",
+                        "label": "共现",
+                        "quote": "",
+                        "confidence": 0.6,
+                        "polarity": "0",
+                        "ended": False,
+                        "cooccurrence": True,
+                    }
+                )
 
     return clean, dropped
 

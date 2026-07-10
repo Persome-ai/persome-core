@@ -42,7 +42,7 @@
 影子双写自动恢复工作。
 
 op 决策与 reconcile 调和的关系（§1.3 的实现取舍）：到达写口动词时，各站点的
-写决策已经做完（chat 抽取 / dream agent / schema miner 各自的 LLM 或确定性
+写决策已经做完（chat 抽取 / classifier / schema miner 各自的 LLM 或确定性
 逻辑）——本模块把它们一一映射为确定性的真相写，不调 reconciler 重新决策，
 这是「同输入 → 新旧路径 markdown 投影 byte-identical」迁移纪律的前提；
 reconcile 调和（``engine.add``）作为语义升级与写权反转解耦，留待后续按站点
@@ -107,8 +107,8 @@ def routes_to_engine(name: str) -> bool:
     try:
         if "/" in name:
             return False  # skills/ 子目录：投影无法路由回子目录，留旧直写口
-        if files_mod.validate_prefix(name) in ("event", "task-outcome"):
-            return False  # Q2：event-* / task-outcome-*（反向闭环 G1）永不进 evo_nodes
+        if files_mod.validate_prefix(name) == "event":
+            return False  # Q2：event-* append-only 日志永不进 evo_nodes
     except ValueError:
         return False
     return evomem_active()
@@ -668,8 +668,8 @@ def import_markdown_file(conn: sqlite3.Connection, name: str) -> ImportReport:
             "markdown 主写模式直接编辑文件 + `persome rebuild-index` 即可"
         )
     path = files_mod.memory_path(name)
-    if "/" in name or files_mod.validate_prefix(path.name) in ("event", "task-outcome"):
-        raise ValueError(f"{path.name} 属豁免口（event-*/task-outcome-*/子目录），不在投影/回灌范围")
+    if "/" in name or files_mod.validate_prefix(path.name) == "event":
+        raise ValueError(f"{path.name} 属豁免口（event-*/子目录），不在投影/回灌范围")
     if not path.exists():
         raise FileNotFoundError(path.name)
 
@@ -773,7 +773,7 @@ def project_live_all(conn: sqlite3.Connection) -> list[str]:
     for r in conn.execute("SELECT path FROM files ORDER BY path").fetchall():
         name = r["path"]
         try:
-            if "/" in name or files_mod.validate_prefix(name) in ("event", "task-outcome"):
+            if "/" in name or files_mod.validate_prefix(name) == "event":
                 continue
         except ValueError:
             continue

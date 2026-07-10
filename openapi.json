@@ -1,0 +1,2791 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Persome API",
+    "description": "Local-first screen-context memory — REST API layer.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "description": "健康检查，返回服务存活状态。",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/permissions": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Permissions",
+        "description": "返回 daemon 自身需要的 macOS 权限实时状态。\n\n辅助功能（Accessibility）由 **daemon 进程**申请——真正读 AX 树的\n``mac-ax-helper`` / ``mac-ax-watcher`` 都由 daemon 派生，TCC 按 daemon 的\n身份记授权。GUI app 自己从不读 AX 树，所以引导页应轮询本端点反映 daemon\n的真实信任态，而不是在 app 进程里自查（那会多出一个冗余 TCC 主体、多弹一次框）。\n\n``accessibility`` 取值 ``granted`` / ``denied``（非 macOS 主机恒为 ``denied``）。",
+        "operationId": "permissions_permissions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Status",
+        "description": "获取完整运行状态，包括版本、守护进程状态、运行时长、捕获状态、记忆统计、各阶段 LLM 连通性等。",
+        "operationId": "status_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "List Memories",
+        "description": "列出所有记忆文件及其元数据（描述、标签、状态、条目数等）。",
+        "operationId": "list_memories_memories_get",
+        "parameters": [
+          {
+            "name": "include_dormant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "是否包含休眠文件（长时间无更新的文件）",
+              "default": false,
+              "title": "Include Dormant"
+            },
+            "description": "是否包含休眠文件（长时间无更新的文件）"
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "是否包含归档文件（已被新版替代的过期文件）",
+              "default": false,
+              "title": "Include Archived"
+            },
+            "description": "是否包含归档文件（已被新版替代的过期文件）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories/{path}": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Read Memory",
+        "description": "读取指定记忆文件的内容和条目列表。",
+        "operationId": "read_memory_memories__path__get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "记忆文件路径，如 user-profile.md",
+              "title": "Path"
+            },
+            "description": "记忆文件路径，如 user-profile.md"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略",
+              "title": "Since"
+            },
+            "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略",
+              "title": "Until"
+            },
+            "description": "结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略"
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按标签过滤，只返回包含任一指定标签的条目",
+              "title": "Tags"
+            },
+            "description": "按标签过滤，只返回包含任一指定标签的条目"
+          },
+          {
+            "name": "tail_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "只返回最近 N 条条目",
+              "title": "Tail N"
+            },
+            "description": "只返回最近 N 条条目"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories/append": {
+      "post": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Append Memory",
+        "description": "Write a durable agent finding back into Persome memory (Agent-Native Persome, Phase 3).\n\nFunnels through the canonical ``entries.append_entry`` writer (same integrity gate /\nwrite-inversion as every other writer) and force-tags the entry ``source:agent-run`` (+\n``run:<run_id>`` when provided). 422 on empty content. The HTTP twin of the MCP ``remember``\ntool. Spec: docs/superpowers/specs/2026-06-25-agent-native-persome-design.md §6.",
+        "operationId": "append_memory_memories_append_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryAppendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Search",
+        "description": "对记忆条目进行混合语义检索（BM25 ⊕ dense 向量 → RRF 融合），按相关性排序返回。\n\n配了 embedding 端点（OPENAI_*）时按语义匹配——可用自然语言/改写查询，不必照抄原词；\n否则 fail-open 退化为 BM25 关键词检索（同一调用）。",
+        "operationId": "search_search_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "搜索文本，支持自然语言/改写查询（语义匹配），也支持关键词，如 'Vanessa 什么时候开会'",
+              "title": "Query"
+            },
+            "description": "搜索文本，支持自然语言/改写查询（语义匹配），也支持关键词，如 'Vanessa 什么时候开会'"
+          },
+          {
+            "name": "paths",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "限制搜索范围到指定文件路径，支持 glob 如 event-*.md、user-*.md。可传多个",
+              "title": "Paths"
+            },
+            "description": "限制搜索范围到指定文件路径，支持 glob 如 event-*.md、user-*.md。可传多个"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略",
+              "title": "Since"
+            },
+            "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略",
+              "title": "Until"
+            },
+            "description": "结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略"
+          },
+          {
+            "name": "top_k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "返回结果数量上限，范围 1~50",
+              "default": 5,
+              "title": "Top K"
+            },
+            "description": "返回结果数量上限，范围 1~50"
+          },
+          {
+            "name": "include_superseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "是否包含已被替代的条目",
+              "default": false,
+              "title": "Include Superseded"
+            },
+            "description": "是否包含已被替代的条目"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/activity": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Recent Activity",
+        "description": "按时间倒序获取最近的记忆条目，用于快速回顾近期活动。",
+        "operationId": "recent_activity_activity_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略",
+              "title": "Since"
+            },
+            "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "返回条目数量上限，范围 1~200",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "返回条目数量上限，范围 1~200"
+          },
+          {
+            "name": "prefix_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按文件路径前缀过滤，如 ['event-', 'project-']",
+              "title": "Prefix Filter"
+            },
+            "description": "按文件路径前缀过滤，如 ['event-', 'project-']"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/captures/ingest": {
+      "post": {
+        "tags": [
+          "capture"
+        ],
+        "summary": "Ingest Capture",
+        "description": "接收 Swift \"Persome\" 主程序采集的一帧 capture，跑富化→落库→意图快路 hook。\n\n采集层（AX 树 + 焦点窗口截图）已搬进持有 Accessibility / Screen-Recording 的 Swift\n进程（``capture.source = \"ingest\"``）；daemon 自身不再 spawn watcher、不再抓屏，因而\n不需要任何系统权限。落库 / 去重 / hook 与 daemon 自采路径完全一致（共用同一 runner）。",
+        "operationId": "ingest_capture_captures_ingest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureIngestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/captures/current": {
+      "get": {
+        "tags": [
+          "capture"
+        ],
+        "summary": "Current Context",
+        "description": "获取当前屏幕捕获上下文，包括最近的捕获摘要、完整文本和时间线块。",
+        "operationId": "current_context_captures_current_get",
+        "parameters": [
+          {
+            "name": "app_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按应用名称过滤，如 Feishu、WeChat、Tabbit Browser。不填则返回所有应用",
+              "title": "App Filter"
+            },
+            "description": "按应用名称过滤，如 Feishu、WeChat、Tabbit Browser。不填则返回所有应用"
+          },
+          {
+            "name": "headline_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "description": "摘要数量上限",
+              "default": 5,
+              "title": "Headline Limit"
+            },
+            "description": "摘要数量上限"
+          },
+          {
+            "name": "fulltext_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "description": "全文数量上限",
+              "default": 3,
+              "title": "Fulltext Limit"
+            },
+            "description": "全文数量上限"
+          },
+          {
+            "name": "timeline_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "时间线块数量上限",
+              "default": 8,
+              "title": "Timeline Limit"
+            },
+            "description": "时间线块数量上限"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/captures": {
+      "get": {
+        "tags": [
+          "capture"
+        ],
+        "summary": "Search Captures",
+        "description": "对原始屏幕捕获记录进行 BM25 全文搜索。",
+        "operationId": "search_captures_captures_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "搜索关键词，支持多词空格分隔，如 'Feishu 会议'",
+              "title": "Query"
+            },
+            "description": "搜索关键词，支持多词空格分隔，如 'Feishu 会议'"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略",
+              "title": "Since"
+            },
+            "description": "起始时间 ISO8601，如 2026-05-01T00:00:00+08:00。传空值会被忽略"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略",
+              "title": "Until"
+            },
+            "description": "结束时间 ISO8601，如 2026-05-18T23:59:59+08:00。传空值会被忽略"
+          },
+          {
+            "name": "app_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按应用名称过滤，如 Feishu、WeChat、Tabbit Browser",
+              "title": "App Name"
+            },
+            "description": "按应用名称过滤，如 Feishu、WeChat、Tabbit Browser"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "返回结果数量上限，范围 1~50",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "返回结果数量上限，范围 1~50"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/captures/recent": {
+      "get": {
+        "tags": [
+          "capture"
+        ],
+        "summary": "Read Recent Capture",
+        "description": "读取最近一次的屏幕捕获详情。给定 file_stem 时按 ID 精确取，否则按时间/应用/窗口标题就近匹配。\n\n返回的 ``visible_text`` 是解析后的可见文本；``text_source`` 标明它来自\n``ax``（AX 树）还是 ``ocr``（微信等 AX-poor 应用的屏幕 OCR），``ocr`` 块给出\nOCR 状态（``not_run`` / ``submitted_empty`` / ``recognized``），``ax`` 块给出\nAX 抓取状态（节点数、模式、是否仅抓到窗口标题帧）。浏览器的 ``visible_text``\n只含网页正文 + 一行外壳摘要（渐进式披露）；``include_ax_tree=1`` 取回完整结构。",
+        "operationId": "read_recent_capture_captures_recent_get",
+        "parameters": [
+          {
+            "name": "at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "目标时间，ISO 格式如 2026-05-18T14:30:00+08:00，或简写如 14:30。不填则取最新",
+              "title": "At"
+            },
+            "description": "目标时间，ISO 格式如 2026-05-18T14:30:00+08:00，或简写如 14:30。不填则取最新"
+          },
+          {
+            "name": "file_stem",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "精确捕获 ID（headline/搜索结果里的 file_stem）。给定时按 ID 精确取，忽略 at/app_name 的就近匹配——避免同分钟/同目录的错配",
+              "title": "File Stem"
+            },
+            "description": "精确捕获 ID（headline/搜索结果里的 file_stem）。给定时按 ID 精确取，忽略 at/app_name 的就近匹配——避免同分钟/同目录的错配"
+          },
+          {
+            "name": "app_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按应用名称过滤，如 Feishu、WeChat、Tabbit Browser",
+              "title": "App Name"
+            },
+            "description": "按应用名称过滤，如 Feishu、WeChat、Tabbit Browser"
+          },
+          {
+            "name": "window_title_substring",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按窗口标题子串过滤，如 'Pull Request'、'CLAUDE.md'",
+              "title": "Window Title Substring"
+            },
+            "description": "按窗口标题子串过滤，如 'Pull Request'、'CLAUDE.md'"
+          },
+          {
+            "name": "include_screenshot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "是否在响应中包含截图 base64。开启后响应体积会显著增大",
+              "default": false,
+              "title": "Include Screenshot"
+            },
+            "description": "是否在响应中包含截图 base64。开启后响应体积会显著增大"
+          },
+          {
+            "name": "include_ax_tree",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "渐进式披露『展开』：返回完整 ax_tree（含 visible_text 折叠掉的浏览器外壳——书签/标签/扩展）。体积大、按需开启；Agent 需要明细时才用",
+              "default": false,
+              "title": "Include Ax Tree"
+            },
+            "description": "渐进式披露『展开』：返回完整 ax_tree（含 visible_text 折叠掉的浏览器外壳——书签/标签/扩展）。体积大、按需开启；Agent 需要明细时才用"
+          },
+          {
+            "name": "max_age_minutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1440,
+              "minimum": 1,
+              "description": "当使用 at 参数时，允许的最大时间偏差（分钟）。如 at=14:30 且 max_age_minutes=15，则匹配 14:15~14:45 之间的捕获",
+              "default": 15,
+              "title": "Max Age Minutes"
+            },
+            "description": "当使用 at 参数时，允许的最大时间偏差（分钟）。如 at=14:30 且 max_age_minutes=15，则匹配 14:15~14:45 之间的捕获"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/timeline": {
+      "get": {
+        "tags": [
+          "timeline"
+        ],
+        "summary": "List Timeline",
+        "description": "查询 timeline 原始块列表，支持时间范围过滤，按时间倒序返回。",
+        "operationId": "list_timeline_timeline_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "开始时间（ISO 8601），如 2026-05-01T00:00:00+08:00",
+              "title": "Since"
+            },
+            "description": "开始时间（ISO 8601），如 2026-05-01T00:00:00+08:00"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间（ISO 8601），如 2026-05-20T23:59:59+08:00",
+              "title": "Until"
+            },
+            "description": "结束时间（ISO 8601），如 2026-05-20T23:59:59+08:00"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "最多返回条数，范围 1~200",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "最多返回条数，范围 1~200"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/attention/trajectory": {
+      "get": {
+        "tags": [
+          "timeline"
+        ],
+        "summary": "Attention Trajectory",
+        "description": "注意力轨迹 + dwell：把每个 timeline 块的 dominant locus 聚合成\n``by_dwell``（按总停留时长排序的 surface）+ ``trajectory``（时间顺序路径）。",
+        "operationId": "attention_trajectory_attention_trajectory_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "开始时间（ISO 8601）。不填则用最近 hours 小时",
+              "title": "Since"
+            },
+            "description": "开始时间（ISO 8601）。不填则用最近 hours 小时"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间（ISO 8601）。不填则到现在",
+              "title": "Until"
+            },
+            "description": "结束时间（ISO 8601）。不填则到现在"
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "description": "since 不填时回看的小时数",
+              "default": 24,
+              "title": "Hours"
+            },
+            "description": "since 不填时回看的小时数"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/intents": {
+      "get": {
+        "tags": [
+          "intent"
+        ],
+        "summary": "List Intents",
+        "description": "列出统一意图流（debug 视图 + R3 反馈的数据源），按 ts 倒序（最新在前）。",
+        "operationId": "list_intents_intents_get",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按场景过滤，如 timeline / session-<id>",
+              "title": "Scope"
+            },
+            "description": "按场景过滤，如 timeline / session-<id>"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按状态过滤：open / consumed / dismissed",
+              "title": "Status"
+            },
+            "description": "按状态过滤：open / consumed / dismissed"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "返回结果数量上限（取最新）",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "返回结果数量上限（取最新）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_IntentsResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recall/pack": {
+      "get": {
+        "tags": [
+          "intent"
+        ],
+        "summary": "Recall Pack",
+        "description": "结构化、带引用、分层的召回包 —— 供主动任务 prompt 内联（识别即办）。\n\n与 ``intent.recall.assemble_background`` 跑同一套 per-layer helper、同序，但每条\n带 ``cite`` 句柄；scene 项再带 RAW 捕获句柄（截图 stem / timeline 块 id）。只读、\n不写遥测 tick。``intent_id`` 优先：按行解析 scope/hints/raw 句柄；否则用 scope+text。\n无 embedding 凭据时稠密层自动空跑（``dense.active=false``），全程确定性。",
+        "operationId": "recall_pack_recall_pack_get",
+        "parameters": [
+          {
+            "name": "intent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按意图行 id 召回（解析 scope/hints/raw 句柄）",
+              "title": "Intent Id"
+            },
+            "description": "按意图行 id 召回（解析 scope/hints/raw 句柄）"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "场景 id（无 intent_id 时必填），如 timeline / session-<id>",
+              "title": "Scope"
+            },
+            "description": "场景 id（无 intent_id 时必填），如 timeline / session-<id>"
+          },
+          {
+            "name": "text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "自由文本，派生 hints + 稠密查询",
+              "title": "Text"
+            },
+            "description": "自由文本，派生 hints + 稠密查询"
+          },
+          {
+            "name": "hints",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "显式 hint 词覆盖；省略则由 text 派生",
+              "title": "Hints"
+            },
+            "description": "显式 hint 词覆盖；省略则由 text 派生"
+          },
+          {
+            "name": "max_chars",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 20000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "字符预算；省略=recall_max_chars 配置",
+              "title": "Max Chars"
+            },
+            "description": "字符预算；省略=recall_max_chars 配置"
+          },
+          {
+            "name": "per_layer_cap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 0,
+              "description": "每层最多保留几条（0=不限）",
+              "default": 8,
+              "title": "Per Layer Cap"
+            },
+            "description": "每层最多保留几条（0=不限）"
+          },
+          {
+            "name": "include_semantic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "是否跑稠密层；省略=配置开关；无 embedding 凭据自动空跑",
+              "title": "Include Semantic"
+            },
+            "description": "是否跑稠密层；省略=配置开关；无 embedding 凭据自动空跑"
+          },
+          {
+            "name": "include_raw_handles",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "是否回 capture_stem/timeline_block_id（外部 prompt 可置 false）",
+              "default": true,
+              "title": "Include Raw Handles"
+            },
+            "description": "是否回 capture_stem/timeline_block_id（外部 prompt 可置 false）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_RecallPackResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/parser/stats": {
+      "get": {
+        "tags": [
+          "parser"
+        ],
+        "summary": "Parser Hit Stats",
+        "description": "Per-app 解析器命中率埋点统计（通用可观测层）。\n\ntimeline aggregator 每构建一个 block，就按 ``bundle_id`` 落一行 ``parser_ticks``：\n``hit``（解析器渲染出非空会话）/ ``miss``（有解析器但 declined/空/抛错）/\n``fallback``（窗口内无任何带解析器的 app）。返回 ``total`` / ``by_outcome`` /\n``by_bundle``（按 bundle 分桶）/ ``hit_rate``（hit ÷ total）。用来证明解析器在\n生效，并在飞书改版导致语义类漂移时及早告警（同一 bundle 的 hit 衰减成 miss）。",
+        "operationId": "parser_hit_stats_parser_stats_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO8601 起始时间（含），省略=不限",
+              "title": "Since"
+            },
+            "description": "ISO8601 起始时间（含），省略=不限"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO8601 结束时间（不含），省略=不限",
+              "title": "Until"
+            },
+            "description": "ISO8601 结束时间（不含），省略=不限"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/intents/{intent_id}": {
+      "patch": {
+        "tags": [
+          "intent"
+        ],
+        "summary": "Set Intent Status",
+        "description": "回写意图状态（反馈闭环）：采纳=consumed / 忽略=dismissed / 做完=completed / 失败=failed。\n\n仅接受用户反馈态（``FEEDBACK_STATUSES``，#631 nit T）；``armed``/``expired`` 是引擎自有\n生命周期态，客户端不得设置，否则可造无 ``fire_config`` 的 armed 僵尸或把行回写成过期。\n``completed``/``failed``（反向闭环 spec 2026-06-26 G2）由 app 的 ``maybeFinalize`` 对已采纳\n且执行完毕的 `.context` 任务回写，服务端盖 ``completed_at`` 戳，喂识别器的正向 ``_completed_prior``。",
+        "operationId": "set_intent_status_intents__intent_id__patch",
+        "parameters": [
+          {
+            "name": "intent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "意图行 ID",
+              "title": "Intent Id"
+            },
+            "description": "意图行 ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetIntentStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema": {
+      "get": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Get Schema",
+        "description": "获取 MCP 服务器暴露的工具 schema（内存查询、搜索、捕获等接口说明）。",
+        "operationId": "get_schema_schema_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Get Config",
+        "description": "获取当前运行配置，包括各阶段 LLM 模型、捕获参数、路径设置等。",
+        "operationId": "get_config_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/raw": {
+      "get": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Get Config Raw",
+        "description": "返回 ~/.persome/config.toml 的原始文本，供 UI 编辑。",
+        "operationId": "get_config_raw_config_raw_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Put Config Raw",
+        "description": "把 UI 传上来的 TOML 文本写入 config.toml。\n\n- 写盘前 ``tomllib.loads`` 做语法校验；解析失败返回 400，原文件不动。\n- 写完后清掉 ``api/routes`` 与 ``api/chat_routes`` 里的模块级 _cfg 缓存，\n  下一次 HTTP 调用会重新 ``config.load()``。\n- 已经在后台 loop 里持有 cfg 引用的任务（timeline / reducer / capture / …）\n  **不会**自动 reload；那条路径由前端在 PUT 完成后调 daemon stop+start 解决。",
+        "operationId": "put_config_raw_config_raw_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_UpdateConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/debug-hud": {
+      "get": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Get Debug Hud Config",
+        "description": "Return the debug HUD's content allowlist (``[debug_hud] show``).\n\nRe-reads ``config.toml`` fresh each call (via ``load_config()`` rather than\nthe cached cfg) so edits apply without a daemon restart — the HUD polls\nthis endpoint and re-renders. See ``config.DebugHudConfig``.",
+        "operationId": "get_debug_hud_config_config_debug_hud_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Put Debug Hud Config",
+        "description": "Persist the debug HUD allowlist (``[debug_hud] show``) to config.toml.\n\nLets the app's in-HUD gear menu change what the panel shows with clicks —\nno hand-editing. Writes a targeted, formatting-preserving edit (see\n``config.set_debug_hud_show``), filters to known keys, validates the result\nparses, then clears the cached cfg so reads reflect it immediately.",
+        "operationId": "put_debug_hud_config_config_debug_hud_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_DebugHudBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/daemon/pause": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Pause Capture",
+        "description": "暂停屏幕捕获，写入暂停标志文件。",
+        "operationId": "pause_capture_daemon_pause_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/daemon/resume": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Resume Capture",
+        "description": "恢复屏幕捕获，删除暂停标志文件。",
+        "operationId": "resume_capture_daemon_resume_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/daemon/capture-once": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Capture Once",
+        "description": "手动触发一次屏幕捕获，返回捕获文件路径。",
+        "operationId": "capture_once_daemon_capture_once_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indices/rebuild": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Rebuild Index",
+        "description": "重建记忆文件的 FTS5 索引和文件元数据索引。",
+        "operationId": "rebuild_index_indices_rebuild_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indices/rebuild-captures": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Rebuild Captures Index",
+        "description": "将 capture-buffer 目录下的所有 JSON 捕获文件重新索引到 captures_fts 表。",
+        "operationId": "rebuild_captures_index_indices_rebuild_captures_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/stream": {
+      "get": {
+        "summary": "Events Stream",
+        "description": "Server-Sent Events stream of live agent activity.\n\nClients receive newline-delimited ``data: <json>\\n\\n`` frames for every\nLLM tool call, text chunk, and stage lifecycle event.\n\nUses ``EventSourceResponse`` (sse_starlette) rather than a plain\n``StreamingResponse``: when the FastAPI app is mounted under the FastMCP\nStarlette server, a plain streaming response is buffered and never reaches\nthe client, so subscribers saw zero frames even while events were\npublished. ``EventSourceResponse`` flushes each event immediately and emits\nkeepalive pings — the same path the working chat SSE uses.",
+        "operationId": "events_stream_events_stream_get",
+        "responses": {
+          "200": {
+            "description": "Pipeline 阶段事件的 SSE 流。每帧为 ``data: <json>\\n\\n``，其中 ``<json>`` 至少包含 ``stage`` 和 ``type`` 字段，附加 payload 随 stage/type 组合不同（如 classifier/stage_start 携带 session_id）。",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "description": "事件来源阶段，如 classifier / pattern_detector"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "事件子类型，如 stage_start / stage_end / tool_call"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "type": "object",
+                  "required": [
+                    "stage",
+                    "type"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Sessions",
+        "description": "列出所有聊天会话，包括活跃会话和已持久化到磁盘的会话。",
+        "operationId": "list_sessions_chat_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Create Session",
+        "description": "创建一个新的聊天会话，返回会话 ID 和初始信息。",
+        "operationId": "create_session_chat_sessions_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Session",
+        "description": "获取指定会话的详情，包括消息历史。",
+        "operationId": "get_session_chat_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "会话 ID（8 位短 UUID）",
+              "title": "Session Id"
+            },
+            "description": "会话 ID（8 位短 UUID）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Delete Session",
+        "description": "删除指定会话及其持久化文件。",
+        "operationId": "delete_session_chat_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "会话 ID（8 位短 UUID）",
+              "title": "Session Id"
+            },
+            "description": "会话 ID（8 位短 UUID）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions/{session_id}/messages": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Session Messages",
+        "description": "获取指定会话的消息历史（不含 system 消息）。",
+        "operationId": "get_session_messages_chat_sessions__session_id__messages_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "会话 ID（8 位短 UUID）",
+              "title": "Session Id"
+            },
+            "description": "会话 ID（8 位短 UUID）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Send Message",
+        "description": "向指定会话发送一条消息，以 SSE 流式回放 assistant token、工具调用。\n\nSSE 帧类型见 :data:`SendMessageEvent`：\n- ``reply``      增量 token（``content`` 字段）\n- ``tool_call``  工具调用开始（``name`` + ``arguments``）\n- ``tool_result``工具调用结果（``name`` + ``content``）\n- ``error``      本轮失败（``message`` 字段）\n- ``done``       本轮正常结束\n\nSession 持久化在 stream 结束时执行。客户端断开时会取消正在跑的 LLM 任务。",
+        "operationId": "send_message_chat_sessions__session_id__messages_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "会话 ID（8 位短 UUID）",
+              "title": "Session Id"
+            },
+            "description": "会话 ID（8 位短 UUID）"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events 流。每帧为 ``data: <json>\\n\\n``，其中 ``<json>`` 形如 ``SendMessageEvent`` 联合体。流以 ``data: [DONE]\\n\\n`` 结束。",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$defs": {
+                    "SSEDoneEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "done",
+                          "description": "事件类型常量；表示本轮 SSE 正常完成",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "ttft_ms": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "本轮首 token 到达耗时（毫秒，time-to-first-token）；无 token 流出时为 null",
+                          "title": "Ttft Ms"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "title": "SSEDoneEvent",
+                      "type": "object"
+                    },
+                    "SSEErrorEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "error",
+                          "description": "事件类型常量",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "message": {
+                          "description": "错误描述",
+                          "title": "Message",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "message"
+                      ],
+                      "title": "SSEErrorEvent",
+                      "type": "object"
+                    },
+                    "SSEReasoningEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "reasoning",
+                          "description": "事件类型常量",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "增量 thinking / 推理片段（extended thinking）",
+                          "title": "Content",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "content"
+                      ],
+                      "title": "SSEReasoningEvent",
+                      "type": "object"
+                    },
+                    "SSEReplyEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "reply",
+                          "description": "事件类型常量",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "增量 token 文本片段",
+                          "title": "Content",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "content"
+                      ],
+                      "title": "SSEReplyEvent",
+                      "type": "object"
+                    },
+                    "SSEToolCallEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "tool_call",
+                          "description": "事件类型常量",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "工具调用名称",
+                          "title": "Name",
+                          "type": "string"
+                        },
+                        "arguments": {
+                          "additionalProperties": true,
+                          "description": "工具调用参数",
+                          "title": "Arguments",
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name",
+                        "arguments"
+                      ],
+                      "title": "SSEToolCallEvent",
+                      "type": "object"
+                    },
+                    "SSEToolResultEvent": {
+                      "properties": {
+                        "type": {
+                          "const": "tool_result",
+                          "description": "事件类型常量",
+                          "title": "Type",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "工具调用名称",
+                          "title": "Name",
+                          "type": "string"
+                        },
+                        "content": {
+                          "description": "工具调用结果字符串",
+                          "title": "Content",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name",
+                        "content"
+                      ],
+                      "title": "SSEToolResultEvent",
+                      "type": "object"
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SSEReplyEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEReasoningEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEToolCallEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEToolResultEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEErrorEvent"
+                    },
+                    {
+                      "$ref": "#/$defs/SSEDoneEvent"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/consolidate": {
+      "post": {
+        "tags": [
+          "consolidation"
+        ],
+        "summary": "Trigger Consolidation",
+        "description": "手动触发一次离线 consolidation（绕过 session 计数器）。\n\nReturns the current completed-session counter so callers can sanity-check\nthe cadence state.",
+        "operationId": "trigger_consolidation_consolidate_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "请求是否成功",
+            "default": true
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "响应数据"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse",
+        "description": "松散信封：``data`` 形状不在契约里（``anyOf[object,array,string,null]``）。\n\n历史默认信封。新接口应改用 :class:`DataResponse` 携带显式 ``data`` 形状，\n让 ``openapi.json`` 把 payload schema 也纳入契约（drift 闸即升级为\"形状闸\"，\n见 ``DataResponse`` docstring 与 issue #539）。这里保留它仅为尚未迁移的\n存量接口兜底，迁移完成前不要删。"
+      },
+      "CaptureIngestBody": {
+        "properties": {
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp",
+            "description": "ISO8601 采集时间；缺省则服务端补"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger",
+            "description": "触发元数据 {event_type, bundle_id, window_title, details?}"
+          },
+          "window_meta": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Window Meta",
+            "description": "{app_name, title, bundle_id}"
+          },
+          "ax_tree": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ax Tree",
+            "description": "AX 树 raw_json（apps→windows→elements），缺省视为 AX 不可用"
+          },
+          "ax_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ax Metadata",
+            "description": "AX 采集元数据"
+          },
+          "screenshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screenshot",
+            "description": "{image_base64, mime_type, width, height}（明文，由服务端按配置加密落盘）"
+          },
+          "ocr_jpeg_b64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Jpeg B64",
+            "description": "AX 贫瘠窗口的焦点窗口截图 JPEG（base64），供本地 OCR 兜底"
+          },
+          "ocr_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Tier",
+            "description": "OCR 档位覆盖；缺省用配置值"
+          }
+        },
+        "type": "object",
+        "title": "CaptureIngestBody",
+        "description": "Swift \"Persome\" 主程序推送的一帧 capture（``capture.source = \"ingest\"`` 模式）。\n\n采集层（AX 树 + 焦点窗口截图）已搬进持有 Accessibility / Screen-Recording 的 Swift\n进程；daemon 收到后只跑富化→落库→意图快路 hook，自身不再需要任何系统权限。字段与\ndaemon 自采路径 ``_build_capture`` 的产物对齐，缺省宽松（缺字段降级，不崩）。"
+      },
+      "DataResponse_IntentsResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "请求是否成功",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/IntentsResponse",
+            "description": "响应数据（形状由具体类型参数声明）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[IntentsResponse]"
+      },
+      "DataResponse_RecallPackResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "请求是否成功",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/RecallPackResponse",
+            "description": "响应数据（形状由具体类型参数声明）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[RecallPackResponse]"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IntentItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "意图类型（OPEN：meeting/calendar/reminder/assignment/…）"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "所属场景 id：timeline / <meeting-id> / session-<id> / …"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "识别置信度 0-1"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale",
+            "description": "识别依据"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "open / armed / consumed / dismissed / expired"
+          },
+          "ts": {
+            "type": "string",
+            "title": "Ts",
+            "description": "识别时间戳 ISO8601"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "kind 相关结构化字段（开放，如 when_text/with/channel）"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "溯源证据列表（source/ref_id/entry_index/quote）"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "持久化行 id；未落库为 null"
+          },
+          "fire_on": {
+            "type": "string",
+            "title": "Fire On",
+            "description": "休眠触发事件键（L7）；空串=即时意图",
+            "default": ""
+          },
+          "fire_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fire Config",
+            "description": "触发参数（开放）"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At",
+            "description": "触发时间 ISO8601；未触发为 null"
+          },
+          "schema_sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Schema Sources",
+            "description": "识别上下文中在场的 schema-*.md 文件名（共现归因）"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At",
+            "description": "承诺时点 ISO8601；不可解析为 null"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until",
+            "description": "过期时点 ISO8601；不可解析为 null"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "scope",
+          "confidence",
+          "rationale",
+          "status",
+          "ts",
+          "payload",
+          "evidence"
+        ],
+        "title": "IntentItem",
+        "description": "``/intents`` 单条意图（``intent.ontology.Intent.to_dict()`` 的契约镜像）。\n\n稳定的信封字段显式声明形状；``kind`` 是 OPEN 字符串（场景包可新增，见\nontology），``payload``/``fire_config``/``evidence`` 是有意开放的结构，\n故保持松散 dict/list——契约只锁住\"哪些字段一定在、是什么标量类型\"，不谎称\npayload 是闭集。新增稳定字段时这里同步即触发 drift 闸。"
+      },
+      "IntentsResponse": {
+        "properties": {
+          "intents": {
+            "items": {
+              "$ref": "#/components/schemas/IntentItem"
+            },
+            "type": "array",
+            "title": "Intents",
+            "description": "按 ts 倒序（最新在前）的意图列表"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "intents 数量"
+          }
+        },
+        "type": "object",
+        "required": [
+          "intents",
+          "count"
+        ],
+        "title": "IntentsResponse",
+        "description": "``/intents`` 响应体：意图列表 + 计数。"
+      },
+      "MemoryAppendRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "default": []
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "MemoryAppendRequest",
+        "description": "Body for the Agent-Native memory write-back route (Phase 3)."
+      },
+      "RecallPackItem": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "title": "Layer",
+            "description": "召回层：schema/behavior/fact/semantic/scene_intent/event/timeline"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "干净片段（无 [path] 前缀）"
+          },
+          "cite": {
+            "type": "string",
+            "title": "Cite",
+            "description": "可追溯引用句柄"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "语义余弦或意图置信度；无则 null"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "记忆可靠度：low（仅标低置信）；否则 null"
+          },
+          "conflicted": {
+            "type": "boolean",
+            "title": "Conflicted",
+            "description": "该记忆是否冲突未裁决",
+            "default": false
+          },
+          "capture_stem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Stem",
+            "description": "截图/axtree 捕获 stem；无则 null"
+          },
+          "timeline_block_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeline Block Id",
+            "description": "时间线块 id（慢路）；无则 null"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "content",
+          "cite"
+        ],
+        "title": "RecallPackItem",
+        "description": "``/recall/pack`` 单条结构化召回事实（``intent.recall.RecallItem`` 的契约镜像）。\n\n供主动任务 prompt 注入：``content`` 是干净片段，``cite`` 是可追溯句柄\n（``mem:<path>`` / ``schema:<file>`` / ``intent:<id>`` / ``block:<id>``）。\n``capture_stem`` / ``timeline_block_id`` 是 scene/timeline 项的 RAW 捕获句柄\n（stem 同时索引截图与 axtree；仅回句柄字符串，绝不内联字节）。"
+      },
+      "RecallPackResponse": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "召回所属场景 id"
+          },
+          "intent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Id",
+            "description": "按意图召回时的行 id；否则 null"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecallPackItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "结构化召回项（按层优先级排序）"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Counts",
+            "description": "各层命中计数"
+          },
+          "budget": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Budget",
+            "description": "预算口径：max_chars/used/squeezed"
+          },
+          "dense": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Dense",
+            "description": "稠密层状态：enabled（配置开关）/active（实际触发）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "items",
+          "counts",
+          "budget",
+          "dense"
+        ],
+        "title": "RecallPackResponse",
+        "description": "``/recall/pack`` 响应体：分层带引用的召回项 + 预算/稠密/计数元信息。"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "用户消息内容"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "SendMessageRequest"
+      },
+      "SetIntentStatusBody": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "意图状态：open（待处理）/ consumed（已采纳）/ dismissed（已忽略）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "SetIntentStatusBody"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "_DebugHudBody": {
+        "properties": {
+          "show": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Show"
+          }
+        },
+        "type": "object",
+        "required": [
+          "show"
+        ],
+        "title": "_DebugHudBody"
+      },
+      "_UpdateConfigBody": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "_UpdateConfigBody"
+      }
+    }
+  }
+}

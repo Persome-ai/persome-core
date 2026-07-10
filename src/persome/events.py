@@ -1,7 +1,7 @@
 """Global event bus for streaming agent activity to live watchers.
 
-Thread-safe: pipeline stages run in ``asyncio.to_thread`` (or raw threads via
-``run_dream_with_recording``); they call ``publish`` from worker threads. The
+Thread-safe: pipeline stages run in ``asyncio.to_thread`` or raw worker threads
+and call ``publish`` from there. The
 SSE endpoint runs in the HTTP server's event loop and drains a per-subscriber
 ``asyncio.Queue``.
 
@@ -11,7 +11,7 @@ background tasks (where ``init`` used to capture *a* loop) and the FastMCP/
 uvicorn HTTP server that actually serves ``/events/stream`` are not guaranteed
 to share one event loop. Posting to a single globally-captured loop dropped
 every event when the subscriber lived in a different loop — which is why the
-HUD / dream / intents-debug live views received nothing. Capturing the
+live observability views received nothing. Capturing the
 subscriber's loop removes that coupling entirely.
 """
 
@@ -38,17 +38,6 @@ def init(_loop: asyncio.AbstractEventLoop | None = None) -> None:
     globally-registered loop. Kept as a no-op so existing callers
     (``daemon.py`` startup) don't break.
     """
-
-
-def has_subscribers() -> bool:
-    """Whether any live SSE subscriber (e.g. the app) is currently listening.
-
-    The actuation confirm round-trip uses this to fail-safe FAST: if nothing is
-    listening, a gated action is denied immediately rather than blocking for the
-    full confirm timeout waiting for a reply that can never come.
-    """
-    with _lock:
-        return bool(_subscribers)
 
 
 def publish(stage: str, event_type: str, payload: dict[str, Any]) -> None:

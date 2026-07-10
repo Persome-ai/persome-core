@@ -102,8 +102,8 @@ def _discover_external_skills(skills_dir: Path) -> list[SkillEntry]:
     return results
 
 
-def _discover_dream_skills() -> list[SkillEntry]:
-    """Scan ~/.persome/memory/skills/skill-*.md for dream-generated skills."""
+def _discover_memory_skills() -> list[SkillEntry]:
+    """Scan ~/.persome/memory/skills/skill-*.md for model-generated skills."""
     results: list[SkillEntry] = []
     memory_skills_dir = paths.memory_dir() / "skills"
     if not memory_skills_dir.is_dir():
@@ -210,8 +210,8 @@ def load_all_skills(builtin_names: set[str] | None = None) -> LoadedSkills:
     - entries: full registry keyed by skill name, for load_skill lookups
     """
     external = _discover_external_skills(paths.skills_dir())
-    dream = _discover_dream_skills()
-    all_skills = external + dream
+    memory_skills = _discover_memory_skills()
+    all_skills = external + memory_skills
 
     if not all_skills:
         return LoadedSkills(entries={}, index_prompt="", schemas=[], handlers={})

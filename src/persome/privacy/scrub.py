@@ -1,19 +1,12 @@
-"""Deterministic secret/PII scrubber — the daemon-side SECOND gate on the
-reverse-loop G1 content channel (spec 2026-06-26 §3.1.3 / §4 内容红线).
+"""Deterministic secret/PII scrubber for model export and durable memory.
 
-The app already distills + red-line-filters a task-outcome ``summary`` before it
-leaves the device. This module is the daemon's independent backstop: a zero-LLM,
-zero-network bilingual detector for the things that must never land in durable
-memory — API keys / tokens / passwords / emails / phone numbers / card-like
-digit runs / absolute $HOME paths.
-
-Policy is **宁缺毋滥** (better to drop than to ingest dirty): the ingest endpoint
-calls :func:`scan` and, when ``hits`` is non-empty, DROPS the whole record rather
-than storing a partially-redacted one. :func:`redact` is provided for callers that
-prefer masking to dropping, but the G1 path uses the drop policy.
+This zero-LLM, zero-network bilingual detector catches content that must not
+leave the local store: API keys, tokens, passwords, emails, phone numbers,
+card-like digit runs, and absolute home-directory paths. Callers may either
+reject dirty content with :func:`scan` or mask it with :func:`redact`.
 
 Deliberately conservative + closed-form (no model): a false positive only costs
-one dropped outcome card (bounded), a false negative leaks a secret into durable
+one dropped model item (bounded), a false negative leaks a secret into durable
 memory (the expensive error in this domain — asymmetric-cost constitution).
 """
 
@@ -70,7 +63,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
 ]
 
-# A single ``****`` mask per hit (redaction mode only; the G1 path drops instead).
+# A single mask per hit in redaction mode.
 _MASK = "[REDACTED]"
 
 
@@ -105,7 +98,7 @@ def scan(text: str) -> ScrubResult:
 
 
 def is_clean(text: str) -> bool:
-    """True iff ``text`` carries no detectable secret/PII (the G1 drop gate)."""
+    """True iff ``text`` carries no detectable secret or PII."""
     return scan(text).clean
 
 

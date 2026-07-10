@@ -1,14 +1,11 @@
-"""P2 — ScenePack contract + meeting as the first concrete pack.
+"""ScenePack contract and unified intent-stream behavior.
 
 Covers the §8 mechanism, not the meeting scene's product behaviour:
 - ``SceneState`` (③) accumulation / anti-repeat / prompt rendering
 - content-hash dedup so distinct hints coexist while identical ones suppress
-- ``MeetingScenePack`` driving the analyzer through ①-⑤ over the *unified* stream
 """
 
 from __future__ import annotations
-
-import pytest
 
 from persome.intent import sink
 from persome.intent import store as intent_store
@@ -71,40 +68,3 @@ def test_intents_for_scope_isolates_by_scope(ac_root):
         sink.persist_intent(conn, _hint("meeting-2", "乙", "2026-05-31T10:00:00"))
         assert len(intent_store.intents_for_scope(conn, "meeting-1")) == 1
         assert len(intent_store.intents_for_scope(conn, "meeting-2")) == 1
-
-
-def test_meeting_scene_pack_recognizes_via_unified_stream(ac_root, tmp_path):
-    from persome.meeting.analyzer import MeetingAnalyzer
-    from persome.meeting.config import LLMConfig, TriggerConfig
-    from persome.meeting.pack import MeetingScenePack
-    from persome.meeting.store import TranscriptStore
-
-    store = TranscriptStore(tmp_path / "meeting_test.db")
-    analyzer = MeetingAnalyzer(LLMConfig(), TriggerConfig(), store, on_push=lambda _s: None)
-    pack = MeetingScenePack(analyzer)
-
-    # ① / ③ are the analyzer's own identity + scene state (no duplication)
-    assert pack.scope_id() == analyzer.scope
-    assert pack.scene_state() is analyzer.scene
-
-    # ④ nothing recognized yet
-    assert pack.recognize() == []
-
-    # the analyzer surfacing a hint == persisting into the unified stream
-    analyzer._persist_intent("提醒：确认下周预算")
-    analyzer._persist_intent("张三需要补充背景材料")
-
-    fresh = pack.recognize()
-    assert len(fresh) == 2
-    assert all(i.kind == "meeting_hint" and i.scope == analyzer.scope for i in fresh)
-
-    # high-water mark: a second cycle returns nothing new
-    assert pack.recognize() == []
-
-    # ⑤ feedback keeps the anti-repeat set warm
-    pack.feedback(fresh)
-    assert len(analyzer.scene.surfaced) >= 1
-
-    # ② observes a transcript batch — non-batch is a contract error
-    with pytest.raises(TypeError):
-        pack.observe("not a batch")

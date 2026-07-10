@@ -221,39 +221,6 @@ print(f"watcher={watcher}")
 PY
 }
 
-compile_audio_capture() {
-  local src="${ROOT_DIR}/resources/mac-audio-capture.swift"
-  local out_dir="${INSTALL_HOME}/bin"
-  local out="${out_dir}/mac-audio-capture"
-
-  if [[ ! -f "${src}" ]]; then
-    return
-  fi
-
-  mkdir -p "${out_dir}"
-
-  if [[ -f "${out}" && "${out}" -nt "${src}" ]]; then
-    log "mac-audio-capture binary is up to date"
-    return
-  fi
-
-  log "compiling audio capture helper"
-  local arch target
-  arch=$(uname -m)
-  if [[ "${arch}" == "arm64" ]]; then
-    target="arm64-apple-macos13.0"
-  else
-    target="x86_64-apple-macos13.0"
-  fi
-
-  if swiftc "${src}" -o "${out}" -O -target "${target}" -swift-version 5 \
-       -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation 2>/dev/null; then
-    log "mac-audio-capture compiled to ${out}"
-  else
-    warn "failed to compile mac-audio-capture; meeting assistant will not work"
-  fi
-}
-
 choose_install_bin_dir() {
   if [[ -n "${BIN_DIR_OVERRIDE}" ]]; then
     mkdir -p "${BIN_DIR_OVERRIDE}"
@@ -472,7 +439,6 @@ main() {
   [[ -n "${PYTHON_TARGET}" ]] || die "failed to determine a Python target"
   install_package "${PYTHON_TARGET}"
   compile_bundled_binaries
-  compile_audio_capture
   install_shim
   verify_install
   inject_detected_clients

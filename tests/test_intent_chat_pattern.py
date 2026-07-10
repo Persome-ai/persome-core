@@ -1,20 +1,15 @@
-"""P3 — chat write-back converges to the unified store; dream/pattern consume
-their current activity sources.
+"""Chat write-back and pattern extraction converge on the unified store.
 
 Mechanism-level coverage:
 - chat-extracted memory lands in the structured ``entries`` store + FTS (so
   ``search_memory`` finds it), with type→prefix mapping and content dedup
 - pattern_detector renders durable event memory with receipts
-- dream keeps rendering the legacy recognized-intent section until Wave 1 removal
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from persome.intent import sink
-from persome.intent import store as intent_store
-from persome.intent.ontology import Intent, IntentEvidence
 from persome.store import entries as entries_store
 from persome.store import fts
 
@@ -83,21 +78,7 @@ def test_chat_memory_content_dedup(ac_root):
     assert len(parsed.entries) == 1
 
 
-# ─── Half B: dream / pattern_detector consume their activity sources ─────────
-
-
-def _seed_intent(conn, scope, text, ts):
-    sink.persist_intent(
-        conn,
-        Intent(
-            kind="meeting_hint",
-            scope=scope,
-            rationale=text[:200],
-            ts=ts,
-            payload={"text": text},
-            evidence=[IntentEvidence(source="meeting_transcript", ref_id=scope)],
-        ),
-    )
+# ─── Half B: pattern_detector consumes durable activity sources ─────────────
 
 
 def test_pattern_detector_renders_durable_event_memory(ac_root):
@@ -130,29 +111,3 @@ def test_pattern_detector_renders_durable_event_memory(ac_root):
         assert "Durable event memory" in ctx
         assert "Reviewed the Persome runtime architecture." in ctx
         assert f"⟨{entry_id}:event-2026-07-10.md⟩" in ctx
-
-
-def test_dream_renders_intents(ac_root):
-    from persome.writer import dream
-
-    now = datetime.now().astimezone()
-    with fts.cursor() as conn:
-        _seed_intent(conn, "meeting-b", "周五前确认场地", now.isoformat())
-        intents = intent_store.recent_intents(
-            conn,
-            start=(now - timedelta(days=3)).isoformat(),
-            end=(now + timedelta(minutes=1)).isoformat(),
-        )
-        ctx = dream._assemble_context(
-            conn=conn,
-            app_stats={},
-            app_sequences=[],
-            routines={},
-            repeated_titles=[],
-            repeated_urls=[],
-            chat_pairs=[],
-            lookback_days=3,
-            intents=intents,
-        )
-        assert "周五前确认场地" in ctx
-        assert "intent" in ctx

@@ -45,8 +45,8 @@ def test_schema_tick_absent_when_disabled() -> None:
 
 
 def test_schema_config_defaults_on_just_after_midnight() -> None:
-    # Default-on so the招牌 capability self-drives out of the box; scheduled just
-    # after dream (23:30) + daily-safety-net (23:55) so it eats freshly-dreamed facts.
+    # Default-on so the capability self-drives; scheduled after the daily safety
+    # net so it consumes freshly classified facts.
     sc = SchemaConfig()
     assert sc.enabled is True
     assert sc.daily_tick_hour == 0

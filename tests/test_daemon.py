@@ -13,7 +13,6 @@ import pytest
 from persome.config import (
     CaptureConfig,
     Config,
-    DreamConfig,
     MCPConfig,
     SchemaConfig,
     SearchConfig,
@@ -40,7 +39,7 @@ async def _never() -> None:
 
 
 def _base_cfg() -> Config:
-    """Explicit baseline: dream/schema/ocr off, MCP on (streamable-http).
+    """Explicit baseline: schema/ocr off, MCP on (streamable-http).
 
     The evomem enrichment layers (person-graph / case-extraction) default ON, so the
     minimal baseline turns them off explicitly to keep `evomem-enrichment-tick` out of
@@ -48,7 +47,6 @@ def _base_cfg() -> Config:
     `test_evomem_enrichment_tick`).
     """
     return Config(
-        dream=DreamConfig(enabled=False),
         schema=SchemaConfig(enabled=False),
         capture=CaptureConfig(enable_ocr_fallback=False),
         mcp=MCPConfig(auto_start=True, transport="streamable-http"),
@@ -67,7 +65,6 @@ class TestRegistryEnabledPredicates:
             "timeline",
             "flush",
             "classifier-tick",
-            "run-dispatcher",
             "mcp",
         }
 
@@ -78,11 +75,6 @@ class TestRegistryEnabledPredicates:
             "daily-safety-net",
             "mcp",
         }
-
-    def test_dream_tick_requires_flag_and_full_mode(self) -> None:
-        cfg = Config(dream=DreamConfig(enabled=True))
-        assert "dream-tick" in _enabled_names(cfg)
-        assert "dream-tick" not in _enabled_names(cfg, capture_only=True)
 
     def test_schema_tick_requires_flag_and_full_mode(self) -> None:
         cfg = Config(schema=SchemaConfig(enabled=True))

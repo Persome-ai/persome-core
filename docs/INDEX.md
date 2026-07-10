@@ -16,7 +16,7 @@ Single entry point for everything written about persome-core (the persome daemon
 | [`architecture.md`](architecture.md) | The end-to-end pipeline (capture → S1 parser → timeline → session → reducer → classifier), daemon task table, on-disk state layout |
 | [`persome-overview.md`](persome-overview.md) | Product + technical whitepaper: pain points, capability matrix, data flows, JSON schemas |
 | [`model-contract.md`](model-contract.md) | Paper-facing Point/Line/Face/Volume/Root snapshot schema, receipts, privacy, and reproducibility contract |
-| [`db-schema.sql`](db-schema.sql) | **Generated** whole-picture SQLite schema (`index.db` + `meeting_*.db`), grouped by owning module. Regenerate with `uv run python scripts/regen_db_schema.py`. Drift is enforced by `tests/test_db_schema_drift.py` |
+| [`db-schema.sql`](db-schema.sql) | **Generated** whole-picture SQLite schema for `index.db`, grouped by owning module. Regenerate with `uv run python scripts/regen_db_schema.py`. Drift is enforced by `tests/test_db_schema_drift.py` |
 
 ## Tier 2.5 — Design philosophy & method
 

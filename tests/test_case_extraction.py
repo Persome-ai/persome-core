@@ -6,8 +6,7 @@ Covers:
 - an error with no following resolution → no half card (deterministic pre-filter
   drops it before any LLM call);
 - plain log noise → nothing extracted (pre-filter blocks it);
-- switch off (default) → no-op / no output;
-- the registered kind is discoverable in the runs registry.
+- switch off (default) → no-op / no output.
 """
 
 from __future__ import annotations
@@ -235,31 +234,3 @@ def test_default_getattr_off(ac_root) -> None:
     result = case_extractor.run_case_extraction(cfg_without_attr)
     assert result.committed is False
     assert result.skipped_reason == "disabled"
-
-
-# ── registry wiring ─────────────────────────────────────────────────────────
-
-
-def test_kind_registered() -> None:
-    from persome.runs.registry import KIND_REGISTRY
-
-    assert "case-extraction" in KIND_REGISTRY
-    spec = KIND_REGISTRY["case-extraction"]
-    assert spec.kind == "case-extraction"
-    assert spec.title
-    assert callable(spec.run)
-
-
-def test_executor_disabled_run_is_skipped(ac_root) -> None:
-    """The registered executor, with the toggle off, returns a skipped outcome."""
-    from persome.runs.registry import KIND_REGISTRY
-
-    events: list[tuple[str, dict]] = []
-
-    def on_event(kind: str, payload: dict) -> None:
-        events.append((kind, payload))
-
-    spec = KIND_REGISTRY["case-extraction"]
-    outcome = spec.run(_cfg(enabled=False), on_event, {})
-    assert outcome.committed is False
-    assert outcome.skipped_reason == "disabled"

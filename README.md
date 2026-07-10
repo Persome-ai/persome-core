@@ -1,6 +1,6 @@
 # persome-core
 
-persome-core is a local-first screen-context memory daemon for macOS.
+persome-core is the local-first Personal Model Runtime for macOS.
 
 <!-- hero: 3D memory geometry visualization (persome memory-viz) — video/gif here -->
 <!-- ![3D memory geometry visualization](TODO: hero video/gif from `persome memory-viz`) -->
@@ -14,7 +14,7 @@ persome-core is a local-first screen-context memory daemon for macOS.
 
 persome-core captures macOS Accessibility tree events as you work. For AX-poor apps, it falls back to on-device screenshot OCR using PP-OCRv6 with 6.2 MB bundled weights and zero network.
 
-It distills captures into durable Markdown memory files plus SQLite with FTS5 and a vector index. In our production data, the memory geometry contains 3846 points, 1043 lines, 88 faces, and 1 body. These are layers of abstraction: a point is a single fact, a line a relation between two facts, a face a behavioral pattern that emerges over a cluster of facts, and the body the worldview those patterns roll up into.
+It distills captures into durable Markdown memory files plus SQLite with FTS5 and a vector index. The model has explicit layers: a Point is a sourced fact, a Line is an evolution or semantic relation, a Face is a behavioral pattern, a Volume is a cross-domain structure, and Root is the single apex that can be expanded back to its receipts.
 
 The [Personome paper](https://persome-ai.github.io/persome/) states the thesis: an LLM predicts the next token, and a Personome predicts a person's next action, with memory as the weights of your personal model.
 
@@ -117,7 +117,7 @@ Swift watcher
 |                   |
 | memory_delta      | one LLM read per session + deterministic gates
 | schema mining     |
-| schema_faces      | points / lines / faces / bodies
+| schema_faces      | points / lines / faces / volumes
 | root apex         |
 | tiered forgetting | read = immunity
 | adjudication      | semantic contradictions
@@ -141,7 +141,7 @@ Swift watcher
 - Secrets live in a 0600 env file at `~/.persome/env`.
 - The capture buffer has a tiered retention policy.
 - Egress paths are few enough to verify by grepping the source.
-- Computer-use actuation is off by default in the open-source build. When enabled, it uses opt-in config, a per-action confirmation loop, and a kill switch. See [SECURITY.md](SECURITY.md).
+- The runtime does not include computer-use actuation, meeting audio capture, or filesystem profiling.
 
 ## How it compares
 
@@ -153,11 +153,11 @@ Swift watcher
 
 ## Provenance
 
-persome-core is derived from Einsia/OpenChronicle (MIT, notices preserved in NOTICE / THIRD_PARTY_NOTICES); of the current 66,480-line tree, retained upstream code is ~11% (8,472 upstream lines, 89% kept), and ~89% is new to this project.
+persome-core is derived from Einsia/OpenChronicle (MIT). Its provenance and retained upstream license notices are preserved in [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
 
 ## Paper
 
-[Personome](https://persome-ai.github.io/persome/): an LLM predicts the next token, and a Personome predicts a person's next action, with memory as the weights of your personal model.
+[Personome](https://persome-ai.github.io/persome/): an LLM predicts the next token, and a Personome predicts a person's next action, with memory as the weights of your personal model. This repository implements state formation, personal weights, provenance, and model access. Prediction datasets, metrics, and ablations belong in the separate `persome-bench` repository so evaluation can pin a released Runtime version without coupling benchmark code to private local storage.
 
 ## License
 

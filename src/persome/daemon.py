@@ -76,12 +76,6 @@ async def _shutdown_tasks(tasks: list[asyncio.Task], *, timeout: float) -> None:
         )
 
 
-async def _run_dispatcher_loop(cfg: Config) -> None:
-    from .runs.dispatcher import run_dispatcher
-
-    await run_dispatcher(cfg)
-
-
 async def _mcp_loop(cfg: Config) -> None:
     """Host the MCP server inside the daemon. On crash, back off and restart."""
     import errno as _errno
@@ -165,11 +159,6 @@ def _build_task_registry() -> list[TaskDefinition]:
             create=lambda cfg, sm: session_tick.run_vector_embed_tick(cfg),
         ),
         TaskDefinition(
-            name="dream-tick",
-            enabled=lambda cfg, capture_only: not capture_only and cfg.dream.enabled,
-            create=lambda cfg, sm: session_tick.run_dream_tick(cfg),
-        ),
-        TaskDefinition(
             name="schema-tick",
             enabled=lambda cfg, capture_only: not capture_only and cfg.schema.enabled,
             create=lambda cfg, sm: session_tick.run_schema_tick(cfg),
@@ -185,11 +174,6 @@ def _build_task_registry() -> list[TaskDefinition]:
                 )
             ),
             create=lambda cfg, sm: session_tick.run_evomem_enrichment_tick(cfg),
-        ),
-        TaskDefinition(
-            name="run-dispatcher",
-            enabled=lambda cfg, capture_only: not capture_only,
-            create=lambda cfg, sm: _run_dispatcher_loop(cfg),
         ),
         TaskDefinition(
             name="mcp",
@@ -234,22 +218,6 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
     from .capture import screen_recording
 
     screen_recording.request_screen_recording()
-
-    # Any dream_runs row still 'running' is a leftover from a prior process
-    # that died mid-dream; flip it to 'failed' so the UI doesn't display a
-    # perpetually-pending row.
-    from .store import agent_runs as agent_runs_mod
-    from .store import dream_runs as dream_runs_mod
-    from .store import fts as fts_mod
-
-    with fts_mod.cursor() as conn:
-        dream_runs_mod.mark_orphans_failed(conn)
-        # Phase 1b: recycle agent_runs rows stuck in 'running' from a prior
-        # process death. 'queued' rows are preserved — they are still valid
-        # work and the dispatcher will pick them up normally.
-        n_orphans = agent_runs_mod.mark_orphans_running(conn)
-        if n_orphans:
-            logger.info("boot: recycled %d orphaned agent_run(s) running→failed", n_orphans)
 
     # evomem survivability base (SSOT switch design §3.3): chain-invariant
     # self-check at startup. Gated on [evomem] integrity_check_enabled (the
@@ -367,12 +335,11 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
 
     if hard_exit:
         # Real daemon process (launchd/app `start --foreground`). Do ONLY the
-        # fast, durable shutdown work, then hard-exit — deliberately SKIP the
-        # async task drain (_shutdown_tasks) and the virtual-display close_all().
+        # fast, durable shutdown work, then hard-exit — deliberately skip the
+        # async task drain (_shutdown_tasks).
         #
-        # Both of those run Python — spinning the event loop for up to
-        # _SHUTDOWN_TIMEOUT_SECONDS awaiting task cancellation, and tearing down
-        # native stage resources — WHILE the daemon's background LLM-recognition
+        # The drain runs Python — spinning the event loop for up to
+        # _SHUTDOWN_TIMEOUT_SECONDS awaiting task cancellation — while the daemon's background LLM-recognition
         # and te3-large embedding calls are still mid-flight on the default
         # executor (asyncio.to_thread), parked in a TLS read (_ssl__SSLSocket_read).
         # On a real app quit there are typically several such SSL workers live;
@@ -384,8 +351,7 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
         # force_end + pidfile unlink are a fast DB write + a syscall; os._exit
         # then kills the abandoned tasks and their SSL worker threads with the
         # process. SQLite WAL is crash-safe, the boot safety-net force-ends any
-        # session still open, and the virtual-display stages fall back to their
-        # stdin-EOF teardown. This collapses the SSL-live window to ~one DB write.
+        # session still open. This collapses the SSL-live window to ~one DB write.
         with suppress(Exception):
             session_manager.force_end(reason="daemon-shutdown")
         with suppress(FileNotFoundError):
@@ -403,13 +369,6 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
     # survives and the next boot's safety-net picks it up.
     with suppress(Exception):
         session_manager.force_end(reason="daemon-shutdown")
-
-    # Reap any live virtual-display stages (off-screen agent app instances) so no display leaks on a
-    # graceful stop. The helper's stdin-EOF teardown is the backstop if this is skipped/crashes.
-    with suppress(Exception):
-        from .actuation.stage import registry as _stage_registry
-
-        _stage_registry.close_all()
 
     with suppress(FileNotFoundError):
         paths.pid_file().unlink()
@@ -429,7 +388,7 @@ def run(cfg: Config, *, capture_only: bool = False) -> None:
 
     1. ``_run(..., hard_exit=True)`` does ONLY the fast durable shutdown
        (force-end the session, unlink the pidfile) and then ``os._exit(0)`` — it
-       SKIPS the async task drain and ``close_all`` so almost no Python runs while
+       SKIPS the async task drain so almost no Python runs while
        the SSL workers are live. (The crash used to fire *inside* that skipped
        window, before ``_run`` returned, which is why a trailing ``os._exit`` here
        alone was not enough.)

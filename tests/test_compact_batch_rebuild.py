@@ -54,6 +54,9 @@ def test_run_pending_rebuilds_index_once_for_many_files(ac_root, monkeypatch):
             _seed_flagged(conn, nm)
 
     _mock_identity_compact(monkeypatch)
+    # This test isolates the batching contract. Synchronous evomem repair has
+    # its own end-to-end coverage and legitimately rebuilds its projection.
+    monkeypatch.setattr(compact_mod, "_repair_evomem_after_compact", lambda: None)
 
     calls = {"n": 0}
     real_rebuild = entries_mod.rebuild_index

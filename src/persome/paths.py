@@ -23,24 +23,6 @@ def root() -> Path:
     return new
 
 
-def app_data_root() -> Path:
-    """The Swift app's data dir (``~/.persome``), where it writes tasks.json / settings.json /
-    meetings.json — the read surface for the Agent-Native Persome app-data MCP tools (Phase 2,
-    docs/superpowers/specs/2026-06-25-agent-native-persome-design.md).
-
-    Distinct from :func:`root` (the *chronicle* root): the packaged app points
-    ``PERSOME_ROOT`` at ``<app data dir>/chronicle``, so the app's JSON sits in the parent;
-    a bare CLI/dev run with no override has ``root()`` already == ``~/.persome``. An explicit
-    ``PERSOME_APP_DATA_DIR`` override wins when set."""
-    override = os.environ.get("PERSOME_APP_DATA_DIR") or os.environ.get(
-        "MENS_APP_DATA_DIR"
-    )  # Mens is the legacy name
-    if override:
-        return Path(override).expanduser().resolve()
-    r = root()
-    return r.parent if r.name == "chronicle" else r
-
-
 def memory_dir() -> Path:
     return root() / "memory"
 

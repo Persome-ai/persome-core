@@ -62,14 +62,14 @@ Why 5-min minimum: the timeline stage is a verbatim-preserving normalizer, not a
 `session/tick.py::build_manager` returns a `SessionManager` with two callbacks wired:
 
 - **`on_session_start`** — persists an `active` row immediately. A crash mid-session leaves a recoverable trace.
-- **`on_session_end`** — marks the row `ended`, then spawns `reduce_session_async`. On terminal-reduce success, the reducer's `on_done` callback fires the classifier over `[classified_end or session_start, now)` — the trailing window the 30-min tick didn't reach — then the pattern detector, then (gated on `[thread_tracker] enabled`, default on) hands the session summary to the **WorkThread tracker** (`workthread/tracker.py::enqueue_session_summary`). This terminal-reduce callback is the tracker's **only** mount point (spec 2026-06-12 §四 — flush 路径没有 hook 也不挂，避免 tentative op 对账): the summary is enqueued into `workthread_queue` and the tracker batch-runs once per aggregation window (`max(window_minutes=60, window_sessions=5)`), folding micro-sessions onto "same undertaking" threads. Best-effort: a tracker failure never affects the reduce/classify chain it rides on.
+- **`on_session_end`** — marks the row `ended`, then spawns `reduce_session_async`. On terminal-reduce success, the reducer's `on_done` callback fires the classifier over `[classified_end or session_start, now)` — the trailing window the 30-min tick did not reach — and then runs the pattern detector. Each stage is best-effort and advances its own durable bookmark.
 
 Four daemon tasks back this up:
 
 - **`run_check_cuts`** — every `session.tick_seconds` (default 30s), calls `check_cuts()` so idle-gap and timeout cuts fire even when no events are arriving.
 - **`run_flush_tick`** — every `session.flush_minutes` (default 5), runs the reducer over the active session's new blocks and advances `flush_end`.
 - **`run_classifier_tick`** — every `classifier.interval_minutes` (default 30), classifies event-daily entries that landed since `classified_end` and advances it.
-- **`run_daily_safety_net`** — at local `reducer.daily_tick_hour:minute` (default 23:55), force-ends the currently-open session and runs `reduce_all_pending` to catch anything stranded at `ended`/`failed`. Then the WorkThread daily housekeeping (gated on `[thread_tracker] enabled`): force-flushes any half-full tracker window left in `workthread_queue` (the day is over — the window is as full as it will get), harvests open threads with no attach for 30 days to `stale` (pinned exempt — inactivity is never completion, staleness is code's job), and appends a one-entry threads digest to today's event-daily file. All side channels: each step logs-and-continues on failure. (The intent expiry harvest and the evomem survivability sequence that follow are documented in the daemon task table in `CLAUDE.md`.)
+- **`run_daily_safety_net`** — at local `reducer.daily_tick_hour:minute` (default 23:55), force-ends the currently-open session and runs `reduce_all_pending` to catch anything stranded at `ended`/`failed`. It then performs intent expiry and evomem survivability maintenance. Each maintenance step logs and continues on failure.
 
 ## CLI
 

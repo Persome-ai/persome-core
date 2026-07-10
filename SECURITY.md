@@ -16,15 +16,13 @@ persome-core is a macOS-only daemon that captures Accessibility tree events, wit
 persome-core has these egress paths. There is no telemetry and no
 update phone-home; OCR is fully local (bundled 6.2 MB PP-OCRv6 weights).
 
-Always-on:
-1. The LLM endpoint you configure (ANTHROPIC_BASE_URL, default api.anthropic.com).
-2. The embeddings endpoint you configure (OPENAI_BASE_URL), only when set.
+Runtime egress:
+1. The LLM endpoint you configure (`ANTHROPIC_BASE_URL`, default api.anthropic.com), when an LLM-dependent stage runs.
+2. The embeddings endpoint you configure (`OPENAI_BASE_URL`), only when hybrid retrieval is enabled.
 
 Opt-in / feature-gated (off unless you enable the feature or set its key):
-3. Web search from the chat agent's tools: a Bocha search API
-   (meeting/analyzer.py) and DuckDuckGo + arbitrary page fetch
-   (chat/tool_handlers.py). These fire only if you use the chat agent
-   and provide the relevant keys.
+3. DuckDuckGo search and arbitrary page fetch from `chat/tool_handlers.py`.
+   These fire only when the optional chat agent invokes the corresponding tool.
 4. The developer visualization pages (/dev/*) load charting libraries
    (three.js, echarts) from the jsdelivr CDN. These pages are dev-only.
 
@@ -33,15 +31,10 @@ Verify the full set yourself: grep the source for `httpx`, `requests`,
 
 Bring your own key. No key ships with the code. Without a key, capture and BM25 retrieval still work, and LLM-dependent stages degrade cleanly.
 
-## Actuation (computer use)
+## No computer use
 
-Computer-use actuation is off by default in the open-source build. If you enable it, the daemon can click and type on your behalf.
-
-When enabled, actuation has these layers:
-
-1. Explicit opt-in config.
-2. A per-action confirmation loop.
-3. A kill switch.
+The paper runtime has no click, type, takeover, or meeting-audio actuation path.
+MCP write access is limited to explicit memory and model correction operations.
 
 ## Threat model
 

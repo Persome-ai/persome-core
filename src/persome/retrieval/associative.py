@@ -1,7 +1,7 @@
 """Multi-slot Q distillation — the §3.2 associative read's Q construction.
 
 Memory-rebuild spec §3.2: the read path has ONE entrance — the present is the
-only questioner. Whatever the present offers (a task prompt, a workthread, an
+only questioner. Whatever the present offers (a task prompt, recent activity, an
 MCP question, screen text) is distilled ZERO-LLM into a multi-slot Q; head
 weights then emerge from slot occupancy inside the RRF (an absent slot is zero
 votes — no mode switch). This module is that distillation; the engine half is

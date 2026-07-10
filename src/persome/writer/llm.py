@@ -1,6 +1,6 @@
 """Anthropic SDK wrapper with per-stage model resolution.
 
-All background stages (timeline / reducer / classifier / compact / dream /
+All background stages (timeline / reducer / classifier / compact /
 pattern_detector / active / consolidator / intent_recognizer) call the Anthropic
 Messages API directly through the official SDK — the same client path chat uses.
 litellm was removed: it serialized custom tools with a ``type:"custom"`` variant
@@ -243,7 +243,9 @@ def call_llm(
     ``{"thinking": {"type": "disabled"}}`` for the fast recognizer) — forwarded
     verbatim, so the relay passes them to the upstream gateway.
     """
-    if (os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")) == "1":  # Mens is the legacy name
+    if (
+        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
+    ) == "1":  # Mens is the legacy name
         return _mock_response(stage, messages, tools, json_mode)
 
     model_cfg = cfg.model_for(stage)
@@ -293,8 +295,12 @@ def call_llm_streaming(
     so behaviour degrades to "wait for the whole body" — never worse, never a recognition miss.
     Mock-aware: ``PERSOME_LLM_MOCK=1`` delegates to :func:`call_llm` (so a test's monkeypatched
     ``call_llm`` / ``fake_llm`` fixture is honored) and feeds the full text to ``on_delta`` once."""
-    if (os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")) == "1":  # Mens is the legacy name
-        text = extract_text(call_llm(cfg, stage, messages=messages, json_mode=json_mode, extra=extra))
+    if (
+        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
+    ) == "1":  # Mens is the legacy name
+        text = extract_text(
+            call_llm(cfg, stage, messages=messages, json_mode=json_mode, extra=extra)
+        )
         if on_delta:
             with contextlib.suppress(Exception):  # a callback error must not break the call
                 on_delta(text)
@@ -335,7 +341,9 @@ def call_llm_streaming(
         return _unfence_json(text) if json_mode else text
     except Exception as exc:  # noqa: BLE001 — fail-open to the blocking call
         logger.warning("streaming call failed (%s); falling back to non-streaming", exc)
-        text = extract_text(call_llm(cfg, stage, messages=messages, json_mode=json_mode, extra=extra))
+        text = extract_text(
+            call_llm(cfg, stage, messages=messages, json_mode=json_mode, extra=extra)
+        )
         if on_delta:
             with contextlib.suppress(Exception):
                 on_delta(text)
@@ -355,7 +363,9 @@ _MOCK_DEFAULTS: dict[str, str] = {
 
 def _mock_response(stage: str, messages, tools, json_mode):  # type: ignore[no-untyped-def]
     """Minimal stub for offline tests. Customize via PERSOME_LLM_MOCK_JSON."""
-    override = (os.environ.get("PERSOME_LLM_MOCK_JSON") or os.environ.get("MENS_CONTEXT_LLM_MOCK_JSON"))  # Mens is the legacy name
+    override = os.environ.get("PERSOME_LLM_MOCK_JSON") or os.environ.get(
+        "MENS_CONTEXT_LLM_MOCK_JSON"
+    )  # Mens is the legacy name
     content = override if override else _MOCK_DEFAULTS.get(stage, "")
     return _build_response(content)
 
@@ -403,7 +413,9 @@ def ping_stage(cfg: Config, stage: str, *, timeout: float = 5.0) -> PingResult:
     informational callers must remain non-fatal.
     """
     model_cfg = cfg.model_for(stage)
-    if (os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")) == "1":  # Mens is the legacy name
+    if (
+        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
+    ) == "1":  # Mens is the legacy name
         return PingResult(
             stage=stage,
             model=model_cfg.model,
@@ -561,7 +573,9 @@ def count_tokens_api(cfg: Config, stage: str, messages: list[dict[str, Any]]) ->
     Returns None on any failure, when disabled, or when the gateway doesn't
     implement the endpoint — callers fall back to ``_estimate_tokens``.
     """
-    if (os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")) == "1":  # Mens is the legacy name
+    if (
+        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
+    ) == "1":  # Mens is the legacy name
         return None
     if not cfg.writer.use_token_count_api:
         return None

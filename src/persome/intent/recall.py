@@ -11,7 +11,7 @@ dump into a **layered background pack**, assembled in priority order so the most
 decision-relevant context comes first within a fixed character budget:
 
     ① 场景意图   — recent intents recognized in THIS scope (the unified stream)
-    ② 行为先验   — skill/workflow memory (what dream/pattern learned the user does)
+    ② 行为先验   — skill/workflow memory learned from repeated behavior
     ③ 相关记忆   — durable entity/topic facts (person/org/project/topic/user/tool)
     ④ 其他命中   — any remaining keyword hits, so nothing relevant is dropped
 
@@ -114,7 +114,6 @@ _DURABLE_GLOBS = [
     "person-*",
     "tool-*",
     "intent-*",
-    "thread-*",
     "schema-*",
 ]
 
@@ -225,8 +224,6 @@ def assemble_background(
     chain_trail: bool = False,
     include_confidence: bool = False,
     recent_events_hours: int = 0,
-    workthread_chars: int = 0,
-    workthread_min_confidence: float = 0.6,
     dense_query: str | None = None,
     dense_top_k: int = 0,
 ) -> str:
@@ -270,20 +267,12 @@ def assemble_background(
     note exists to *down-weight* shaky memories, not to label every fact). Default
     False → byte-identical to today, no ``entry_metadata`` reference.
 
-    ``recent_events_hours`` (WorkThread S0 基线, spec 2026-06-12 §二): when > 0,
+    ``recent_events_hours``: when > 0,
     append a lowest-priority "近期活动" section carrying the most recent
     event-daily entries within the window — the reducer's session summaries with
     their "continued…" narration, i.e. the descriptive "最近在干什么" perception.
     Shares the main budget LAST (it must never squeeze facts out; the squeeze
-    telemetry below is the S0 acceptance gauge). 0 → byte-identical to today.
-
-    ``workthread_chars`` (WorkThread S3 工作线层, spec §六-1): when > 0, inject
-    the active work thread (+ at most one background thread) as its own section
-    positioned right AFTER schema_prior (whose top priority has ablation
-    backing) and BEFORE the scene layer — with an **independent** budget of
-    this many chars, so it can never squeeze the existing layers (callers raise
-    their total accordingly, e.g. 1200 → 1400). Threads below
-    ``workthread_min_confidence`` are not injected. 0 → byte-identical.
+    telemetry below is the acceptance gauge). 0 disables the layer.
 
     Telemetry (ablation 2026-06-10 §4): every call records one best-effort row in
     ``recall_budget_ticks`` — scope, max_chars, used, per-layer admitted/rejected
@@ -309,22 +298,6 @@ def assemble_background(
         # Highest priority: it claims budget first, ahead of every other layer.
         if budget.add(prior_text, layer="schema_prior"):
             sections.append(prior_text)
-
-    if workthread_chars > 0:
-        # WorkThread layer (S3): independent budget — rendered against its own
-        # cap, its per-layer counters folded into the shared telemetry under
-        # layer "workthread" but WITHOUT charging the main ``budget.used``
-        # (位次让 schema_prior，预算不挤占主层 — this runs before the main layers,
-        # so charging used here would squeeze them out). Its chars are surfaced
-        # into the tick's ``used``口径 only at the telemetry write below (#623).
-        wt_text = _workthread_layer(
-            conn,
-            max_chars=workthread_chars,
-            min_confidence=workthread_min_confidence,
-            budget=budget,
-        )
-        if wt_text:
-            sections.append(wt_text)
 
     scene = _scene_layer(conn, scope, budget)
     if scene:
@@ -399,8 +372,8 @@ def assemble_background(
         sections.append("# 其他命中\n" + "\n".join(fallback))
 
     if recent_events_hours > 0:
-        # WorkThread S0 基线: descriptive recent-work background, LAST in
-        # priority — it informs, it never displaces decision-relevant layers.
+        # Descriptive recent-work background, LAST in priority: it informs but
+        # never displaces decision-relevant layers.
         recent = _recent_events_layer(conn, hours=recent_events_hours, budget=budget)
         if recent:
             sections.append("# 近期活动（event-daily 摘要）\n" + "\n".join(recent))
@@ -411,25 +384,12 @@ def assemble_background(
     # ``hints`` ride the tick as debugging telemetry (what drove this recall).
     # Best-effort side-channel: a failed write must never affect recall.
     try:
-        # Surface the workthread independent budget into the tick口径 ONLY here
-        # (#623) — never into the in-memory ``budget.used`` that drives admission
-        # (review finding: workthread injects EARLY, so charging ``budget.used``
-        # squeezes the main layers out). The true assembly ceiling is
-        # ``max_chars + workthread_chars`` (workthread renders against its own
-        # cap ON TOP of the main budget), and the true used is the main
-        # ``budget.used`` PLUS the workthread chars actually admitted — the
-        # latter already folded into ``budget.layers["workthread"]`` by
-        # ``_workthread_layer``. Recording only ``max_chars`` / main-``used``
-        # systematically under-reports capacity and skews the "raise max_chars?"
-        # decision; the per-layer counters (incl. workthread rejected) are
-        # already口径-correct in ``budget.layers``.
-        wt_admitted_chars = budget.layers.get("workthread", {}).get("admitted_chars", 0)
         recall_budget_ticks.record_tick(
             conn,
             ts=datetime.now().isoformat(timespec="seconds"),
             scope=scope,
-            max_chars=max_chars + max(workthread_chars, 0),
-            used=budget.used + wt_admitted_chars,
+            max_chars=max_chars,
+            used=budget.used,
             layers=budget.layers,
             hints=hints,
         )
@@ -544,76 +504,6 @@ def assemble_background_structured(
     return sink
 
 
-def _workthread_layer(
-    conn: sqlite3.Connection, *, max_chars: int, min_confidence: float, budget: _Budget
-) -> str:
-    """当前工作线 section（WorkThread S3, spec §六-1）.
-
-    Renders the active thread + at most ONE background thread against an
-    **independent** char budget (it never competes with the main layers — the
-    spec's "独立预算 200 字符" contract), then folds its admit/reject counters
-    into the shared telemetry under layer ``workthread``.
-
-    Crucially, this layer is injected EARLY (right after schema_prior, before
-    scene/behavior/fact/keyword/events), so it must NOT mutate the shared
-    ``budget.used`` — doing so would inflate the count every downstream layer
-    reads and squeeze them out, breaking the 独立预算不挤占主层 contract (#623
-    review: an after-workthread layer like 近期活动 would admit less). Only the
-    per-layer counters (which never feed the admission decision) are folded in
-    here; the workthread chars are surfaced into the tick's ``used``口径 at the
-    telemetry write site (``assemble_background``) by adding the already-folded
-    ``layers["workthread"]["admitted_chars"]`` — so the recorded ``used`` /
-    squeeze rate / capacity decision reflect the real assembly ceiling
-    (``main + workthread``) WITHOUT poisoning admission. The pre-#623 code only
-    mirrored ``admitted`` and never counted ``rejected``, so a workthread line
-    over its own independent budget vanished from telemetry (rejected read 0);
-    that is fixed by charging the local budget under the ``workthread`` layer.
-    Threads below ``min_confidence`` are skipped (纠错口上线前的保守闸：错背景
-    是可观测但仍有代价的注入). Empty string when nothing qualifies or the
-    work_threads table doesn't exist yet.
-    """
-    try:
-        from ..workthread import store as wt_store
-    except ImportError:  # pragma: no cover - defensive
-        return ""
-    try:
-        active = wt_store.active_thread(conn)
-        background = [t for t in wt_store.list_threads(conn, statuses=("background",), limit=2)]
-    except Exception:  # noqa: BLE001 — recall must never break on a missing table
-        return ""
-    local = _Budget(max_chars)
-    lines: list[str] = []
-    for thread, label in [(active, "进行中"), *[(t, "后台") for t in background[:1]]]:
-        if thread is None or thread.confidence < min_confidence:
-            continue
-        approx = "≈" if thread.approximate else ""
-        origin = f"，{thread.origin_actor} 交办" if thread.origin_actor else ""
-        line = f"[{label}] {thread.title}（累计 {thread.total_active_minutes}{approx}min{origin}）"
-        recent = thread.progress_notes[-1] if thread.progress_notes else ""
-        if recent:
-            line += f" 最近：{recent[:60]}"
-        # Charge the local (independent) budget under the ``workthread`` layer so
-        # both admitted AND rejected are counted (an over-cap line rejected here
-        # must surface as a workthread rejection, not vanish — #623 finding M).
-        if local.add(line, layer="workthread"):
-            lines.append(line)
-    # Fold ONLY the independent budget's per-layer counters into the shared
-    # telemetry桶 (#623). Counters never feed the admission decision, so this is
-    # safe to do here; the shared ``budget.used`` is deliberately NOT touched —
-    # this layer runs before the main layers, and inflating ``used`` would
-    # squeeze them out (review finding). The workthread chars are added to the
-    # tick's ``used``口径 at the telemetry write instead, from the folded
-    # ``admitted_chars`` below.
-    src = local.layers.get("workthread")
-    dst = budget.layers.get("workthread")
-    if src is not None and dst is not None:
-        for counter in recall_budget_ticks.COUNTERS:
-            dst[counter] += src[counter]
-    if not lines:
-        return ""
-    return "# 当前工作线\n" + "\n".join(lines)
-
-
 def _recent_events_layer(
     conn: sqlite3.Connection,
     *,
@@ -621,7 +511,7 @@ def _recent_events_layer(
     budget: _Budget,
     sink: list[RecallItem] | None = None,
 ) -> list[str]:
-    """近 N 小时的 event-daily 条目（WorkThread S0 描述性背景）.
+    """近 N 小时的 event-daily 描述性背景条目.
 
     Reads the most recent session-summary entries from ``event-*`` files in the
     FTS projection (timestamp-ordered, no keyword match needed — recency IS the
@@ -699,7 +589,7 @@ def _scene_layer(
     intents = [it for it in intents if not intent_store.is_expired(it, now=now_iso)]
     out: list[str] = []
     for it in intents[-8:]:  # most recent, chronological
-        # assignment (WorkThread S0) carries its substance in ``task_text``
+        # assignment events carry their substance in ``task_text``
         # ("Kevin 让我做 X" 的 X)；带逐字引文+人名地浮出正是 S0 的交付。
         text = str(
             it.payload.get("text") or it.payload.get("task_text") or it.rationale or ""

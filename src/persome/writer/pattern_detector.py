@@ -205,12 +205,8 @@ def _find_repeated_app_sequences(
     Mail+Slack+Cursor counts as one occurrence of the combo {Cursor, Mail,
     Slack}, regardless of switching order.
 
-    Related but DIFFERENT: ``dream._mine_app_sequences`` looks at
-    ``captures.app_name`` and detects *ordered contiguous* subsequences
-    (Cursor → Slack → Mail), collapsing consecutive duplicates. The two
-    answer different questions — co-occurrence vs transition — so they live
-    side-by-side intentionally. If you change one, decide whether the other
-    needs the same change.
+    This groups durable timeline co-occurrence rather than ordered raw-capture
+    transitions.
     """
     rows = conn.execute(
         """
@@ -262,10 +258,7 @@ def _find_repeated_captures_field(
     Detector only looks at the session-aligned slice between
     ``last_pattern_detected_end`` and ``session_end``.
 
-    Related: ``dream._find_repeated_captures_field`` does the same counting
-    but takes only ``start`` (open-ended forward over the full lookback) and
-    validates ``field`` against an allowlist. Keep their output shape
-    identical so the prompt rendering helpers can be shared.
+    The bounded window keeps pattern detection aligned with the session slice.
     """
     rows = conn.execute(
         f"""

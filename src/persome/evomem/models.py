@@ -30,9 +30,6 @@ class MemoryLayer(StrEnum):
             "schema": cls.L6_SCHEMA,
             "intention": cls.L7_INTENTION,
             "raw": cls.L1_RAW,
-            # WorkThread 归宿（spec 2026-06-12 §五）：进行中工作线的投影按 L3
-            # 收纳——alias 机制，不动七层枚举本身。
-            "working_state": cls.L3_SUMMARY,
         }
         if v in alias:
             return alias[v]

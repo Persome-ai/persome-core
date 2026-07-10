@@ -1,23 +1,19 @@
 """Writer tool implementations + JSON Schema declarations for the LLM.
 
-写权反转（PR-6b，SSOT 切换设计 §1.3/§5）：本模块是 classifier / dream /
+写权反转（PR-6b，SSOT 切换设计 §1.3/§5）：本模块是 classifier /
 pattern_detector / consolidator 共用的写工具层；``write_authority="evomem"`` 时
 ``tool_create``/``tool_append``/``tool_supersede`` 经 ``store/entries.py`` 的
 choke-point dispatch 走 evomem engine 落 evo_nodes，markdown 由投影器再生成
 （``tool_flag_compact`` 改走 ``inversion.flag_needs_compact``——files 行是真相，
 重投影替代直接 ``update_frontmatter``，避免投影态 hash 失配触发手改误报）。
-写 op 由各 stage 的 LLM agent 决定（dream 的 update_memory = 已决定的
-supersede），engine 不再重新决策——reconcile 调和升级与反转解耦。逐站输出
+写 op 由各 stage 的 LLM agent 决定，engine 不再重新决策——reconcile 调和升级与反转解耦。逐站输出
 等价由 ``tests/test_evomem/test_inversion_stations.py`` 钉死。
 """
 
 from __future__ import annotations
 
-import json
-import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from typing import Any
 
 from ..evomem import inversion as evo_inversion
@@ -386,19 +382,13 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
-
-
 # Re-exported for callers that need to know which tools are concurrency-safe
 # without importing from llm.py (avoid circular deps).
 CONCURRENCY_SAFE_TOOLS: frozenset[str] = frozenset(
     {
         "read_memory",
         "search_memory",
-        "drill_capture",
-        "drill_window",
-        "drill_chat",
         "drill_chat_captures",
-        "drill_timeline",
     }
 )
 
@@ -488,44 +478,6 @@ def dispatch(
     return {"error": f"unknown tool: {name}"}
 
 
-# Chat-history filenames are wall-clock minted by the chat layer:
-# YYYYMMDD-HHMMSS.json. Validate before joining onto the chat-history
-# directory so a hostile filename like "../etc/passwd" can never escape.
-_CHAT_FILENAME_RE = re.compile(r"^\d{8}-\d{6}\.json$")
-
-
-def tool_drill_capture(
-    conn: sqlite3.Connection,
-    *,
-    capture_id: str,
-    text_limit: int = 2000,
-) -> dict[str, Any]:
-    """Fetch one capture row with its full visible_text (truncated)."""
-    if not capture_id or not isinstance(capture_id, str):
-        return {"error": "capture_id required"}
-    row = conn.execute(
-        "SELECT id, timestamp, app_name, bundle_id, window_title, "
-        "       focused_role, focused_value, url, visible_text "
-        "  FROM captures WHERE id=?",
-        (capture_id,),
-    ).fetchone()
-    if row is None:
-        return {"error": f"capture not found: {capture_id}"}
-    text = (row["visible_text"] or "")[: max(0, int(text_limit))]
-    return {
-        "id": row["id"],
-        "timestamp": row["timestamp"],
-        "app_name": row["app_name"] or "",
-        "bundle_id": row["bundle_id"] or "",
-        "window_title": row["window_title"] or "",
-        "focused_role": row["focused_role"] or "",
-        "focused_value": row["focused_value"] or "",
-        "url": row["url"] or "",
-        "visible_text": text,
-        "truncated": len(row["visible_text"] or "") > len(text),
-    }
-
-
 def tool_drill_chat_captures(
     conn: sqlite3.Connection,
     *,
@@ -564,254 +516,8 @@ def tool_drill_chat_captures(
     }
 
 
-def tool_drill_window(
-    conn: sqlite3.Connection,
-    *,
-    title: str | None = None,
-    url: str | None = None,
-    app_name: str | None = None,
-    since_days: int = 30,
-    limit: int = 20,
-    text_preview: int = 200,
-) -> dict[str, Any]:
-    """List captures matching a window title / URL / app substring.
-
-    At least one of title, url, app_name must be set. Returns up to ``limit``
-    rows, newest-first, each with a ``visible_text`` preview clipped to
-    ``text_preview`` chars so the whole response stays bounded.
-    """
-    if not any([title, url, app_name]):
-        return {"error": "one of title, url, app_name is required"}
-
-    since = (datetime.now().astimezone() - timedelta(days=max(1, int(since_days)))).isoformat()
-    clauses: list[str] = ["timestamp >= ?"]
-    args: list[Any] = [since]
-    if title:
-        clauses.append("LOWER(window_title) LIKE ?")
-        args.append(f"%{title.lower()}%")
-    if url:
-        clauses.append("LOWER(url) LIKE ?")
-        args.append(f"%{url.lower()}%")
-    if app_name:
-        clauses.append("LOWER(app_name) LIKE ?")
-        args.append(f"%{app_name.lower()}%")
-
-    sql = (
-        "SELECT id, timestamp, app_name, window_title, focused_role, "
-        "       focused_value, url, visible_text "
-        "  FROM captures WHERE " + " AND ".join(clauses) + " "
-        "ORDER BY timestamp DESC LIMIT ?"
-    )
-    args.append(max(1, int(limit)))
-    rows = conn.execute(sql, args).fetchall()
-
-    preview = max(0, int(text_preview))
-    results = []
-    for r in rows:
-        full = r["visible_text"] or ""
-        results.append(
-            {
-                "id": r["id"],
-                "timestamp": r["timestamp"],
-                "app_name": r["app_name"] or "",
-                "window_title": r["window_title"] or "",
-                "focused_role": r["focused_role"] or "",
-                "focused_value": r["focused_value"] or "",
-                "url": r["url"] or "",
-                "visible_text_preview": full[:preview],
-            }
-        )
-    return {"count": len(results), "captures": results}
-
-
-def tool_drill_chat(
-    *,
-    file: str,
-    max_messages: int = 20,
-    text_limit_per_msg: int = 400,
-) -> dict[str, Any]:
-    """Read up to ``max_messages`` messages from one chat-history JSON.
-
-    The filename MUST match ``YYYYMMDD-HHMMSS.json`` (no path separators,
-    no traversal) — otherwise this errors before touching the filesystem.
-    """
-    if not isinstance(file, str) or not _CHAT_FILENAME_RE.match(file):
-        return {"error": f"invalid chat file (must match YYYYMMDD-HHMMSS.json): {file!r}"}
-
-    from .. import paths as paths_mod
-
-    history_dir = paths_mod.root() / "chat-history"
-    p = history_dir / file
-    if not p.exists() or not p.is_file():
-        return {"error": f"chat file not found: {file}"}
-    # Defense in depth — the regex already prevents this, but verify the
-    # resolved path is still under history_dir.
-    try:
-        p.resolve().relative_to(history_dir.resolve())
-    except ValueError:
-        return {"error": f"chat file outside history dir: {file}"}
-
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return {"error": f"unreadable chat file: {exc}"}
-    if not isinstance(data, list):
-        return {"error": "chat file is not a JSON array"}
-
-    cap_n = max(1, int(max_messages))
-    clip = max(0, int(text_limit_per_msg))
-    out = []
-    for msg in data[:cap_n]:
-        if not isinstance(msg, dict):
-            continue
-        role = str(msg.get("role", ""))
-        content = msg.get("content")
-        text = ""
-        if isinstance(content, str):
-            text = content[:clip]
-        elif isinstance(content, list):
-            # OpenAI tool-call content arrays — flatten the text parts.
-            parts: list[str] = []
-            for c in content:
-                if isinstance(c, dict) and isinstance(c.get("text"), str):
-                    parts.append(c["text"])
-            text = " ".join(parts)[:clip]
-        tool_calls = msg.get("tool_calls")
-        actions: list[dict[str, str]] = []
-        if isinstance(tool_calls, list):
-            for tc in tool_calls:
-                if not isinstance(tc, dict):
-                    continue
-                func = tc.get("function") or {}
-                actions.append(
-                    {
-                        "tool": str(func.get("name", "")),
-                        "args": str(func.get("arguments", ""))[:clip],
-                    }
-                )
-        out.append({"role": role, "content": text, "tool_calls": actions})
-    return {"file": file, "count": len(out), "messages": out}
-
-
-def tool_drill_timeline(
-    conn: sqlite3.Connection,
-    *,
-    date: str,
-    limit: int = 60,
-) -> dict[str, Any]:
-    """Return all 1-min timeline blocks for one local date (YYYY-MM-DD)."""
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").astimezone()
-    except (TypeError, ValueError):
-        return {"error": f"invalid date (want YYYY-MM-DD): {date!r}"}
-
-    from ..timeline import store as timeline_store
-
-    next_day = day + timedelta(days=1)
-    blocks = timeline_store.query_since(conn, day)
-    cap_n = max(1, int(limit))
-    out = []
-    for b in blocks:
-        if b.start_time >= next_day:
-            continue
-        out.append(
-            {
-                "id": b.id,
-                "start": b.start_time.isoformat(),
-                "end": b.end_time.isoformat(),
-                "apps": list(b.apps_used or []),
-                "capture_count": b.capture_count,
-                "entries": list(b.entries or []),
-            }
-        )
-        if len(out) >= cap_n:
-            break
-    return {"date": date, "count": len(out), "blocks": out}
-
-
-# ─── dream tool registry ─────────────────────────────────────────────────
-
-DRILL_SCHEMAS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "drill_capture",
-            "description": (
-                "Read one capture row by id, including its full visible_text "
-                "(truncated to text_limit). Use to ground a candidate in the "
-                "exact UI/content the user saw at that moment."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "capture_id": {"type": "string"},
-                    "text_limit": {"type": "integer", "default": 2000},
-                },
-                "required": ["capture_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "drill_window",
-            "description": (
-                "List captures matching a window title / URL / app substring "
-                "(at least one filter required). Use to find every time a "
-                "candidate page/form was visited and pick capture_ids to "
-                "drill into."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "url": {"type": "string"},
-                    "app_name": {"type": "string"},
-                    "since_days": {"type": "integer", "default": 30},
-                    "limit": {"type": "integer", "default": 20},
-                    "text_preview": {"type": "integer", "default": 200},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "drill_chat",
-            "description": (
-                "Read up to N messages from one chat-history JSON. "
-                "Filename must match YYYYMMDD-HHMMSS.json."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file": {"type": "string"},
-                    "max_messages": {"type": "integer", "default": 20},
-                    "text_limit_per_msg": {"type": "integer", "default": 400},
-                },
-                "required": ["file"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "drill_timeline",
-            "description": (
-                "Return 1-min timeline blocks for one local date (YYYY-MM-DD). "
-                "Use to inspect the actual minute-by-minute activity of a "
-                "representative day for a candidate routine."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "date": {"type": "string", "description": "YYYY-MM-DD"},
-                    "limit": {"type": "integer", "default": 60},
-                },
-                "required": ["date"],
-            },
-        },
-    },
+# Classifier drill used to reconstruct chat content from screen captures.
+_CLASSIFIER_DRILL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
@@ -852,73 +558,6 @@ DRILL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 
-# Dream gets every write tool (read_memory / search_memory / append /
-# create / supersede / flag_compact / commit) plus all drills.
-DREAM_SCHEMAS: list[dict[str, Any]] = TOOL_SCHEMAS + DRILL_SCHEMAS
-DREAM_TOOL_NAMES = {t["function"]["name"] for t in DREAM_SCHEMAS}
-
-# Classifier gets write tools plus drill_chat_captures (to extract chat content
-# from sessions involving chat apps like Feishu / WeChat).
-_DRILL_CHAT_CAPTURES_SCHEMA = next(
-    s for s in DRILL_SCHEMAS if s["function"]["name"] == "drill_chat_captures"
-)
-CLASSIFIER_SCHEMAS: list[dict[str, Any]] = TOOL_SCHEMAS + [_DRILL_CHAT_CAPTURES_SCHEMA]
+# Classifier gets the write tools plus the capture drill.
+CLASSIFIER_SCHEMAS: list[dict[str, Any]] = TOOL_SCHEMAS + _CLASSIFIER_DRILL_SCHEMAS
 CLASSIFIER_TOOL_NAMES = {t["function"]["name"] for t in CLASSIFIER_SCHEMAS}
-
-
-def dispatch_dream(
-    name: str,
-    args: dict[str, Any],
-    *,
-    conn: sqlite3.Connection,
-    soft_limit_tokens: int,
-    state: CommitState,
-) -> dict[str, Any]:
-    """Route a dream tool call: drills first, then fall through to writers."""
-    err = _validate_tool_args(name, args)
-    if err is not None:
-        return err
-    if name == "drill_capture":
-        return tool_drill_capture(
-            conn,
-            capture_id=str(args.get("capture_id") or ""),
-            text_limit=int(args.get("text_limit", 2000) or 2000),
-        )
-    if name == "drill_window":
-        return tool_drill_window(
-            conn,
-            title=args.get("title") or None,
-            url=args.get("url") or None,
-            app_name=args.get("app_name") or None,
-            since_days=int(args.get("since_days", 30) or 30),
-            limit=int(args.get("limit", 20) or 20),
-            text_preview=int(args.get("text_preview", 200) or 200),
-        )
-    if name == "drill_chat":
-        return tool_drill_chat(
-            file=str(args.get("file") or ""),
-            max_messages=int(args.get("max_messages", 20) or 20),
-            text_limit_per_msg=int(args.get("text_limit_per_msg", 400) or 400),
-        )
-    if name == "drill_timeline":
-        return tool_drill_timeline(
-            conn,
-            date=str(args.get("date") or ""),
-            limit=int(args.get("limit", 60) or 60),
-        )
-    if name == "drill_chat_captures":
-        return tool_drill_chat_captures(
-            conn,
-            app_name=str(args.get("app_name") or ""),
-            start_ts=str(args.get("start_ts") or ""),
-            end_ts=str(args.get("end_ts") or ""),
-            max_bytes=int(args.get("max_bytes", 12_000) or 12_000),
-        )
-    # Fall through to the existing write toolset.
-    return dispatch(
-        name,
-        args,
-        conn=conn,
-        soft_limit_tokens=soft_limit_tokens,
-        state=state,
-    )

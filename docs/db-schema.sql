@@ -13,43 +13,6 @@
 
 -- ---- store/fts.py connect() — core schema + modules ensured on every connect ----
 
-CREATE TABLE agent_run_events (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id  INTEGER NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
-    ts      TEXT NOT NULL,
-    type    TEXT NOT NULL,
-    payload TEXT NOT NULL
-);
-
-CREATE TABLE agent_runs (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind            TEXT NOT NULL,
-    title           TEXT NOT NULL DEFAULT '',
-    status          TEXT NOT NULL,
-    trigger         TEXT NOT NULL,
-    dispatch_source TEXT NOT NULL DEFAULT 'system',
-    enqueued_at     TEXT NOT NULL,
-    started_at      TEXT,
-    ended_at        TEXT,
-    progress        REAL,
-    progress_label  TEXT NOT NULL DEFAULT '',
-    eta_seconds     INTEGER,
-    payload         TEXT NOT NULL DEFAULT '{}',
-    summary         TEXT NOT NULL DEFAULT '',
-    result_refs     TEXT NOT NULL DEFAULT '[]',
-    error           TEXT NOT NULL DEFAULT '',
-    skipped_reason  TEXT NOT NULL DEFAULT ''
-);
-
-CREATE TABLE book_chapters (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    title       TEXT NOT NULL,
-    subtitle    TEXT NOT NULL DEFAULT '',
-    session_ids TEXT NOT NULL DEFAULT '[]',  -- JSON array of chat session ids
-    edited      INTEGER NOT NULL DEFAULT 0,  -- 1 once the user renamed it
-    created_at  TEXT NOT NULL
-);
-
 CREATE TABLE captures (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT UNIQUE NOT NULL,
@@ -67,29 +30,6 @@ CREATE VIRTUAL TABLE captures_fts USING fts5(
     app_name, window_title, focused_value, visible_text, url,
     content='captures', content_rowid='rowid',
     tokenize='unicode61 remove_diacritics 2'
-);
-
-CREATE TABLE dream_events (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id  INTEGER NOT NULL REFERENCES dream_runs(id) ON DELETE CASCADE,
-    ts      TEXT NOT NULL,
-    type    TEXT NOT NULL,
-    payload TEXT NOT NULL
-);
-
-CREATE TABLE dream_runs (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    started_at      TEXT NOT NULL,
-    ended_at        TEXT,
-    trigger         TEXT NOT NULL,              -- 'manual' | 'daily-tick'
-    status          TEXT NOT NULL,              -- 'running' | 'committed' | 'skipped' | 'failed'
-    summary         TEXT NOT NULL DEFAULT '',
-    written_count   INTEGER NOT NULL DEFAULT 0,
-    iterations      INTEGER NOT NULL DEFAULT 0,
-    error           TEXT NOT NULL DEFAULT '',
-    skipped_reason  TEXT NOT NULL DEFAULT '',
-    written_ids     TEXT NOT NULL DEFAULT '[]', -- JSON array of memory entry ids
-    created_paths   TEXT NOT NULL DEFAULT '[]'  -- JSON array of file paths
 );
 
 CREATE VIRTUAL TABLE entries USING fts5(
@@ -140,13 +80,6 @@ CREATE TABLE files (
     created TEXT,
     updated TEXT,
     needs_compact INTEGER DEFAULT 0
-);
-
-CREATE TABLE highlights (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    quote       TEXT NOT NULL,
-    source_ref  TEXT NOT NULL DEFAULT '',  -- source page id or chat session id
-    created_at  TEXT NOT NULL
 );
 
 CREATE TABLE intents (
@@ -229,33 +162,13 @@ CREATE TABLE vector_queue (
             enqueued_at TEXT NOT NULL
         );
 
-CREATE INDEX idx_agent_run_events_run ON agent_run_events(run_id, id);
-
-CREATE INDEX idx_agent_runs_kind_time  ON agent_runs(kind, enqueued_at DESC);
-
-CREATE INDEX idx_agent_runs_started    ON agent_runs(started_at DESC);
-
-CREATE INDEX idx_agent_runs_status_enq ON agent_runs(status, enqueued_at);
-
-CREATE INDEX idx_book_chapters_created
-    ON book_chapters(created_at DESC);
-
 CREATE INDEX idx_captures_app ON captures(app_name);
 
 CREATE INDEX idx_captures_ts  ON captures(timestamp);
 
-CREATE INDEX idx_dream_events_run
-    ON dream_events(run_id, id);
-
-CREATE INDEX idx_dream_runs_started
-    ON dream_runs(started_at DESC);
-
 CREATE INDEX idx_files_prefix ON files(prefix);
 
 CREATE INDEX idx_files_status ON files(status);
-
-CREATE INDEX idx_highlights_created
-    ON highlights(created_at DESC);
 
 CREATE INDEX idx_intents_dedup ON intents(dedup_key);
 
@@ -292,78 +205,6 @@ CREATE TRIGGER captures_au AFTER UPDATE ON captures BEGIN
     INSERT INTO captures_fts(rowid, app_name, window_title, focused_value, visible_text, url)
     VALUES (new.rowid, new.app_name, new.window_title, new.focused_value, new.visible_text, new.url);
 END;
-
--- ---- workthread/store.py ----
-
-CREATE TABLE work_threads (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    goal TEXT NOT NULL DEFAULT '',
-    origin_type TEXT NOT NULL DEFAULT 'self_initiated',
-    origin_actor TEXT NOT NULL DEFAULT '',
-    origin_evidence TEXT NOT NULL DEFAULT '[]',
-    origin_at TEXT NOT NULL DEFAULT '',
-    origin_intent_id INTEGER,
-    status TEXT NOT NULL DEFAULT 'background',
-    first_seen TEXT NOT NULL DEFAULT '',
-    last_active TEXT NOT NULL DEFAULT '',
-    total_active_minutes INTEGER NOT NULL DEFAULT 0,
-    approximate INTEGER NOT NULL DEFAULT 0,
-    bindings TEXT NOT NULL DEFAULT '[]',
-    progress_notes TEXT NOT NULL DEFAULT '[]',
-    confidence REAL NOT NULL DEFAULT 0.5,
-    pinned INTEGER NOT NULL DEFAULT 0,
-    user_corrected INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE workthread_labels (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts TEXT NOT NULL,
-    day TEXT NOT NULL DEFAULT '',
-    thread_id TEXT NOT NULL DEFAULT '',
-    action TEXT NOT NULL,
-    payload TEXT NOT NULL DEFAULT '{}',
-    source TEXT NOT NULL DEFAULT ''
-);
-
-CREATE TABLE workthread_queue (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    summary TEXT NOT NULL DEFAULT '',
-    sub_tasks TEXT NOT NULL DEFAULT '[]',
-    start_time TEXT NOT NULL DEFAULT '',
-    end_time TEXT NOT NULL DEFAULT '',
-    enqueued_at TEXT NOT NULL,
-    consumed_at TEXT
-);
-
-CREATE TABLE workthread_state (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
-CREATE TABLE workthread_ticks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts TEXT NOT NULL,
-    window_id TEXT NOT NULL DEFAULT '',
-    sessions INTEGER NOT NULL DEFAULT 0,
-    opens INTEGER NOT NULL DEFAULT 0,
-    attaches INTEGER NOT NULL DEFAULT 0,
-    revives INTEGER NOT NULL DEFAULT 0,
-    completes INTEGER NOT NULL DEFAULT 0,
-    merges INTEGER NOT NULL DEFAULT 0,
-    disagreement INTEGER NOT NULL DEFAULT 0,
-    outcome TEXT NOT NULL DEFAULT 'ok'
-);
-
-CREATE INDEX idx_work_threads_status ON work_threads(status, last_active DESC);
-
-CREATE INDEX idx_workthread_labels_day ON workthread_labels(day, id);
-
-CREATE INDEX idx_workthread_queue_pending
-    ON workthread_queue(consumed_at, enqueued_at);
-
-CREATE INDEX idx_workthread_ticks_ts ON workthread_ticks(ts DESC);
 
 -- ---- store/relation_edges.py ----
 
@@ -421,28 +262,6 @@ CREATE INDEX idx_memory_deltas_created ON memory_deltas(created_at DESC);
 
 CREATE INDEX idx_memory_deltas_session ON memory_deltas(session_id);
 
--- ---- store/outcomes.py ----
-
-CREATE TABLE outcomes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts TEXT NOT NULL,                         -- ISO8601 outcome time (app-stamped)
-    intent_id INTEGER,                        -- the intent this execution served (NULL if none)
-    kind TEXT NOT NULL,                       -- intent kind: meeting|calendar|reminder|... (enum-ish)
-    status TEXT NOT NULL,                     -- followup | supervised (which executor produced it)
-    success INTEGER NOT NULL DEFAULT 0,       -- 0/1 — did it accomplish the accepted thing
-    executor_tier TEXT,                       -- optional capability tier label (enum)
-    artifact_verified INTEGER,                -- 0/1 — the produced artifact was verified (FollowUp)
-    placed INTEGER,                           -- 0/1 — pasted into a focused field (never sent)
-    awaited_confirm INTEGER,                  -- 0/1 — execution paused for a user confirm
-    reschedule_suggested INTEGER,             -- 0/1 — a reschedule was proposed
-    elapsed_ms INTEGER,                       -- wall-clock duration, ms
-    created_at TEXT NOT NULL
-);
-
-CREATE INDEX idx_outcomes_kind ON outcomes(kind);
-
-CREATE INDEX idx_outcomes_ts ON outcomes(ts DESC);
-
 -- ---- store/parser_ticks.py ----
 
 CREATE TABLE parser_ticks (
@@ -461,10 +280,8 @@ CREATE TABLE recall_budget_ticks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,              -- ISO8601 assembly time
     scope TEXT NOT NULL,           -- recall scope (session-*, meeting-*, ...)
-    max_chars INTEGER NOT NULL,    -- true assembly ceiling: main budget + the
-                                   -- workthread layer's independent budget (#623)
-    used INTEGER NOT NULL,         -- chars actually admitted across ALL layers,
-                                   -- the workthread independent budget included (#623)
+    max_chars INTEGER NOT NULL,    -- shared assembly ceiling
+    used INTEGER NOT NULL,         -- chars admitted across all layers
     layers TEXT NOT NULL DEFAULT '{}',  -- JSON {layer: {admitted, admitted_chars, rejected, rejected_chars}}
     squeezed INTEGER NOT NULL DEFAULT 0, -- 1 when ANY layer rejected at least one text
     hints TEXT NOT NULL DEFAULT '[]',   -- JSON list of the call's hint terms (debugging telemetry)
@@ -523,17 +340,6 @@ CREATE TABLE schema_faces (
 
 CREATE INDEX ix_faces_status ON schema_faces(status, level);
 
--- ---- memory/task_outcome.py ----
-
-CREATE TABLE task_outcome_ingests (
-    task_id TEXT PRIMARY KEY,       -- app task UUID — the idempotency key
-    intent_id INTEGER,              -- the intent this execution served (NULL if none)
-    entry_id TEXT,                  -- the written entry id (NULL when dropped by the PII gate)
-    status TEXT NOT NULL,           -- ingested | dropped_pii
-    ts TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-
 -- ---- evomem/store.py ----
 
 CREATE TABLE evo_nodes (
@@ -580,27 +386,3 @@ CREATE TABLE integrity_check_runs (
 );
 
 CREATE INDEX idx_integrity_check_runs_day ON integrity_check_runs(day DESC);
-
--- ============================================================
--- meeting_*.db — separate per-meeting transcript stores
--- ============================================================
-
--- ---- meeting/store.py ----
-
-CREATE TABLE pushes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                text TEXT NOT NULL
-            );
-
-CREATE TABLE sqlite_sequence(name,seq);
-
-CREATE TABLE transcripts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                source TEXT NOT NULL,
-                text TEXT NOT NULL,
-                sentence_id INTEGER DEFAULT 0
-            );
-
-CREATE INDEX idx_transcripts_timestamp ON transcripts(timestamp);

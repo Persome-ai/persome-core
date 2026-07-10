@@ -126,12 +126,6 @@ class TestViewPage:
         (paths.root() / "dev_memory.html").write_text("<html>OVERRIDE</html>")
         assert routes.dev_memory_view().body.decode() == "<html>OVERRIDE</html>"
 
-    def test_dashboard_embeds_the_graph_tab(self):
-        html = routes._OPS_DASHBOARD_HTML
-        assert 'id="nav-graph"' in html
-        assert 'id="page-graph"' in html
-        assert "graph-frame" in html and "/dev/memory" in html  # lazy iframe
-
 
 class TestNodeReceipts:
     """§2.1 click-through: /dev/memory-node returns the raw receipts behind a point."""

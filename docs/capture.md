@@ -51,7 +51,7 @@ cmux (`com.cmuxterm.app`) renders terminals on the GPU; its AX tree carries only
 
 Downstream stages (timeline, `focus_excerpt`, `captures_fts`) consume `visible_text` as-is — there is no cmux-specific path beyond this injection. Discipline: the whole socket conversation shares one sub-second deadline; per-surface budget 6 k chars (tail-kept), total 12 k; a single bad surface (tree/type drift, e.g. "Surface is not a terminal") is skipped without aborting the rest; any other failure degrades silently to the AX-only capture with a rate-limited warning. Successful injection skips the OCR fallback for that window. Gate: `[capture] cmux_source_enabled` (default on).
 
-Privacy note: terminal text can contain secrets echoed on screen. There is no `visible_text`-level redaction layer in the capture pipeline today (the helper-level `[REDACTED]` only covers AX password inputs, and `bootstrap/redactor.py` only serves the bootstrap profile) — the cmux text carries the same risk profile as the existing screen-fulltext `visible_text`.
+Privacy note: terminal text can contain secrets echoed on screen. There is no general `visible_text` redaction layer in the capture pipeline today; helper-level `[REDACTED]` handling only covers AX password inputs. Terminal text therefore carries the same risk profile as other screen full text.
 
 ## AX depth — the #1 footgun
 

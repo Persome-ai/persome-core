@@ -134,20 +134,3 @@ def test_set_debug_hud_show_inserts_when_section_has_no_show() -> None:
     import tomllib
 
     assert tomllib.loads(out)["debug_hud"]["show"] == ["memory"]
-
-
-def test_top_level_flat_flags_load_from_toml(tmp_path: Path) -> None:
-    """Reverse-loop G1 regression: the flat top-level feature flags must actually be
-    READ from config.toml by ``load()`` — not just exist on the dataclass. The G1
-    daemon kill-switch ``memory_ingest_enabled`` was added to the ``Config`` dataclass
-    but its ``raw.get`` line was missing from ``load()``, so the flag was stuck at its
-    ``False`` default and the channel could never be enabled (a real-E2E-caught bug).
-    Pin a representative sibling too so the wiring can't silently rot again."""
-    # default (no file) → the dataclass default
-    assert config.load(tmp_path / "missing.toml").memory_ingest_enabled is False
-    # explicit top-level override IS honoured
-    p = tmp_path / "config.toml"
-    p.write_text("memory_ingest_enabled = true\nrewind_enabled = false\n")
-    cfg = config.load(p)
-    assert cfg.memory_ingest_enabled is True
-    assert cfg.rewind_enabled is False

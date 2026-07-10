@@ -1,8 +1,8 @@
 """Guard: committed ``openapi.json`` must match the live FastAPI schema.
 
-The Dart client in ``packages/acme-app`` reads this file as the canonical
-contract. If routes or response models change without regenerating
-``openapi.json``, the contract drifts and the app silently breaks.
+The paper runtime publishes this file as its canonical HTTP contract. If routes
+or response models change without regenerating it, clients and documentation
+silently drift.
 
 To fix a failing test::
 
@@ -14,15 +14,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from persome.api import render_openapi_json
 
 REPO = Path(__file__).resolve().parent.parent
 OPENAPI_PATH = REPO / "openapi.json"
 
 
-@pytest.mark.xfail(reason="pre-existing openapi.json snapshot lag — #520", strict=False)
 def test_openapi_json_matches_live_schema() -> None:
     """The committed ``openapi.json`` byte-matches what the live app emits."""
     committed = OPENAPI_PATH.read_text(encoding="utf-8")

@@ -99,8 +99,8 @@ _EXPECTED_PAYLOAD_FIELDS: dict[str, tuple[str, ...]] = {
     "meeting": ("when_text",),
     "calendar": ("when_text",),
     "reminder": ("text",),
-    # WorkThread S0: an assignment without the task text is uncitable downstream
-    # (the tracker quotes it verbatim) — keep it, but down-weight.
+    # An assignment without task text is not useful downstream; keep it but
+    # down-weight its confidence.
     "assignment": ("task_text",),
 }
 

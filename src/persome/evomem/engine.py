@@ -2,17 +2,17 @@
 
 三系统对外入口（SSOT 切换设计 §1.3：engine 是唯一写口，两类入口对应两类写需求）：
 - ``add``  —— **reconcile 路径**：System1 同步写，召回候选 → LLM 四操作决策 +
-  铁律兜底 → 执行 ops。classifier / chat 记忆抽取 / dream 这类「新事实 vs 旧记忆
+  铁律兜底 → 执行 ops。classifier / chat 记忆抽取这类「新事实 vs 旧记忆
   要调和」的站点走这条。
 - ``apply_ops`` / ``add_direct`` —— **确定性路径**：不调 LLM，直接落已确定的 op。
-  intent 投影、reducer 行、bootstrap 画像、schema miner 原地 supersede 这类
+  intent 投影、reducer 行、schema miner 原地 supersede 这类
   「写什么早已确定」的站点走这条（纲领不变式三：确定性写入不许塞进 LLM 决策）。
 - ``commit_node`` / ``commit_supersede`` / ``commit_retire`` —— **反转写口
   （PR-6b）**：接收 caller 已按共享映射（``backfill.map_entry_to_node``）备好的
   ``MemoryNode``，过 ``_validated_file_name`` 栅栏（event 硬拒，Q2）后单事务原子
   落 evo_nodes。``write_authority="evomem"`` 时 ``evomem/inversion.py`` 把九个
   写站点收敛到的三条写口动词（append/supersede/delete）经此落真相——op 决策已
-  在站点侧完成（chat 抽取 / dream agent / miner 各自的 LLM 或确定性逻辑），
+  在站点侧完成（chat 抽取 / classifier / miner 各自的 LLM 或确定性逻辑），
   engine 不再调 reconciler 重新决策，保证「同输入 → 投影 byte-identical」的
   迁移纪律；reconcile 调和（``add``）作为语义升级与写权反转解耦，留待后续
   按站点显式启用。
@@ -83,11 +83,8 @@ def _validated_file_name(file_name: str) -> str:
         return ""
     name = file_name if file_name.endswith(".md") else f"{file_name}.md"
     prefix = files_mod.validate_prefix(name)
-    if prefix in ("event", "task-outcome"):
-        raise ValueError(
-            f"{prefix}-* entries are exempt from evo_nodes (Q2 / reverse-loop G1);"
-            " keep these writes on the legacy markdown path"
-        )
+    if prefix == "event":
+        raise ValueError("event-* entries are exempt from evo_nodes; keep them on markdown")
     return name
 
 
@@ -152,7 +149,7 @@ class EvoMemory:
     ) -> list[str]:
         """确定性写入口（§1.3）：不调 LLM，按序执行**已经确定**的 op 列表。
 
-        intent 投影（append-only 永不入链）、reducer 行、bootstrap 画像、schema
+        intent 投影（append-only 永不入链）、reducer 行、schema
         miner 的原地 supersede 这类「写什么早已确定」的写需求走这条——把它们塞进
         ``add`` 的 reconcile 决策违反纲领不变式三（确定性优先）。op 形态与
         reconcile 路径完全同构（同一 ``_apply_op``），只是决策方从 LLM 换成 caller。

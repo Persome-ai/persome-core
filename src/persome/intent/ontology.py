@@ -25,12 +25,9 @@ from dataclasses import asdict, dataclass, field
 # Kinds in use today. NOT an enforced enum — packs may add more; this is the
 # documented seed set so consumers know the baseline.
 #
-# ``assignment`` (WorkThread S0, spec 2026-06-12 §二): "X 让我做 Y / 你来负责 Z"
-# — the starting point of a work thread. Payload: ``task_text`` (what),
-# ``assigned_by`` (who), ``channel``, optional ``deadline_text``. Deliberately
-# NOT in ``writer.active._PROPOSABLE_KINDS``: it never pops a proposal — it
-# lands in memory, surfaces through recall's scene layer, and seeds the S2
-# thread tracker's input ④.
+# ``assignment``: "X 让我做 Y / 你来负责 Z". Payload: ``task_text`` (what),
+# ``assigned_by`` (who), ``channel``, optional ``deadline_text``. It lands in
+# memory and surfaces through recall's scene layer.
 #
 # ``backlog`` (重要但不紧急 / important-but-not-urgent, proactive-anti-
 # procrastination loop, plan 2026-06-17 §3 metric#1): a clearly-valuable,

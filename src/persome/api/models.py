@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 # ─── Generic envelope ──────────────────────────────────────────────────────
 
@@ -37,9 +37,9 @@ class DataResponse(BaseModel, Generic[_DataT]):
 
     用法::
 
-        @router.get("/runs", response_model=DataResponse[RunsResponse])
-        def runs() -> DataResponse[RunsResponse]:
-            return DataResponse(data=RunsResponse(...))
+        @router.get("/intents", response_model=DataResponse[IntentsResponse])
+        def intents() -> DataResponse[IntentsResponse]:
+            return DataResponse(data=IntentsResponse(...))
     """
 
     success: bool = Field(default=True, description="请求是否成功")
@@ -192,82 +192,10 @@ class RecentCaptureResponse(BaseModel):
     screenshot_mime: str | None = Field(default=None, description="截图 MIME 类型")
 
 
-# ─── Actions ───────────────────────────────────────────────────────────────
-
-
-class ActionItem(BaseModel):
-    id: int = Field(description="行动项 ID")
-    kind: str = Field(description="行动项类型")
-    status: str = Field(description="状态：proposed/done/dismissed")
-    confidence: float = Field(description="置信度 0-1")
-    when_text: str = Field(description="时间描述文本")
-    with_: list[str] = Field(alias="with", description="相关人或渠道")
-    channel: str = Field(description="渠道")
-    rationale: str = Field(description="推理依据")
-    source_block_ids: list[str] = Field(description="来源时间块 ID 列表")
-    created_at: str | None = Field(default=None, description="创建时间 ISO8601")
-
-    class Config:
-        populate_by_name = True
-
-
-class MarkActionBody(BaseModel):
-    action: str = Field(
-        default="done", description="操作类型：done（标记完成）或 dismissed（标记忽略）"
-    )
-    note: str = Field(default="", description="备注说明")
-
-
 class SetIntentStatusBody(BaseModel):
     status: str = Field(
         description="意图状态：open（待处理）/ consumed（已采纳）/ dismissed（已忽略）"
     )
-
-
-class OutcomeBody(BaseModel):
-    """反向闭环 G4（spec 2026-06-26 §3.1.2）：一条执行结果回写。**content-free 红线**——
-    只含枚举/布尔/计数/时长，零屏幕文本/产物正文/秘密。app 的 FollowUp/supervised 收尾时发。
-
-    ``extra="forbid"``：把 content-free 红线钉在 API 边界——任何未声明字段（可能夹带屏幕
-    文本/产物正文）直接 422 拒绝，而非被 Pydantic 默默丢弃。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: str = Field(description="意图 kind（meeting/calendar/reminder/...）")
-    status: str = Field(description="哪个执行器产出：followup | supervised")
-    success: bool = Field(description="是否真正做成了用户采纳的事")
-    intent_id: int | None = Field(default=None, description="服务的意图行 id（无则 null）")
-    executor_tier: str | None = Field(default=None, description="能力档位标签（枚举）")
-    artifact_verified: bool | None = Field(default=None, description="产物已校验（FollowUp）")
-    placed: bool | None = Field(default=None, description="已粘入聚焦字段（永不发送）")
-    awaited_confirm: bool | None = Field(default=None, description="曾暂停等用户确认")
-    reschedule_suggested: bool | None = Field(default=None, description="提议了改期")
-    elapsed_ms: int | None = Field(default=None, description="耗时 ms")
-
-
-class MemoryArtifact(BaseModel):
-    """One produced artifact reference. Only ``type`` is stored durably; ``url`` is
-    ephemeral/leak-prone and is dropped at ingest (宁缺毋滥)."""
-
-    type: str = Field(description="产物类型枚举（meeting_link/document/draft/...）")
-    url: str | None = Field(default=None, description="产物链接（不落库，仅传递）")
-
-
-class MemoryIngestBody(BaseModel):
-    """反向闭环 G1（spec 2026-06-26 §3.1.3）：**唯一**允许带内容的反向通道。app 侧已
-    蒸馏脱敏的 task-outcome ``summary`` 灌入记忆，落 ``task-outcome-*.md``（evo_nodes 豁免）。
-    隐私分级最严：summary 已在 app 侧红线过滤，daemon 侧再过一道 ``privacy.scrub``，
-    命中即整条丢弃（宁缺毋滥）。按 ``task_id`` 幂等。``extra="forbid"`` 钉死字段集。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: str = Field(default="task-outcome", description="记忆类（恒为 task-outcome）")
-    task_id: str = Field(description="app 任务 UUID — 幂等键")
-    title: str = Field(description="app 蒸馏的简短标题")
-    summary: str = Field(description="app 蒸馏脱敏后的简短结构化产物正文")
-    intent_id: int | None = Field(default=None, description="服务的意图行 id（无则 null）")
-    artifacts: list[MemoryArtifact] | None = Field(default=None, description="产物引用（仅类型落库）")
-    ts: str | None = Field(default=None, description="ISO8601 完成时刻")
 
 
 class CaptureIngestBody(BaseModel):
@@ -367,160 +295,3 @@ class RecallPackResponse(BaseModel):
     counts: dict = Field(description="各层命中计数")
     budget: dict = Field(description="预算口径：max_chars/used/squeezed")
     dense: dict = Field(description="稠密层状态：enabled（配置开关）/active（实际触发）")
-
-
-class CorrectWorkThreadBody(BaseModel):
-    """WorkThread 纠错闭集（spec 2026-06-12 §六-3；HUD chip 的零成本开关）。"""
-
-    action: str = Field(
-        description="纠错动作闭集：confirm（划分是对的）/ not_this（不是一条真实的线）/ "
-        "rename（改名，配 rename 字段）/ merge（两条是一件事，配 into_id）/ "
-        "pin（人工确认线：免疫 merge 吸收与 stale 收割）"
-    )
-    rename: str = Field(default="", description="action=rename 时的新标题")
-    into_id: str = Field(default="", description="action=merge 时的吸收方 thread id")
-
-
-# ─── Book pages ──────────────────────────────────────────────────────────────
-
-
-class BookPageItem(BaseModel):
-    id: str = Field(description="书页 ID（= 文件名 stem，如 page-2026-07-08）")
-    title: str = Field(description="书页标题")
-    date: str = Field(description="该页对应的日期 YYYY-MM-DD")
-    kind: str = Field(description="memory 类型，恒为 book_page")
-    is_draft: bool = Field(description="是否为草稿（未 Review）")
-    source_refs: list[str] = Field(default_factory=list, description="来源引用列表")
-
-
-class BookPageDetail(BaseModel):
-    id: str = Field(description="书页 ID")
-    title: str = Field(description="书页标题")
-    date: str = Field(description="该页对应的日期 YYYY-MM-DD")
-    is_draft: bool = Field(description="是否为草稿（未 Review）")
-    body: list[str] = Field(description="正文段落数组（按空行切段）")
-
-
-class ReviewBody(BaseModel):
-    reviewed: bool = Field(description="是否标记为已 Review（去草稿横幅）")
-
-
-# ─── Agent now ───────────────────────────────────────────────────────────────
-
-
-class AgentSubStatus(BaseModel):
-    text: str = Field(description="一行子状态描述，源自真实信号（dream 事件 / 最近活动）")
-    ts: str | None = Field(default=None, description="该子状态对应的时间戳 ISO8601（如可得）")
-
-
-class AgentNowResponse(BaseModel):
-    title: str = Field(description="当前 agent 正在做什么的标题，源自真实状态")
-    status: str = Field(description="运行态：running（有 dream 在跑）/ idle（空闲快照）")
-    started_at: str | None = Field(
-        default=None,
-        description="running 时为当前 dream 的 started_at ISO8601，app 据此自走计时器；idle 为 null",
-    )
-    elapsed_seconds: int | None = Field(
-        default=None,
-        description="running 时已运行秒数（基于 started_at 服务端算一次）；idle 为 null",
-    )
-    capture: str = Field(description="捕获状态：active / paused / stopped")
-    last_activity_ts: str | None = Field(
-        default=None, description="最近一次屏幕捕获的时间戳 ISO8601；无则 null"
-    )
-    sub_status: list[AgentSubStatus] = Field(
-        default_factory=list,
-        description="最多 3 条子状态行，全部源自真实信号；无来源时省略对应行（不编造）",
-    )
-
-
-# ─── Agenda ────────────────────────────────────────────────────────────────
-
-
-class AgendaItem(BaseModel):
-    time_label: str = Field(description="时间描述文本，源自意图 payload 的 when_text（自然语言）")
-    title: str = Field(description="日程标题，源自意图 rationale / kind 摘要")
-    kind: str = Field(description="意图类型，如 meeting / calendar / reminder")
-    ts: str = Field(description="该意图被识别的时间戳 ISO8601")
-    source: str = Field(description="数据来源标识，如 intent")
-    with_: list[str] = Field(
-        default_factory=list, alias="with", description="相关人/参与者，源自 payload.with"
-    )
-
-    class Config:
-        populate_by_name = True
-
-
-class AgendaResponse(BaseModel):
-    range: str = Field(description="查询范围：today / week")
-    items: list[AgendaItem] = Field(
-        default_factory=list, description="按识别时间倒序的日程项；无真实数据则为空列表"
-    )
-    count: int = Field(description="items 数量")
-
-
-class RunCard(BaseModel):
-    id: int = Field(description="行 id（在其 source 表内唯一）")
-    source: str = Field(description="来源表：'agent_run' | 'dream'")
-    kind: str = Field(description="run 类型：dream / bootstrap / <executor>")
-    title: str = Field(description="人话标签")
-    status: str = Field(description="queued / running / committed / skipped / failed / cancelled")
-    trigger: str = Field(description="派发来源：manual / daily-tick / user / chat")
-    enqueued_at: str = Field(description="入队时刻 ISO8601（队列卡时间锚）")
-    started_at: str | None = Field(default=None, description="开跑时刻；NULL = 仍 queued")
-    ended_at: str | None = Field(default=None, description="结束时刻")
-    progress: float | None = Field(
-        default=None, description="0..1 真实进度；NULL = 不定态（绝不编造）"
-    )
-    progress_label: str = Field(default="", description="真实子步骤行")
-    summary: str = Field(default="", description="结果摘要")
-
-
-class RunsResponse(BaseModel):
-    range: str = Field(description="查询范围：day / week / month")
-    items: list[RunCard] = Field(default_factory=list, description="按锚点时间倒序")
-    count: int = Field(description="items 数量")
-
-
-# ─── Config ────────────────────────────────────────────────────────────────
-
-
-class ConfigResponse(BaseModel):
-    config: dict = Field(description="完整配置对象（嵌套结构，含 models/capture 等）")
-
-
-# ─── Agent runs write-side (Phase 1b) ────────────────────────────────────────
-
-
-class CreateRunRequest(BaseModel):
-    kind: str = Field(description="run 类型：dream / bootstrap")
-    title: str = Field(default="", description="人话标签（可选；空串时 registry 给默认）")
-    payload: dict = Field(default_factory=dict, description="executor 参数（可选）")
-
-
-class PatchRunRequest(BaseModel):
-    action: str = Field(description="当前只支持 cancel")
-
-
-class RunEventItem(BaseModel):
-    id: int = Field(description="事件行 id")
-    ts: str = Field(description="事件时间戳 ISO8601")
-    type: str = Field(description="事件类型：progress / stage_start / stage_end / …")
-    payload: dict = Field(description="事件 payload")
-
-
-class RunDetailResponse(BaseModel):
-    id: int = Field(description="run id")
-    kind: str = Field(description="run 类型")
-    title: str = Field(description="人话标签")
-    status: str = Field(description="queued / running / committed / skipped / failed / cancelled")
-    trigger: str = Field(description="派发来源")
-    dispatch_source: str = Field(description="dispatch 来源")
-    enqueued_at: str = Field(description="入队时刻 ISO8601")
-    started_at: str | None = Field(default=None, description="开跑时刻；NULL = 仍 queued")
-    ended_at: str | None = Field(default=None, description="结束时刻")
-    progress: float | None = Field(default=None, description="0..1 真实进度")
-    progress_label: str = Field(default="", description="子步骤描述")
-    summary: str = Field(default="", description="结果摘要")
-    error: str = Field(default="", description="失败原因")
-    events: list[RunEventItem] = Field(default_factory=list, description="事件列表（按时间正序）")

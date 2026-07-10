@@ -6,9 +6,8 @@ compressions that drop too many distinct tokens.
 evomem 自修（issue #526）：markdown 主写模式下 compact 整文件重写会给条目换 id，
 新 id 不入 evo_nodes，切主读后的折叠 recall（``recall_fold_superseded``）会直接
 丢这些记忆。:func:`run_pending` 在 accept 后除了把滞后记成可见 miss
-（:func:`evomem.shadow.note_out_of_band_rewrite`），还自动 enqueue 一条幂等的
-``evomem-compact-repair`` agent run（:func:`_enqueue_evomem_repair`），由 daemon 从
-markdown SSOT 整库重建 evo_nodes（restore-from-markdown，清掉换 id 留下的孤儿 head），
+（:func:`evomem.shadow.note_out_of_band_rewrite`），还同步运行一次幂等的
+restore-from-markdown，从 markdown SSOT 整库重建 evo_nodes、清掉换 id 留下的孤儿 head，
 把「报警等人工跑 CLI」升级为「daemon 自修」。
 
 写权反转（PR-6b，SSOT 切换设计 §4.4——本模块是 PR-3 识别的唯一绕过三条写口
@@ -219,31 +218,24 @@ def run_pending(cfg: Config, conn: sqlite3.Connection) -> list[CompactResult]:
         # 影子无法增量跟进 LLM 的 wholesale 重写，把滞后记成可见 miss——修复 =
         # 重跑幂等的 `persome evomem-backfill`。
         evo_shadow.note_out_of_band_rewrite(accepted)
-        # issue #526：把「记 miss 等人工修」升级为「系统自修」。compact 换 id 后
-        # 新条目不在 evo_nodes，切主读折叠（recall_fold_superseded）会直接丢这些
-        # 记忆，旧路径只发 alert-only 报警等人跑 CLI。这里自动 enqueue 一条幂等的
-        # evomem-compact-repair run（dispatcher 串行 + payload-dedup，多 tick 不堆积），
-        # 让 daemon 自己从 markdown SSOT 整库重建 evo_nodes（清孤儿）。enqueue 失败
-        # 绝不影响 compact 主流程。
-        _enqueue_evomem_repair(cfg)
+        # Compact rewrites entry ids wholesale. Repair evo_nodes immediately from
+        # the markdown SSOT so the runtime does not depend on a product run queue.
+        _repair_evomem_after_compact()
     return results
 
 
-def _enqueue_evomem_repair(cfg: Config) -> None:
-    """compact accept 后自动 enqueue 一条 evomem-compact-repair 自修 run（issue #526）。
-
-    幂等 + 容错：任何异常只 warning，绝不波及 compact 已落定的主写。dispatcher
-    没跑（``--capture-only`` / 测试）也无害——只多一行 ``queued``，下次起来即消费。
-    """
+def _repair_evomem_after_compact() -> None:
+    """Synchronously restore evo_nodes from the rewritten markdown SSOT."""
     try:
-        from ..runs import recorder as runs_recorder
+        from ..evomem import restore as restore_mod
 
-        rid, deduped = runs_recorder.enqueue_run(
-            cfg,
-            kind="evomem-compact-repair",
-            trigger="compact",
-            dispatch_source="compact.run_pending",
+        report = restore_mod.import_from_markdown()
+        logger.info(
+            "compact evomem repair: files=%d nodes=%d projection=%d ok=%s",
+            report.files,
+            report.nodes,
+            report.projection_entries,
+            report.ok,
         )
-        logger.info("compact enqueued evomem-compact-repair run=%s deduped=%s", rid, deduped)
-    except Exception:  # noqa: BLE001 — 自修 enqueue 失败不能伤害 compact 主流程
-        logger.warning("enqueue evomem-compact-repair failed", exc_info=True)
+    except Exception:  # noqa: BLE001 — repair failure cannot undo an accepted compact
+        logger.warning("compact evomem repair failed", exc_info=True)

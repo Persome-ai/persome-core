@@ -490,7 +490,9 @@ class IntentRecognizerConfig:
     # 30%→60% over regex — that gain now requires a BYO model.)
     pregate_mode: str = "regex"
     pregate_bge_threshold: float = 0.5
-    pregate_bge_model_dir: str = ""  # empty = disabled (no bundled model); set to a BYO exported dir to enable
+    pregate_bge_model_dir: str = (
+        ""  # empty = disabled (no bundled model); set to a BYO exported dir to enable
+    )
     # --- 慢路触发：统一入口 + LLM 路由（不再每 tick 都跑慢路）-------------------
     # `every_block` = 旧行为：每个出块 block-flush tick 都跑 recognize_session（贵）。
     # `escalation`  = 统一入口：快路 LLM 是唯一决策点——它在每条 capture 上判断
@@ -549,20 +551,9 @@ class IntentRecognizerConfig:
     # 重复打扰. False → dedup hits skip outright (legacy surface-once behavior,
     # byte-identical).
     material_republish: bool = True
-    # --- WorkThread S0 基线（spec 2026-06-12 §二）-------------------------------
-    # Feed the most recent event-daily entries (session summaries, carrying the
-    # reducer's "continued…" narration + verbatim quotes) into the slow path's
-    # recall background — the descriptive "最近在干什么" perception, zero new
-    # objects. Hours of lookback; 0 disables (byte-identical background).
+    # Feed recent event-daily entries (session summaries) into the slow path's
+    # recall background. Hours of lookback; 0 disables the layer.
     recall_recent_events_hours: int = 48
-    # --- WorkThread S3 recall 工作线层（spec §六-1）------------------------------
-    # Inject the active work thread (+ at most one background thread) as its own
-    # recall section, positioned AFTER schema_prior (whose top priority has
-    # ablation backing) and BEFORE the scene layer. Independent 200-char budget —
-    # it never squeezes the main budget (the recognizer raises the total to
-    # ``recall_max_chars + 200`` when this is on). Threads below confidence 0.6
-    # are not injected.
-    recall_workthread: bool = True
     # --- recall 主预算 (#611, ablation 2026-06-10 §4 落地) ------------------------
     # The shared char budget for ``assemble_background``'s main layers
     # (schema_prior → scene → behavior → fact → keyword → events). The 2026-06-10
@@ -580,9 +571,7 @@ class IntentRecognizerConfig:
     # ablation found NO benefit beyond 2400 and a real dilution risk at 4800.
     # 2400 clears ~44% of the decision-layer squeezes at ~+8% input tokens; the
     # residual long tail is a DELIBERATE capacity tradeoff (漏低优先层 = 有限
-    # 损失), not chased higher. The workthread layer's independent budget stacks
-    # ON TOP of this (#623), so with workthread on the true assembly ceiling is
-    # ``recall_max_chars + 200``.
+    # 损失), not chased higher.
     #
     # 2400 → 2600 (dead-semantic-layer fix): the #647 demand model PREDATED the
     # semantic layer, which was silently dead in production (oversized embed query
@@ -760,38 +749,6 @@ class IntentRecognizerConfig:
 
 
 @dataclass
-class ThreadTrackerConfig:
-    # WorkThread S2 tracker（spec 2026-06-12 §四）: folds each aggregation window
-    # of micro-session summaries onto work threads via the six-op closed set.
-    # Mounted ONLY on the terminal-reduce callback (flush 路径不挂)；the callback
-    # enqueues, the tracker batch-runs per window: max(window_minutes, attaining
-    # window_sessions summaries) → one LLM call digests the whole window
-    # (~8-12 calls/day at the real 35-micro-sessions/day distribution).
-    enabled: bool = True
-    window_minutes: int = 60
-    window_sessions: int = 5
-    # H2 双模型分歧探针（spec §十 10.3）: run a second, differently-prompted pass
-    # per window; disagreement = an honest, label-free *uncertainty* signal —
-    # the disagreed window's threads get confidence down-weighted and queued for
-    # the H1 labeling screen. Cost = tracker doubled, still a rounding error.
-    disagreement_probe: bool = True
-    # Churn guard (spec §七 遥测动作): when the trailing 7-day opens/attaches
-    # clears the min attach floor AND exceeds ``churn_freeze_threshold``, the
-    # ``open`` op is frozen — only attach runs until a human ``persome thread
-    # unfreeze``. The guard has NO auto-recovery, so a false freeze silently
-    # kills the consumer (e.g. Persome's menu-bar workthread item) for days: a
-    # frozen tracker never mints new threads, so fresh work is force-attached
-    # to a stale thread and the list looks frozen. ``freeze_on_churn`` is the
-    # kill-switch (false = never freeze, and clear any stale freeze so the
-    # tracker recovers without a manual unfreeze); ``churn_freeze_threshold``
-    # tunes how aggressive the guard is. Defaults preserve the spec design;
-    # an active-dev workflow (frequent legitimately-distinct new threads) opts
-    # out by setting ``freeze_on_churn = false`` in config.toml.
-    freeze_on_churn: bool = True
-    churn_freeze_threshold: float = 0.3
-
-
-@dataclass
 class SkillCheckConfig:
     # Detect skill matches inside the per-minute timeline LLM call.
     enabled: bool = True
@@ -799,40 +756,11 @@ class SkillCheckConfig:
 
 
 @dataclass
-class DreamConfig:
-    # Daily slow-thinking stage: reviews the day, detects long-term skill
-    # patterns, and writes skills/skill-*.md / user-*.md via tool-call loop.
-    # Stage 1 emits a candidate list; Stage 2 (LLM) drills into raw captures
-    # via read-only drill_* tools before writing.
-    enabled: bool = True
-    daily_tick_hour: int = 23
-    daily_tick_minute: int = 30
-    lookback_days: int = 30
-    min_consecutive_days: int = 3
-    min_daily_hours: float = 3.0
-    min_sequence_occurrences: int = 3
-    enable_chat_mining: bool = True
-    # Hard cap on chat (query → action) pairs included in the Stage-1 context.
-    # 50 is enough to surface daily rituals but tight if the user has a very
-    # high-frequency pattern; bump if Dream is missing obvious chat patterns.
-    max_chat_pairs: int = 50
-    # The drill-then-write loop needs more iterations than the writer (12) —
-    # one skill may require several drill_* calls plus an append/create.
-    max_tool_iterations: int = 30
-    # Prompt-side confidence floor; the LLM is told not to create or append
-    # below this score. Kept here so it's tunable without editing the prompt.
-    min_skill_confidence: float = 0.6
-    # Memory consolidation: supersede stale/redundant old entries based on
-    # new classifier output since the last dream run.
-    consolidation_enabled: bool = True
-
-
-@dataclass
 class SchemaConfig:
     # D2 schema miner daily tick: clusters durable facts per file and induces
     # predictive ``schema-*.md`` priors the intent recognizer reads back. Scheduled
-    # just after dream (23:30) + daily-safety-net (23:55) so it mines facts the
-    # dream pass just归纳'd. Disabling it stops production of new schemas only —
+    # after daily-safety-net (23:55) so it sees the latest closed sessions.
+    # Disabling it stops production of new schemas only —
     # existing schema-*.md files stay grep-able and keep feeding the intent prior.
     enabled: bool = True
     daily_tick_hour: int = 0
@@ -1080,7 +1008,6 @@ class DebugHudConfig:
     #   intent / tool_call / thinking / stage  — AGENT ACTIVITY event kinds
     #   health                                 — daemon health + counts
     #   memory                                 — recent memory writes
-    #   workthread                             — current work thread + correction chip
     # Default is intents only, so the panel is quiet by default; add keys to
     # surface more. Read live via GET /config/debug-hud (no daemon restart).
     show: list[str] = field(default_factory=lambda: ["intent"])
@@ -1095,10 +1022,6 @@ DEBUG_HUD_KEYS: tuple[str, ...] = (
     "stage",
     "health",
     "memory",
-    # WorkThread S4 chip (spec 2026-06-12 §六-3): the current work thread +
-    # the correction closed set, graphicalized — same closed set as the
-    # `persome thread correct` CLI.
-    "workthread",
 )
 
 
@@ -1136,10 +1059,8 @@ def set_debug_hud_show(toml_text: str, show: list[str]) -> str:
 
 @dataclass
 class DevConfig:
-    # Developer dashboard. When enabled (the Persome app sets this true for a `dev`
-    # plan account, or set PERSOME_DEV=1 locally), the daemon serves an HTML
-    # inspector at GET /dev on the existing HTTP port. Off by default so a
-    # normal account never exposes it.
+    # Developer-only gates retained for compatibility while the memory viewer
+    # moves from /dev/memory to the formal /model surface.
     enabled: bool = False
 
 
@@ -1161,9 +1082,7 @@ class Config:
     memory_delta: MemoryDeltaConfig = field(default_factory=MemoryDeltaConfig)
     memory_decay: MemoryDecayConfig = field(default_factory=MemoryDecayConfig)
     orphan_reaper: OrphanReaperConfig = field(default_factory=OrphanReaperConfig)
-    thread_tracker: ThreadTrackerConfig = field(default_factory=ThreadTrackerConfig)
     skill_check: SkillCheckConfig = field(default_factory=SkillCheckConfig)
-    dream: DreamConfig = field(default_factory=DreamConfig)
     schema: SchemaConfig = field(default_factory=SchemaConfig)
     user: UserConfig = field(default_factory=UserConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
@@ -1195,27 +1114,6 @@ class Config:
     view_capture_enabled: bool = True
     # Wave 3: #9 Rewind REST endpoints (/rewind/day, /rewind/screenshot).
     rewind_enabled: bool = True
-    # Reverse-loop G1 (spec 2026-06-26 §3.1.3) — the ONLY content-bearing reverse
-    # channel: ``POST /memory/ingest`` lands an app-distilled, desensitized
-    # task-outcome summary as a ``task-outcome-*.md`` memory entry. **OFF by default**
-    # (opt-in) — it is the strictest-privacy channel; even on, the app red-line-filters
-    # the summary AND the daemon re-scans (``privacy.scrub``) and DROPS on any PII hit.
-    # This flag is the one-click kill-switch.
-    memory_ingest_enabled: bool = False
-    # Actuation layer (AX-first "act" half). Default OFF for the open-source release;
-    # opt-in via config (`actuation_enabled = true`). Even when enabled, the act verbs
-    # that mutate state stay behind the per-action confirm round-trip, and this flag
-    # doubles as the kill switch. Spec/plan:
-    # docs/superpowers/{specs,plans}/2026-06-25-persome-actuation-layer-*.md.
-    actuation_enabled: bool = False
-    # Show the app's element bboxes while Persome actuates it (so the user sees what Persome is touching).
-    # An option (default off); the Persome cursor at the action point is always on (binary default).
-    # Dev accounts get the overlay anyway via `actuation_show_boxes OR dev.enabled` (see _show_boxes).
-    actuation_show_boxes: bool = False
-    # Takeover glow + badge on the driven app's window (default ON when actuation is on — the
-    # user-facing "Persome is taking over this window" signal; this flag is the kill-switch). Spec:
-    # docs/superpowers/specs/2026-07-02-takeover-glow-overlay-design.md.
-    actuation_glow_enabled: bool = True
 
     def model_for(self, stage: str) -> ModelConfig:
         """Return stage config (already inherited from default at build time)."""
@@ -1337,9 +1235,7 @@ def load(path: Path | None = None) -> Config:
         memory_delta=_build_dataclass(MemoryDeltaConfig, _as_dict(raw.get("memory_delta"))),
         memory_decay=_build_dataclass(MemoryDecayConfig, _as_dict(raw.get("memory_decay"))),
         orphan_reaper=_build_dataclass(OrphanReaperConfig, _as_dict(raw.get("orphan_reaper"))),
-        thread_tracker=_build_dataclass(ThreadTrackerConfig, _as_dict(raw.get("thread_tracker"))),
         skill_check=_build_dataclass(SkillCheckConfig, _as_dict(raw.get("skill_check"))),
-        dream=_build_dataclass(DreamConfig, _as_dict(raw.get("dream"))),
         schema=_build_dataclass(SchemaConfig, _as_dict(raw.get("schema"))),
         user=_build_dataclass(UserConfig, _as_dict(raw.get("user"))),
         chat=_build_chat(_as_dict(raw.get("chat"))),
@@ -1363,10 +1259,6 @@ def load(path: Path | None = None) -> Config:
         capture_actionable_retention_days=int(raw.get("capture_actionable_retention_days", 7)),
         view_capture_enabled=bool(raw.get("view_capture_enabled", True)),
         rewind_enabled=bool(raw.get("rewind_enabled", True)),
-        memory_ingest_enabled=bool(raw.get("memory_ingest_enabled", False)),
-        actuation_enabled=bool(raw.get("actuation_enabled", False)),
-        actuation_show_boxes=bool(raw.get("actuation_show_boxes", False)),
-        actuation_glow_enabled=bool(raw.get("actuation_glow_enabled", True)),
     )
 
 
@@ -1393,11 +1285,6 @@ DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
 #   the gateway serves, e.g. model = "deepseek-v4-flash" (the shipped default).
 # Verify your setup any time with `persome doctor` (offline, zero LLM calls).
 
-# Actuation layer (computer-use act verbs over macOS AX). Default OFF for the
-# open-source release; opt-in by uncommenting. Even when enabled, mutating verbs
-# require a per-action confirm round-trip, and this flag is the kill switch.
-# NOTE: top-level key — keep it ABOVE the first [section] header.
-# actuation_enabled = true
 
 [user]
 # Your name — tells the chat assistant who it is talking to.
@@ -1436,15 +1323,6 @@ model = "deepseek-v4-flash"   # bare name, sent verbatim to ANTHROPIC_BASE_URL g
 # semantically related entries, dedups / abstracts / merges them.
 # Inherits from [models.default] unless overridden.
 
-[models.book_page]
-# Daily book-page generation (episode selection + literary prose), run as a
-# sub-step of the Dream stage. Prose quality matters — a capable model is
-# worthwhile. Inherits from [models.default] unless overridden.
-
-[models.book_chapters]
-# Daily book-chapter clustering: groups recent chat sessions into themed
-# chapters with literary titles, run as a sub-step of the Dream stage after
-# book-page generation. Inherits from [models.default] unless overridden.
 
 [capture]
 source = "daemon"             # "daemon" (daemon owns OS capture) | "ingest" (Swift app pushes captures via POST /captures/ingest; daemon needs no OS permission)
@@ -1597,9 +1475,8 @@ slow_pregate = true               # #547 锚定 pre-gate: skip the slow-path LLM
 slow_pregate_stitch_lookback_blocks = 5  # #576 跨 tick 缝合例外: do NOT skip when a NEW block carries a bare confirmation cue (行/好/可以/ok) AND one of the last N OLD blocks carries a slow anchor — re-run the LLM so a "问句 → 隔 tick 确认" commitment gets stitched. Bare confirmations stay OUT of SLOW_ANCHOR_RE (too high-frequency); the two-signal AND keeps it surgical. 0 disables (pure #547)
 pregate_mode = "regex"            # slow pre-gate discriminator: "regex" (lexical, DEFAULT) | "bge" | "hybrid" (regex ∪ bge). The bge encoder is NOT bundled — "bge"/"hybrid" require `pip install onnxruntime tokenizers` + a BYO pregate_bge_model_dir, else they fail-open to regex. (When bundled, hybrid lifted slow-lane recall 30%→60%; that gain now needs a BYO model.)
 material_republish = true        # R3: dedup-hit re-recognition with a material change (confidence ratchet >= +0.15 / counterpart_proposed→user_committed) UPDATEs the row (id+status kept, dismissed never resurrected) and republishes marked updated; false = legacy surface-once
-recall_recent_events_hours = 48   # WorkThread S0: feed event-daily session summaries from the last N hours into the slow path's recall background (lowest priority, shares the main budget last); 0 = off (byte-identical)
-recall_workthread = true          # WorkThread S3: inject the active work thread into recall after schema_prior, with an INDEPENDENT 200-char budget (stacks ON TOP of recall_max_chars, never squeezes the main layers); threads below confidence 0.6 are not injected
-recall_max_chars = 2600           # #611: shared char budget for assemble_background's main layers (schema_prior→scene→behavior→fact→semantic→keyword→events). 1200→2400 (#647: fact squeezed ~66%), then 2400→2600 after the dead-semantic-layer fix: with the semantic layer working it's now the LARGEST decision layer (~1610 chars/session per the recall_budget_sweep), so the decision-demand ceiling rose ~835→~2261; 2600 fits scene+fact+semantic at ~0 squeeze (was ~5% at 2400) and the keyword-fallback dilution zone only starts ~2600 — smallest cap that holds the now-real demand, still far under the 4800 dilution risk. Faithful A/B on the fixed layer = no-harm. The workthread layer's independent budget stacks on top, so the true ceiling with workthread on is recall_max_chars + 200
+recall_recent_events_hours = 48   # feed event-daily session summaries from the last N hours into the slow path's recall background (lowest priority, shares the main budget last); 0 = off
+recall_max_chars = 2600           # #611: shared char budget for assemble_background's layers (schema_prior→scene→behavior→fact→semantic→keyword→events). 1200→2400 (#647: fact squeezed ~66%), then 2400→2600 after the dead-semantic-layer fix: with the semantic layer working it's now the LARGEST decision layer (~1610 chars/session per the recall_budget_sweep), so the decision-demand ceiling rose ~835→~2261; 2600 fits scene+fact+semantic at ~0 squeeze (was ~5% at 2400) and the keyword-fallback dilution zone only starts ~2600 — smallest cap that holds the now-real demand, still far under the 4800 dilution risk. Faithful A/B on the fixed layer = no-harm
 cooldown_enabled = true           # #533 (kind, scope) 级闭集硬冷却: a kind dismissed >= cooldown_dismiss_threshold times within cooldown_window_days IN THE SAME SCOPE enters a HARD cooldown — that (kind, scope)'s intents are dropped at the sink (bypass prompt, covers fast/slow/meeting) for cooldown_hours from the latest dismissal (anchored on dismissed_at, not recognition ts). user_committed / high-confidence (>=0.9) intents are EXEMPT; every suppression is logged to cooldown_suppressions telemetry. Upgrades the prompt-soft-only negative prior into a deterministic gate (弹错=复利损失). false = restore prompt-soft-only
 cooldown_window_days = 1          # #533: lookback window (days) for counting a (kind, scope)'s dismissals — kept SAME-magnitude as cooldown_hours so a sparse-over-a-week feedback-giver is not near-permanently cooled
 cooldown_dismiss_threshold = 3    # #533: dismissals of one (kind, scope) within the window needed to trigger the hard cooldown
@@ -1639,39 +1516,15 @@ cluster_max = 12                   # 单簇上限（模型上下文护栏）
 shrink_ceiling = 0.5               # 摘要须 < 源总长 × 此系数
 line_max_chars = 80                # L2 一行档硬上限
 
-[thread_tracker]
-# WorkThread 工作线层（spec 2026-06-12）: folds micro-session summaries onto
-# "same undertaking" threads via a six-op closed set executed by code (the LLM
-# never writes state or reports minutes). Mounted on the terminal-reduce
-# callback only; batch-runs per aggregation window (~8-12 LLM calls/day).
-enabled = true                    # master switch for the tracker stage (S1 executor + thread CLI stay usable when off)
-window_minutes = 60               # run a window when the oldest queued session summary has waited this long...
-window_sessions = 5               # ...or when this many summaries are queued, whichever comes first
-disagreement_probe = true         # H2: second differently-prompted pass per window; disagreement down-weights touched threads' confidence and queues them for `thread review-day` labeling
-freeze_on_churn = true            # churn guard (spec §七): freeze `open` when 7-day opens/attaches > churn_freeze_threshold (only attach until `persome thread unfreeze`). false = kill-switch: never freeze AND clear a stale freeze — use this if the tracker gets stuck never-minting-new-threads (a frozen tracker force-attaches fresh work to stale threads; the guard has no auto-recovery)
-churn_freeze_threshold = 0.3      # opens/attaches ratio above which `open` freezes (after the min-10-attach floor). Raise it if the guard false-freezes on an active-dev workflow
 
 [skill_check]
 enabled = true                    # detect skill matches inside the per-minute timeline LLM call
 confidence_floor = 0.65           # minimum confidence to record a skill_hint
 
-[dream]
-enabled = true                    # daily slow-thinking stage (daily review + workflow generation)
-daily_tick_hour = 23              # local-time hour for the daily dream tick
-daily_tick_minute = 30            # local-time minute for the daily dream tick
-lookback_days = 30                # how many days of data to analyze (Stage 1 builds candidates; drill tools fetch raw rows on demand)
-min_consecutive_days = 3          # minimum consecutive days to trigger workflow generation
-min_daily_hours = 3.0             # minimum daily hours on an activity for workflow consideration
-min_sequence_occurrences = 3      # minimum repetitions of an app sequence to be considered
-enable_chat_mining = true         # extract query-action pairs from chat history
-max_chat_pairs = 50               # cap on chat (query→action) pairs in the Stage-1 context; bump if Dream is missing obvious chat patterns
-max_tool_iterations = 30          # ceiling for the dream tool-call loop (drill + write); writer's 12 is too tight
-min_skill_confidence = 0.6        # prompt-side floor for create/append confidence
-consolidation_enabled = true      # review new classifier entries and supersede redundant old ones
 
 [schema]
 enabled = true                    # D2 schema miner daily tick: induce predictive schema-*.md priors from durable facts
-daily_tick_hour = 0               # local-time hour for the daily schema tick (runs after dream 23:30 + safety-net 23:55)
+daily_tick_hour = 0               # local-time hour for the daily schema tick (after safety-net 23:55)
 daily_tick_minute = 15            # local-time minute for the daily schema tick
 cross_domain_enabled = true       # Hy-Memory cross-domain sweeper: collide topic-far/behavior-near schemas (no embedding); ON — low-quality fusions are born forming (not injected), only stable ones bias recognition
 cross_domain_behavior_max_distance = 0.5  # behavior-distance ceiling for the deterministic pre-filter (≤ == behavior-near)
@@ -1681,8 +1534,7 @@ cross_domain_min_confidence = 0.6 # fused cross-domain schema below this confide
 # What the debug HUD (always-on-top panel, shown in debug mode) renders.
 # Allowlist over content blocks — the panel shows ONLY what's listed.
 # Keys: intent / tool_call / thinking / stage (AGENT ACTIVITY event kinds),
-#       health (daemon health + counts), memory (recent memory writes),
-#       workthread (当前工作线 + 纠错闭集 chip，spec 2026-06-12 S4).
+#       health (daemon health + counts), memory (recent memory writes).
 # Default is intents only; add keys to surface more. Applied live (no restart).
 show = ["intent"]
 """

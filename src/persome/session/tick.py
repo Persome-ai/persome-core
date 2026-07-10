@@ -28,12 +28,8 @@ from ..logger import get
 from ..store import cooldown_suppressions as cooldown_suppressions_store
 from ..store import fts
 from ..store import intent_fold_ticks as intent_fold_ticks_store
-from ..store import outcomes as outcomes_store
 from ..store import parser_ticks as parser_ticks_store
 from ..store import recall_budget_ticks as recall_budget_ticks_store
-from ..workthread import executor as workthread_executor
-from ..workthread import store as workthread_store
-from ..workthread import tracker as workthread_tracker
 from ..writer import classifier as classifier_mod
 from ..writer import (
     contradiction_check,
@@ -54,7 +50,7 @@ logger = get("persome.session")
 def _prune_telemetry_tables() -> dict[str, int]:
     """Bound the per-call audit tables (``recall_budget_ticks`` /
     ``recognition_ticks`` / ``parser_ticks`` / ``cooldown_suppressions`` /
-    ``fast_path_ticks`` / ``intent_fold_ticks`` / ``outcomes``).
+    ``fast_path_ticks`` / ``intent_fold_ticks``).
 
     Each records a row on *every* recall / recognition / parser tick (or every
     cooldown drop, or every fast-path capture, or every finished execution) and
@@ -64,12 +60,8 @@ def _prune_telemetry_tables() -> dict[str, int]:
     (#533) is a sibling table that fell into the exact same trap, and
     ``fast_path_ticks`` (#622) records a row per fast-path capture — the
     highest-frequency table of the lot — so it is wired in here from birth to
-    avoid repeating #508. ``outcomes`` (#378) is the G4 execution-result ledger:
-    lower frequency (one row per accepted follow-up / supervised finish, not per
-    tick) but ``kind_success_rate`` reads it through a ``since`` window, so rows
-    outside the window are dead weight and it fell into the same trap. The daily
-    safety-net tick is the natural retention hook. Each ``prune`` commits on its
-    own connection.
+    avoid repeating #508. The daily safety-net tick is the natural retention hook.
+    Each ``prune`` commits on its own connection.
     """
     deleted: dict[str, int] = {}
     with fts.cursor() as conn:
@@ -77,7 +69,6 @@ def _prune_telemetry_tables() -> dict[str, int]:
         deleted["parser_ticks"] = parser_ticks_store.prune(conn)
         deleted["cooldown_suppressions"] = cooldown_suppressions_store.prune(conn)
         deleted["intent_fold_ticks"] = intent_fold_ticks_store.prune(conn)
-        deleted["outcomes"] = outcomes_store.prune(conn)
     return deleted
 
 
@@ -250,23 +241,6 @@ def build_manager(cfg: Config) -> SessionManager:
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning("memory_delta %s: crashed: %s", result.session_id, exc)
-
-        # WorkThread tracker (spec 2026-06-12 §四): the ONLY mount point is this
-        # terminal-reduce callback (classifier 同款 — flush 路径不挂). The call
-        # enqueues the session summary and batch-runs the tracker when the
-        # aggregation window is due (max(60min, 5 summaries)). Best-effort —
-        # a tracker failure never affects the reduce/classify chain above.
-        try:
-            workthread_tracker.enqueue_session_summary(
-                cfg,
-                session_id=result.session_id,
-                summary=result.summary,
-                sub_tasks=result.sub_tasks,
-                start_time=result.start_time.isoformat() if result.start_time else "",
-                end_time=result.end_time.isoformat() if result.end_time else "",
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("workthread tracker %s: crashed: %s", result.session_id, exc)
 
     return SessionManager(
         gap_minutes=cfg.session.gap_minutes,
@@ -489,39 +463,6 @@ def expire_overdue_intents() -> tuple[int, int, int]:
     return (len(expired), len(expired_armed), len(stale_open))
 
 
-def _workthread_daily_housekeeping() -> int:
-    """Blocking helper: stale harvest + 日终 threads 摘要进 event-daily 尾节.
-
-    Returns the number of threads harvested to ``stale``. The digest entry is
-    best-effort (its absence loses a convenience line, not state).
-    """
-    from ..store import entries as entries_mod
-
-    with fts.cursor() as conn:
-        harvested = workthread_executor.harvest_stale(conn)
-        open_lines = workthread_store.open_threads(conn)
-        if open_lines:
-            day = datetime.now().strftime("%Y-%m-%d")
-            lines = [
-                f"- [{t.status}] {t.title} — {t.total_active_minutes}min"
-                + ("≈" if t.approximate else "")
-                + (f"（{t.origin_actor} 交办）" if t.origin_actor else "")
-                for t in open_lines[:6]
-            ]
-            try:
-                entries_mod.append_entry(
-                    conn,
-                    name=f"event-{day}.md",
-                    content="**Work threads（日终）**\n" + "\n".join(lines),
-                    tags=["workthread", "daily-digest"],
-                )
-            except FileNotFoundError:
-                pass  # no event-daily file today (machine idle all day) — skip
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("workthread daily digest write failed: %s", exc)
-    return harvested
-
-
 def _reproject_entries_from_evomem() -> tuple[int, int]:
     """从 evo_nodes 重投影 entries/entry_metadata 检索层（reader↔重建保鲜，spec 2026-07-04）。
     直接调 ``entries._rebuild_from_evo_nodes``（rebuild-index 的 evomem 混合重建腿），不依赖
@@ -579,23 +520,6 @@ async def run_daily_safety_net(cfg: Config, manager: SessionManager) -> None:
                     )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("daily intent expiry harvest failed: %s", exc)
-            # WorkThread daily housekeeping (spec 2026-06-12 §三/§六-4): flush
-            # any half-full tracker window left in the queue (the day is over —
-            # the window is as full as it will get), harvest stale lines (30d
-            # without an attach, pinned exempt — inactivity is never completion,
-            # staleness is code's job), then fold a one-entry threads digest
-            # into today's event-daily file. All side channels.
-            if cfg.thread_tracker.enabled:
-                try:
-                    await asyncio.to_thread(workthread_tracker.maybe_run_window, cfg, force=True)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("daily workthread window flush failed: %s", exc)
-            try:
-                harvested = await asyncio.to_thread(_workthread_daily_housekeeping)
-                if harvested:
-                    logger.info("daily workthread stale harvest: %d open → stale", harvested)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("daily workthread housekeeping failed: %s", exc)
             # Semantic-contradiction self-check (memory-rebuild spec §4.4,
             # gated OFF by default — nightly LLM cost): pair same-file live
             # facts, LLM-judge a bounded batch, MARK contradictions
@@ -722,43 +646,13 @@ async def run_daily_safety_net(cfg: Config, manager: SessionManager) -> None:
             await asyncio.sleep(60)
 
 
-async def run_dream_tick(cfg: Config) -> None:
-    """Once per local day at HH:MM, run the Dream slow-thinking stage."""
-    if not cfg.dream.enabled:
-        logger.info("dream tick loop not started (disabled)")
-        return
-    hour = cfg.dream.daily_tick_hour
-    minute = cfg.dream.daily_tick_minute
-    logger.info("dream tick loop started (fires at %02d:%02d local)", hour, minute)
-    while True:
-        try:
-            wait = _seconds_until_next_local(hour, minute)
-            await asyncio.sleep(wait)
-            logger.info("dream tick: enqueueing daily dream run via run-dispatcher")
-            # Phase 1b: delegate to the run-dispatcher so the dashboard shows
-            # a live queued→running→terminal card. Dedup: if a queued dream
-            # row already exists (e.g. the user just hit "run" from the app)
-            # enqueue_run folds into it and returns the existing id.
-            from ..runs.recorder import enqueue_run
-
-            run_id, _deduped = enqueue_run(
-                cfg, kind="dream", trigger="daily-tick", dispatch_source="dream-tick"
-            )
-            logger.info("dream tick: enqueued run_id=%s", run_id)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.error("dream tick failed: %s", exc, exc_info=True)
-            await asyncio.sleep(60)
-
-
 async def run_schema_tick(cfg: Config) -> None:
     """Once per local day at HH:MM, run the D2 schema miner.
 
     Clusters durable fact entries per file and induces predictive ``schema-*.md``
     priors the intent recognizer reads back (``intent.schema_prior``). Scheduled
-    just after dream + the daily safety-net so it mines facts the dream pass just
-    归纳'd. The miner is sync (LLM + DB), so it runs on a worker thread; the loop
+    after the daily safety-net so it sees the latest closed sessions. The miner is
+    sync (LLM + DB), so it runs on a worker thread; the loop
     catches per-tick exceptions so a bad run never kills the daemon task.
     """
     if not cfg.schema.enabled:
@@ -829,8 +723,8 @@ async def run_schema_tick(cfg: Config) -> None:
             await asyncio.sleep(60)
 
 
-# Fires after dream (00:00) + safety-net (23:55) + schema (00:15), so it enriches off
-# facts those passes just landed.
+# Fires after safety-net (23:55) + schema (00:15), so it enriches the facts those
+# passes just landed.
 _EVOMEM_ENRICHMENT_HOUR = 0
 _EVOMEM_ENRICHMENT_MINUTE = 20
 

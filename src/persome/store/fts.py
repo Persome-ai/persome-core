@@ -266,19 +266,11 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     from ..intent import store as intent_store_mod
     from ..session import store as session_store
-    from ..store import agent_runs as agent_runs_mod
-    from ..store import book_chapters as book_chapters_mod
-    from ..store import dream_runs as dream_runs_mod
-    from ..store import highlights as highlights_mod
     from ..timeline import store as timeline_store
 
     timeline_store.ensure_schema(conn)
     session_store.ensure_schema(conn)
-    dream_runs_mod.ensure_schema(conn)
-    agent_runs_mod.ensure_schema(conn)
     intent_store_mod.ensure_schema(conn)
-    highlights_mod.ensure_schema(conn)
-    book_chapters_mod.ensure_schema(conn)
     _ensure_entry_temporal(conn)
     _ensure_entry_metadata(conn)
     from . import vectors as vectors_mod

@@ -10,7 +10,7 @@ user's *weights* (过去式). The tense rule is a lifecycle cut, not a table bla
   commitment/task **happened and finished**; that is a past fact → read, becomes an Activity
   (EVENT) point with ``participates_in`` edges (§4.0 residue ①).
 - ``intents`` rows still ``open``/``armed`` — pending future (Prediction) → NEVER read.
-- ``workthread`` — the present (Runtime) → never read here.
+- transient runtime state → never read here.
 
 Edge **strength = observations = count of distinct supporting evidence** (event 蒸馏计数),
 computed FROM the evidence each run and ratcheted monotonically (``reinforce_edge`` MAX

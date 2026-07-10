@@ -35,17 +35,10 @@ logger = get("persome.store.recall_budget_ticks")
 # so the recorder (``intent.recall._Budget``) and ``stats`` share one source of
 # truth and stats can zero-fill every bucket deterministically.
 #
-# WorkThread additions (spec 2026-06-12): ``workthread`` (S3 工作线层 — renders
-# against its OWN independent budget that stacks ON TOP of the main budget; its
-# admits never *displace* a main-layer candidate, but its injected chars and
-# both its admitted/rejected counters ARE folded into this tick's口径 — #623 —
-# so the squeeze rate / capacity decision sees the true ceiling, ``main +
-# workthread``, instead of a low-reported分母) and ``events`` (S0 近期活动 —
-# lowest priority, shares the main budget last; its rejected count is the S0
-# acceptance gauge "挤出率不回归").
+# ``events`` is lowest priority and shares the main budget last, so its rejected
+# count shows whether recent activity is being squeezed out.
 LAYERS: tuple[str, ...] = (
     "schema_prior",
-    "workthread",
     "scene",
     "behavior",
     "fact",
@@ -63,10 +56,8 @@ CREATE TABLE IF NOT EXISTS recall_budget_ticks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,              -- ISO8601 assembly time
     scope TEXT NOT NULL,           -- recall scope (session-*, meeting-*, ...)
-    max_chars INTEGER NOT NULL,    -- true assembly ceiling: main budget + the
-                                   -- workthread layer's independent budget (#623)
-    used INTEGER NOT NULL,         -- chars actually admitted across ALL layers,
-                                   -- the workthread independent budget included (#623)
+    max_chars INTEGER NOT NULL,    -- shared assembly ceiling
+    used INTEGER NOT NULL,         -- chars admitted across all layers
     layers TEXT NOT NULL DEFAULT '{}',  -- JSON {layer: {admitted, admitted_chars, rejected, rejected_chars}}
     squeezed INTEGER NOT NULL DEFAULT 0, -- 1 when ANY layer rejected at least one text
     hints TEXT NOT NULL DEFAULT '[]',   -- JSON list of the call's hint terms (debugging telemetry)

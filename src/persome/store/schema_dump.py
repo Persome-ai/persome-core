@@ -49,9 +49,7 @@ def _objects(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
 
 def _shadow_names(conn: sqlite3.Connection) -> set[str]:
     """Storage tables SQLite manages for virtual tables (FTS5 etc.)."""
-    rows = conn.execute(
-        "SELECT name FROM pragma_table_list WHERE type = 'shadow'"
-    ).fetchall()
+    rows = conn.execute("SELECT name FROM pragma_table_list WHERE type = 'shadow'").fetchall()
     return {str(r[0]) for r in rows}
 
 
@@ -91,14 +89,11 @@ def _index_db_steps() -> list[tuple[str, Callable[[sqlite3.Connection], None]]]:
     """
     from ..evomem import integrity as evo_integrity
     from ..evomem import store as evo_store
-    from ..memory import task_outcome
-    from ..workthread import store as workthread_store
     from . import (
         contradictions,
         cooldown_suppressions,
         intent_fold_ticks,
         memory_deltas,
-        outcomes,
         parser_ticks,
         recall_budget_ticks,
         relation_edges,
@@ -110,24 +105,20 @@ def _index_db_steps() -> list[tuple[str, Callable[[sqlite3.Connection], None]]]:
         evo_store._migrate(conn)
 
     return [
-        ("workthread/store.py", workthread_store.ensure_schema),
         ("store/relation_edges.py", relation_edges.ensure_schema),
         ("store/contradictions.py", contradictions.ensure_schema),
         ("store/memory_deltas.py", memory_deltas.ensure_schema),
-        ("store/outcomes.py", outcomes.ensure_schema),
         ("store/parser_ticks.py", parser_ticks.ensure_schema),
         ("store/recall_budget_ticks.py", recall_budget_ticks.ensure_schema),
         ("store/cooldown_suppressions.py", cooldown_suppressions.ensure_schema),
         ("store/intent_fold_ticks.py", intent_fold_ticks.ensure_schema),
         ("store/schema_faces.py", schema_faces.ensure_schema),
-        ("memory/task_outcome.py", task_outcome.ensure_schema),
         ("evomem/store.py", _evomem),
         ("evomem/integrity.py", evo_integrity.ensure_check_runs_schema),
     ]
 
 
 def render_schema_sql() -> str:
-    from ..meeting.store import TranscriptStore
     from . import fts
 
     parts = [_HEADER]
@@ -137,16 +128,13 @@ def render_schema_sql() -> str:
         prev_root = os.environ.get("PERSOME_ROOT")
         os.environ["PERSOME_ROOT"] = str(tmp_path / "root")
         try:
-            parts.append(
-                _banner("index.db — the single main store (~/.persome/index.db, WAL)")
-            )
+            parts.append(_banner("index.db — the single main store (~/.persome/index.db, WAL)"))
             conn = fts.connect(tmp_path / "index.db")
             try:
                 objects = _objects(conn)
                 sections = [
                     (
-                        "store/fts.py connect() — core schema + modules ensured "
-                        "on every connect",
+                        "store/fts.py connect() — core schema + modules ensured on every connect",
                         list(objects),
                     )
                 ]
@@ -163,20 +151,6 @@ def render_schema_sql() -> str:
             finally:
                 conn.close()
 
-            parts.append(
-                _banner("meeting_*.db — separate per-meeting transcript stores")
-            )
-            meeting = TranscriptStore(tmp_path / "meeting.db")
-            try:
-                objects = _objects(meeting._conn)
-                section = _render_section(
-                    "meeting/store.py", list(objects), objects,
-                    _shadow_names(meeting._conn),
-                )
-                if section:
-                    parts.append(section)
-            finally:
-                meeting._conn.close()
         finally:
             if prev_root is None:
                 os.environ.pop("PERSOME_ROOT", None)

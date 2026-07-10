@@ -23,7 +23,6 @@ from ..trace import generate_trace_id, set_trace_id
 from .chat_routes import set_config as _set_chat_config
 from .routes import router
 from .routes import set_config as _set_route_config
-from .runs_routes import set_config as _set_runs_config
 
 _access_logger = _get_logger("persome.api.chat")
 
@@ -216,26 +215,6 @@ def build_api_app(cfg: Config | None = None) -> FastAPI:
     app.add_middleware(_OriginGuardMiddleware, require_local_origin=require_local_origin)
 
     app.include_router(router)
-
-    from .meeting_routes import router as meeting_router
-
-    app.include_router(meeting_router)
-
-    from .book_highlights_routes import router as book_highlights_router
-
-    app.include_router(book_highlights_router)
-
-    from .book_chapters_routes import router as book_chapters_router
-
-    app.include_router(book_chapters_router)
-
-    from .book_generate_routes import router as book_generate_router
-
-    app.include_router(book_generate_router)
-
-    from .runs_routes import router as runs_router
-
-    app.include_router(runs_router)
     # FastAPI's lazy openapi() regeneration can misidentify list[str] query
     # params as requestBody. Lock the schema unconditionally at build time so
     # the runtime /openapi.json endpoint always serves the correct version.
@@ -253,7 +232,6 @@ def render_openapi_json() -> str:
     cfg = Config()
     _set_route_config(cfg)
     _set_chat_config(cfg)
-    _set_runs_config(cfg)
     app = build_api_app(cfg)
     return json.dumps(app.openapi_schema, indent=2, ensure_ascii=False) + "\n"
 
@@ -270,9 +248,6 @@ def register_routes(server: Any, cfg: Config | None = None) -> None:
     # Wire config so endpoints can resolve settings without re-reading disk
     set_config(cfg)
     set_chat_config(cfg)
-    from .runs_routes import set_config as set_runs_config
-
-    set_runs_config(cfg)
 
     api_app = build_api_app(cfg)
     server._custom_starlette_routes.append(Mount("", app=api_app))

@@ -9,7 +9,7 @@ a cooled-down kind, but NEVER its **observability**: "拒绝是金矿" — these
 exactly the negative datapoints the recalibration (#534) needs. This table is the
 金矿's ledger.
 
-Pure audit trail — like ``recognition_ticks`` / ``dream_runs``. It is written
+Pure audit trail — like ``recognition_ticks``. It is written
 best-effort (a failure never blocks the suppression itself) and read by
 ``/intents/stats`` so the real-world suppression rate is measurable.
 """
