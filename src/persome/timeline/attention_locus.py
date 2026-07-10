@@ -1,7 +1,6 @@
 """Attention locus — the first-class "where is the user attending" object.
 
-Step 1 of the attention-locus design (`docs/superpowers/specs/2026-06-18-
-attention-locus-design.md`). The locus is resolved **by code** from one
+The attention locus is resolved **by code** from one
 capture's structured signals (the cursor hit-test, the focused element, the
 window/pane), and the timeline aggregator feeds *its content* to the LLM in
 place of the raw screen dump. Code owns "where attention was"; the LLM only

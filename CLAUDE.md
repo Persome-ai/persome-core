@@ -42,6 +42,9 @@ persome start                        # MCP HTTP endpoint http://127.0.0.1:8742/m
 persome status
 persome stop
 persome mcp                          # stdio MCP transport (for Claude Desktop / Cursor)
+persome model build                  # one-shot Point/Line/Face/Volume/Root build
+persome model status
+persome model export                 # redacted 0600 snapshot by default
 ```
 
 The CLI carries a large surface of **read-only observability + maintenance** subcommands (zero-LLM
@@ -53,9 +56,8 @@ unless noted) — run `persome --help` for the full list. The load-bearing group
   `evomem-import-markdown`, `contradictions` / `contradictions-resolve`. Write-authority is
   `[evomem] write_authority` (**default `"markdown"`** — markdown is the SSOT + shadow dual-write;
   `"evomem"` inverts it. A human flips it, never the code default). See `docs/writer.md`.
-- **Intent / feedback / work-threads**: `intent-audit`, `intent-restamp`, `feedback-report`,
-  `thread list|tui|review-day|correct|stats`.
-- **Day-0 profiler**: `bootstrap [--dry-run|--no-llm|--shallow]`.
+- **Personal model**: `model build|status|export`, `as-of`, `faces-report`,
+  `contradictions`, `correct`.
 - **launchd handoff**: `launchagent install|status|uninstall`.
 
 ## Working in this repo
@@ -81,8 +83,9 @@ rediscovering it here:
 | `config.toml` keys, per-stage model inheritance, secrets | [`docs/config.md`](docs/config.md) |
 | MCP tool surface + transports | [`docs/mcp.md`](docs/mcp.md) |
 | Capture / timeline / session-cut rules / reducer+classifier / memory-file format | [`docs/capture.md`](docs/capture.md) · [`docs/timeline.md`](docs/timeline.md) · [`docs/session.md`](docs/session.md) · [`docs/writer.md`](docs/writer.md) · [`docs/memory-format.md`](docs/memory-format.md) |
-| Product/technical whitepaper | [`docs/persome-overview.md`](docs/persome-overview.md) |
-| **Design philosophy & method** — the *why* of the intent layer, how to change it without regressing | [`docs/design-philosophy-intent.md`](docs/design-philosophy-intent.md) · [`docs/data-driven-iteration.md`](docs/data-driven-iteration.md) · [`docs/prompt-engineering.md`](docs/prompt-engineering.md) |
+| Paper claim/code boundary and reproduction | [`PAPER.md`](PAPER.md) · [`REPRODUCING.md`](REPRODUCING.md) |
+| Public model and MCP contracts | [`MODEL_FORMAT.md`](MODEL_FORMAT.md) · [`MCP.md`](MCP.md) |
+| Prompt change discipline | [`docs/prompt-engineering.md`](docs/prompt-engineering.md) |
 
 One ingestion path, **no modes**: `mac-ax-watcher` → S0 dispatcher → S1 parser → capture-buffer →
 1-min timeline blocks → session cutter (3 rules) → S2 reducer → classifier → Markdown + FTS5 + MCP.
@@ -115,8 +118,8 @@ One ingestion path, **no modes**: `mac-ax-watcher` → S0 dispatcher → S1 pars
   `eval` (slow regression evals) — the default Linux gate deselects all three.
 - **Swift helpers** (`mac-ax-watcher`, `mac-ax-helper`, …) are compiled by `install.sh` and bundled
   in the wheel via `pyproject.toml` `force-include`; they will not run off macOS.
-- **`--capture-only`** disables the timeline aggregator + MCP server; capture, session, and the
-  daily safety-net still run.
+- **`--capture-only`** disables timeline and model-processing tasks; capture, session, the daily
+  safety-net, and the configured MCP server still run.
 
 ## Naming — persome, with legacy shims
 

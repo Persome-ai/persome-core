@@ -12,9 +12,9 @@ regression guard; this is the on-demand "does it hold on MY screens" check that
 lets us declare an app authoritative before writing/expanding its resolver.
 
 Usage (from persome-core):
-    uv run python scripts/validate_attention_locus_real.py [BUFFER_DIR]
+    uv run python scripts/research/validate_attention_locus_real.py [BUFFER_DIR]
 
-Default BUFFER_DIR: ~/.persome/chronicle/capture-buffer. Exits non-zero if cmux is
+Default BUFFER_DIR: <PERSOME_ROOT>/capture-buffer. Exits non-zero if cmux is
 not authoritative (a real chrome leak), so it can gate a resolver change.
 
 Correct chrome-leak metric (learned the hard way): a *token* like 工作区 recurs
@@ -30,6 +30,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from persome import paths
 from persome.timeline import aggregator
 from persome.timeline.attention_locus import _CHROME_ROLES, resolve_locus
 
@@ -83,7 +84,7 @@ def _chrome_lines(ax: dict) -> set[str]:
 
 
 def _default_buffer() -> Path:
-    return Path.home() / ".persome" / "chronicle" / "capture-buffer"
+    return paths.capture_buffer_dir()
 
 
 def main(argv: list[str]) -> int:

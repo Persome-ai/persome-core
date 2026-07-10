@@ -2,9 +2,6 @@
 
 persome-core is the local-first Personal Model Runtime for macOS.
 
-<!-- hero: 3D memory geometry visualization (persome memory-viz) — video/gif here -->
-<!-- ![3D memory geometry visualization](TODO: hero video/gif from `persome memory-viz`) -->
-
 ![CI](https://github.com/Persome-ai/persome-core/actions/workflows/ci.yml/badge.svg)
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![PyPI](https://img.shields.io/pypi/v/persome-core)
@@ -60,11 +57,20 @@ persome start
 # MCP HTTP endpoint: http://127.0.0.1:8742/mcp
 # Local Point/Line/Face/Volume/Root explorer: http://127.0.0.1:8742/model
 
+# Build and inspect the current personal model:
+persome model build
+persome model status
+persome model export
+
 # Or use stdio:
 persome mcp
 ```
 
 Bring your own key. No key ships with the code. Without a key, capture and BM25 retrieval still work, and LLM-dependent stages degrade cleanly.
+
+The optional Chat surface is model-focused by default. Shell, arbitrary
+filesystem, and Web tools require the explicit
+`[chat] unsafe_local_tools_enabled = true` opt-in.
 
 ## Use it from your agent (MCP)
 
@@ -135,14 +141,16 @@ Swift watcher
 
 ## Privacy
 
-- All data stays on the machine under `~/.persome`.
-- The only network egress is the LLM endpoint you configure, plus an optional embeddings endpoint.
+- Persistent model data stays under `~/.persome`.
+- Enabled LLM stages send derived context to the endpoint you configure; optional dense retrieval sends embedding inputs to its configured endpoint.
 - There is no telemetry.
 - OCR is fully local.
 - Secrets live in a 0600 env file at `~/.persome/env`.
 - The capture buffer has a tiered retention policy.
-- Egress paths are few enough to verify by grepping the source.
 - The runtime does not include computer-use actuation, meeting audio capture, or filesystem profiling.
+
+See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) for the exact egress and trust
+boundary.
 
 ## How it compares
 
@@ -159,6 +167,17 @@ persome-core is derived from Einsia/OpenChronicle (MIT). Its provenance and reta
 ## Paper
 
 [Personome](https://persome-ai.github.io/persome/): an LLM predicts the next token, and a Personome predicts a person's next action, with memory as the weights of your personal model. This repository implements state formation, personal weights, provenance, and model access. Prediction datasets, metrics, and ablations belong in the separate `persome-bench` repository so evaluation can pin a released Runtime version without coupling benchmark code to private local storage.
+
+The exact claim-to-code boundary is in [PAPER.md](PAPER.md). Reproduce the
+fresh-root synthetic model with [REPRODUCING.md](REPRODUCING.md).
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — Runtime boundary and pipeline.
+- [MODEL_FORMAT.md](MODEL_FORMAT.md) — versioned model snapshot.
+- [MCP.md](MCP.md) — public agent interface.
+- [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) — data, egress, and threat model.
+- [docs/INDEX.md](docs/INDEX.md) — maintainer references.
 
 ## License
 

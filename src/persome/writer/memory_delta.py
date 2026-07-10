@@ -1,7 +1,6 @@
 """Session-end memory_delta consolidator — Memory-rebuild Phase 0 shadow channel.
 
-Spec docs/superpowers/specs/2026-07-02-memory-rebuild-design.md §4.1/§6.2: ONE
-LLM reading of the just-ended session, multiple structured heads —
+One LLM reading of the just-ended session, multiple structured heads —
 ``memory_delta {entities, assertions, relations, events}`` — the channel that
 will (Phase 1, after dual-run parity) retire the four scattered extractors
 (person name-source / relation LLM pass / case extraction / classifier

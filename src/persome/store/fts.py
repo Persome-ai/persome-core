@@ -442,8 +442,7 @@ def _safe_fts_query(query: str, *, restrict_to_content: bool = False) -> str:
     its filler words ("What", "breed", "is") are absent from the stored text —
     even though the entry that names the dog's breed is right there. Measured on
     LongMemEval, implicit-AND retrieved the evidence session for only ~8.5% of
-    questions (0% at _m scale); OR + bm25 ranking lifts that to ~0.99 on the same
-    store (spec docs/superpowers/specs/2026-06-22-longmemeval-integration-design.md).
+    questions; OR + bm25 ranking preserves useful partial matches.
     Single-term queries are unaffected (one token → no OR). ``search`` already
     ``ORDER BY bm25(entries)``, so OR does not flood results — it widens the
     candidate set and lets rank do the selection.

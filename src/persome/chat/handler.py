@@ -22,7 +22,7 @@ from .agent import AgentTurnResult, ChatAgent, _OnTokenT, _OnToolCallT, complete
 from .memory_extractor import maybe_extract as maybe_extract_memories
 from .skills import LoadedSkills, load_all_skills
 from .tool_handlers import TOOL_HANDLERS
-from .tools import CHAT_SCHEMA_NAMES, CHAT_SCHEMAS
+from .tools import CHAT_SCHEMA_NAMES, CHAT_SCHEMAS, SAFE_CHAT_SCHEMA_NAMES
 
 _logger = _get_logger("persome.chat")
 
@@ -488,8 +488,17 @@ class TurnResult:
 def _build_agent(cfg: config_mod.Config) -> ChatAgent:
     """Construct a fresh ChatAgent with the current skill set merged in."""
     loaded = _load_skills()
-    all_schemas = CHAT_SCHEMAS + loaded.schemas
-    all_handlers = {**TOOL_HANDLERS, **loaded.handlers}
+    enabled_names = (
+        CHAT_SCHEMA_NAMES if cfg.chat.unsafe_local_tools_enabled else SAFE_CHAT_SCHEMA_NAMES
+    )
+    built_in_schemas = [
+        schema for schema in CHAT_SCHEMAS if schema["function"]["name"] in enabled_names
+    ]
+    built_in_handlers = {
+        name: handler for name, handler in TOOL_HANDLERS.items() if name in enabled_names
+    }
+    all_schemas = built_in_schemas + loaded.schemas
+    all_handlers = {**built_in_handlers, **loaded.handlers}
     daemon_url = ""
     if cfg.chat.mcp_connect_daemon:
         daemon_url = f"http://{cfg.mcp.host}:{cfg.mcp.port}/mcp"

@@ -1,6 +1,6 @@
 """增量影子写 evo_nodes（SSOT 切换设计稿 §4.2 双写影子期，PR-3）。
 
-设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
+Maintains the non-authoritative evomem shadow projection.
 
 挂点收口：当前全部写站点（chat memory_extractor、chat tool_handlers、
 writer/tools、session_reducer、schema_miner_stage、cross_domain_sweeper、

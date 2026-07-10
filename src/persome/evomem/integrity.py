@@ -1,6 +1,6 @@
 """evomem 链完整性自检 + 写口冻结 seam（SSOT 切换设计稿 §3.3，PR-1 生存性设施）。
 
-设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
+The integrity contract is summarized in ``docs/config.md``.
 
 与顶层 ``persome/integrity.py`` 的关系（刻意分开，不是重复）：顶层模块是
 **物理层**启动自检——``PRAGMA integrity_check`` 失败 → 隔离坏文件 → 让正常路径从

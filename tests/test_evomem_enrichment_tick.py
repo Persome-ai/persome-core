@@ -1,11 +1,4 @@
-"""#1/#2 scheduling — the daily evomem enrichment tick wiring.
-
-`run_evomem_enrichment_tick` (registered as the `evomem-enrichment-tick` daemon task)
-runs person-graph ingest (#1) + case extraction (#2) once per day. Both layers gate
-internally on their own flags and are isolated in their own try. These tests pin the
-forwarding + gating so flipping the flags actually makes the features RUN (before this
-wiring they were enabled-but-inert).
-"""
+"""Entity/relation enrichment used by the shared model build."""
 
 from __future__ import annotations
 
@@ -72,14 +65,7 @@ def test_enrichment_person_failure_does_not_block_case(ac_root, monkeypatch) -> 
     assert _CALLS == ["case"]
 
 
-def test_enrichment_task_registered_and_gated() -> None:
+def test_enrichment_has_no_second_daemon_schedule() -> None:
     from persome.daemon import _build_task_registry
 
-    reg = {t.name: t for t in _build_task_registry()}
-    assert "evomem-enrichment-tick" in reg
-    task = reg["evomem-enrichment-tick"]
-    one_on = SimpleNamespace(person_graph_enabled=True, case_extraction_enabled=False)
-    both_off = SimpleNamespace(person_graph_enabled=False, case_extraction_enabled=False)
-    assert task.enabled(one_on, False) is True
-    assert task.enabled(both_off, False) is False
-    assert task.enabled(one_on, True) is False  # disabled in --capture-only
+    assert "evomem-enrichment-tick" not in {t.name for t in _build_task_registry()}

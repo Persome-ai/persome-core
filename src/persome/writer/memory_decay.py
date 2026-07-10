@@ -1,8 +1,7 @@
 """Text-axis graded forgetting — 细节链 → 粗摘要 → 一行事实.
 
-Spec ``docs/superpowers/specs/2026-07-03-text-axis-graded-forgetting-design.md``
-(the text half of memory-rebuild §1.5-5; the pixel half is cleanup_buffer's
-thumbnail tier). Old durable-memory entries that were NEVER read-reinforced
+This is the text half of graded forgetting; the pixel half is cleanup_buffer's
+thumbnail tier. Old durable-memory entries that were NEVER read-reinforced
 (``entry_retrieval_stats.retrieval_count`` — the testing-effect signal: a
 retrieved memory is load-bearing and immune) are nightly distilled into a
 coarser summary — precision degrades in tiers, nothing is ever binary-deleted.

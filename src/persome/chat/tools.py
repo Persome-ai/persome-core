@@ -414,6 +414,21 @@ CHAT_SCHEMAS: list[dict[str, Any]] = [
 
 CHAT_SCHEMA_NAMES = {t["function"]["name"] for t in CHAT_SCHEMAS}
 
+# Default paper-runtime Chat surface. The daemon MCP connection adds the
+# explicit model correction tools (remember/correct_memory) separately.
+SAFE_CHAT_SCHEMA_NAMES = frozenset(
+    {
+        "search_memory",
+        "list_memories",
+        "read_memory",
+        "recent_activity",
+        "current_context",
+        "search_captures",
+        "search_chat_history",
+        "list_chat_sessions",
+    }
+)
+
 
 def to_anthropic_tools(schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert OpenAI-style function-calling schemas to Anthropic tool format.

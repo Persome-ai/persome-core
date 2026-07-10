@@ -1,7 +1,6 @@
 """DAO for ``memory_deltas`` — the session-end consolidator's SHADOW output.
 
-Memory-rebuild Phase 0 (spec docs/superpowers/specs/2026-07-02-memory-rebuild-
-design.md §4.1/§6.2): one LLM reading of a just-ended session emits a single
+One LLM reading of a just-ended session emits a single
 structured ``memory_delta {entities, assertions, relations, events}``. Phase 0
 persists that delta here VERBATIM with ``status='shadow'`` — nothing downstream
 consumes it except the parity report (``persome delta-report``) and the Phase-1

@@ -1,6 +1,6 @@
 """Relation-edge extraction — deterministic + LLM, writes SHADOW edges (P0-2 / #428).
 
-Spec ``docs/superpowers/specs/2026-07-01-user-centric-relation-graph-memory-design.md`` §4.3.
+Extracts auditable user-centric relations from durable activities.
 
 **Working object = the PAST layer.** The memory graph is the user's *weights*
 (过去式), so relation extraction reads durable event entries, ended sessions,

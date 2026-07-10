@@ -1,6 +1,6 @@
 """每日快照 + 保留策略 + 坏快照报警（SSOT 切换设计稿 §3.2，PR-1 生存性设施）。
 
-设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
+Creates and verifies bounded SQLite snapshots.
 
 诚实账本（§3.1，原话不许粉饰）：现行架构的王牌是「DB 是可弃投影，rebuild_index 从
 markdown 重放零损失自愈」。evo_nodes 升格 SSOT 后这张王牌没了——DB 损坏 = 数据丢失。

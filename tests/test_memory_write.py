@@ -1,8 +1,7 @@
 """Agent-Native Persome Phase 3 — durable memory write-back (`remember`).
 
 Verifies the write funnels through the canonical writer, force-injects the `source:agent-run`
-provenance tag (+ optional `run:<id>`), and that the entry is then searchable — closing the loop
-(spec docs/superpowers/specs/2026-06-25-agent-native-persome-design.md §6).
+provenance tag (+ optional `run:<id>`), and that the entry is then searchable.
 """
 
 from __future__ import annotations

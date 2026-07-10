@@ -164,18 +164,6 @@ def _build_task_registry() -> list[TaskDefinition]:
             create=lambda cfg, sm: session_tick.run_schema_tick(cfg),
         ),
         TaskDefinition(
-            name="evomem-enrichment-tick",
-            enabled=lambda cfg, capture_only: (
-                not capture_only
-                and (
-                    getattr(cfg, "person_graph_enabled", False)
-                    or getattr(cfg, "case_extraction_enabled", False)
-                    or getattr(cfg, "relation_extraction_enabled", False)
-                )
-            ),
-            create=lambda cfg, sm: session_tick.run_evomem_enrichment_tick(cfg),
-        ),
-        TaskDefinition(
             name="mcp",
             enabled=lambda cfg, capture_only: (
                 cfg.mcp.auto_start and cfg.mcp.transport in ("sse", "streamable-http")

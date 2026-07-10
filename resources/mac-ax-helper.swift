@@ -38,7 +38,7 @@ struct Config {
     // `AXManualAccessibility` attribute. Setting it true converts an "empty AX tree" into a fully
     // readable one, so the capture pipeline gets real text instead of falling back to OCR. Default
     // ON: it's a pure perception win (a no-op on apps that already expose AX). See
-    // docs/superpowers/specs/2026-06-25-ax-manual-accessibility design rationale.
+    // Preserve manual Accessibility handling for the compiled helper.
     var forceAppAccessibility = true
 }
 

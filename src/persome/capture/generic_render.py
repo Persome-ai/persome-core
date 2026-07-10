@@ -4,8 +4,7 @@ The mechanical ``ax_models.ax_app_to_markdown`` renders the raw role tree
 verbatim — hundreds of ``[Button]/[Link]/[StaticText]`` scaffolding tokens,
 chrome, and empty container chains. This resolver lifts the floor to "clean
 enough" for any app, using only **standard AX roles + generic structural
-patterns** (no per-app code, no LLM). Design + measured prototype:
-``docs/superpowers/specs/2026-06-19-generic-ax-resolver-design.md``.
+patterns** (no per-app code, no LLM).
 
 Levers, in order:
   1. **Chrome fold** — drop AXToolbar/AXTabGroup/AXMenuBar/AXMenuButton/AXScrollBar

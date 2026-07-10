@@ -3,7 +3,7 @@
 Spawned by the daemon as ``Persome Backend _ocr-worker`` (frozen) / ``python -m persome.cli
 _ocr-worker`` (dev). This is the ONLY process that imports paddle: a native SIGSEGV here
 kills just this worker, and the parent (``ocr_subprocess.OCRWorkerClient``) fails open +
-respawns. See ``docs/superpowers/specs/2026-07-01-ocr-subprocess-isolation-design.md``.
+respawns.
 
 The worker reads length-prefixed request frames on **stdin** and writes response frames on
 **stdout** (``ocr_protocol``). stdout is the data channel and MUST stay clean — all logging

@@ -1,6 +1,6 @@
 """写权反转（SSOT 切换设计稿 §4.4「切主写」，PR-6b）。
 
-设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
+Inverts evomem state back into the selected public write authority.
 
 ``[evomem] write_authority = "evomem"`` 时，本模块接管 ``store/entries.py`` 的
 全部写口动词（create/append/supersede/delete/set_file_status）。对每个写口

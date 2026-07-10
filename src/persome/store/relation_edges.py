@@ -1,8 +1,7 @@
 """DAO for ``relation_edges`` — the横轴 relation layer of the user-centric graph memory.
 
-Spec: ``docs/superpowers/specs/2026-07-01-user-centric-relation-graph-memory-design.md``
-§4.2 (predicate closed set + ``src×dst`` completeness table) and §4.6 (DDL + as-of-T
-traversal). This is P0-1 (#427): schema + write entrances + an as-of-T read helper.
+Implements the predicate closed set, ``src×dst`` completeness table, schema,
+write entrances, and an as-of-T read helper.
 
 **Why a separate table (§2.5/§2.6).** evomem (``evo_nodes`` + SUPERSEDE chains) is the
 *vertical / temporal* axis — each node's own version history. This table is the ORTHOGONAL

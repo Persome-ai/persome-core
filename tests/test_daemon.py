@@ -39,13 +39,7 @@ async def _never() -> None:
 
 
 def _base_cfg() -> Config:
-    """Explicit baseline: schema/ocr off, MCP on (streamable-http).
-
-    The evomem enrichment layers (person-graph / case-extraction) default ON, so the
-    minimal baseline turns them off explicitly to keep `evomem-enrichment-tick` out of
-    the asserted default set (the on-by-default behavior is covered by
-    `test_evomem_enrichment_tick`).
-    """
+    """Explicit baseline: schema/ocr off, MCP on (streamable-http)."""
     return Config(
         schema=SchemaConfig(enabled=False),
         capture=CaptureConfig(enable_ocr_fallback=False),

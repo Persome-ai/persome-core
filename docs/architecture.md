@@ -114,12 +114,15 @@ Defined in `src/persome/daemon.py`.
 | `session` | Every `session.tick_seconds` (default 30), calls `SessionManager.check_cuts()` so idle-gap and timeout cuts fire even when the dispatcher is quiet. |
 | `flush` | Every `session.flush_minutes` (default 5, clamped to 5-min floor), runs the reducer incrementally over the active session's newly closed timeline blocks (~5 of them at defaults) and appends `[flush]`-tagged partial entries to today's event-daily. |
 | `classifier-tick` | Every `classifier.interval_minutes` (default 30, min 5), runs the classifier over any event-daily entries appended since the session's `classified_end` bookmark. Silent no-op when no new entries have landed. |
+| `vector-embed-tick` | Drains the local vector queue when hybrid retrieval and an embeddings endpoint are enabled. |
+| `schema-tick` | At 00:15 by default, invokes the same locked `ModelBuildCoordinator` used by `persome model build`, covering pending state formation through Root and layout. |
 | `daily-safety-net` | Once per local day at `reducer.daily_tick_hour:minute` (default 23:55), force-ends the currently-open session and reduces every stranded `ended`/`failed` session row — the "we survived a crash or midnight rollover" safety net. |
 | `mcp` | Hosts the Reader MCP server inside the daemon. Exponential backoff on crash. |
 
 The session cutter itself doesn't have a dedicated task — it runs inline on every capture via the `pre_capture_hook` wired in `daemon.py`. Session-end callbacks spawn the reducer on a daemon thread, which then fires the terminal classifier via its success callback (covering any trailing window the 30-min tick didn't reach). Each session's progress on both stages is bookkept on its sessions row: `flush_end` for the reducer, `classified_end` for the classifier.
 
-`--capture-only` disables the timeline aggregator and MCP server. Capture, session, and the daily-safety-net still run so session rows land on disk.
+`--capture-only` disables timeline and model-processing tasks. Capture, session,
+the daily safety net, and the configured MCP server remain available.
 
 ## The session boundary
 

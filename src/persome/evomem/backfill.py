@@ -1,6 +1,6 @@
 """evo_nodes backfill — 从 markdown + 旁挂表一次性回填（§4.1，PR-2；PR-7 后定型）。
 
-设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
+Backfills evomem from the durable Markdown projection.
 
 PR-7 之后的定位：markdown 主写模式（write_authority="markdown"，§6 回滚杠杆）下
 evo_nodes 由影子写保鲜；影子滞后（shadow_write_lag 报警 / compact 整文件重写）时

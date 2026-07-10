@@ -6,7 +6,7 @@ travel over the worker's stdin/stdout without delimiter ambiguity.
 
 Everything here is pure (no I/O side effects beyond the passed stream) and fail-open at
 the edges: a truncated / EOF read returns ``None`` — the parent reads that as "worker
-died" and respawns. See ``docs/superpowers/specs/2026-07-01-ocr-subprocess-isolation-design.md``.
+died" and respawns.
 
 Wire format
 -----------

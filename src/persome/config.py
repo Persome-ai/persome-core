@@ -15,7 +15,7 @@ from . import paths
 class ModelConfig:
     model: str = "deepseek-v4-flash"
     # Optional override; when empty, ``provider_base_url(model)`` falls back to
-    # the canonical ``{PROVIDER}_BASE_URL`` env var (managed by Mens.app).
+    # the canonical ``{PROVIDER}_BASE_URL`` environment variable.
     base_url: str = ""
     max_tokens: int | None = None
 
@@ -25,9 +25,8 @@ class CaptureConfig:
     # Where capture inputs (AX tree + screenshot) come from:
     #   "daemon" — the daemon owns OS capture (spawns mac-ax-watcher/mac-ax-helper,
     #              grabs screenshots in-process). Legacy default, byte-identical.
-    #   "ingest" — the Swift "Persome" app owns OS capture and pushes pre-built payloads
-    #              via POST /captures/ingest; the daemon runs no watcher / no OS grab
-    #              and needs NO Accessibility / Screen-Recording permission.
+    #   "ingest" — a trusted local producer pushes pre-built payloads via
+    #              POST /captures/ingest; the daemon runs no watcher / OS grab.
     source: str = "daemon"
     # Event-driven capture knobs (only used when source == "daemon")
     event_driven: bool = True  # consume mac-ax-watcher events
@@ -197,9 +196,7 @@ class PatternDetectorConfig:
 
 @dataclass
 class MemoryDeltaConfig:
-    # Session-end memory_delta consolidator channel (Memory-rebuild Phase 0,
-    # spec docs/superpowers/specs/2026-07-02-memory-rebuild-design.md §4.1/§6.2).
-    # ONE LLM reading of the just-ended session emits a structured
+    # One LLM reading of the just-ended session emits a structured
     # ``memory_delta {entities, assertions, relations, events}`` persisted to
     # the ``memory_deltas`` table with status='shadow' — nothing downstream
     # consumes it yet except the parity report (``persome delta-report``) and the
@@ -251,8 +248,7 @@ class OrphanReaperConfig:
 
 @dataclass
 class MemoryDecayConfig:
-    # Text-axis graded forgetting (memory-rebuild §1.5-5; spec
-    # docs/superpowers/specs/2026-07-03-text-axis-graded-forgetting-design.md).
+    # Text-axis graded forgetting.
     # Nightly (23:55 tail) bounded pass: old ∧ never-retrieved ∧ unprotected
     # durable fact entries are distilled per file into a coarser summary
     # (细节链→粗摘要→一行事实) via the existing choke-point verbs (append with
@@ -278,14 +274,12 @@ class SkillCheckConfig:
 
 @dataclass
 class SchemaConfig:
-    # D2 schema miner daily tick: clusters durable facts per file and induces
-    # predictive ``schema-*.md`` faces for the personal model. Scheduled after
-    # daily-safety-net (23:55) so it sees the latest closed sessions. Disabling it
-    # stops production of new schemas only; existing schema files stay readable.
+    # The daily tick invokes the same full model build used by the CLI. This
+    # section controls its schedule and schema/Root stages.
     enabled: bool = True
     daily_tick_hour: int = 0
     daily_tick_minute: int = 15
-    # Cross-domain sweeper (Hy-Memory): after the per-file miner runs, collide
+    # After the per-file miner runs, collide
     # "topic-far but behavior-near" stable schemas into higher-level ones via a
     # deterministic behavior pre-filter + LLM judge (no embedding). Runs as the tail
     # of the same schema-tick (no new daemon task). Default ON: the downside is
@@ -296,9 +290,8 @@ class SchemaConfig:
     cross_domain_enabled: bool = True
     cross_domain_behavior_max_distance: float = 0.5  # ≤ this == "behavior-near" (pre-filter)
     cross_domain_min_confidence: float = 0.6  # fused schema below this is born ``forming``
-    # root apex (level-3, 2026-07-04 spec: Memory Root Apex). Tail of the schema-tick —
-    # ONE bounded LLM compresses the active 体/面/profile into the SINGLE ≤budget-token
-    # always-resident apex "who is this person". Default ON (product ruling 2026-07-04):
+    # One bounded LLM compresses active Volume/Face/profile evidence into the
+    # single level-3 Root. Default ON:
     # born active, chain-supersedes the prior root, 3 deterministic gates + fail-open
     # (无 root → residency falls back to resident_faces, so default-ON is safe).
     root_synthesis_enabled: bool = True
@@ -307,12 +300,7 @@ class SchemaConfig:
 
 @dataclass
 class EvomemConfig:
-    # evomem SSOT switch — PR-1 survivability base (design doc
-    # docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md §3).
-    # Everything here is a SIDE CHANNEL: with the flags off, the daemon behaves
-    # byte-identically to before (P0 discipline). These facilities must run
-    # stable in production BEFORE any truth migration (backfill / dual-write)
-    # is allowed to land (§3.5 顺序纪律).
+    # Snapshot and integrity side channels for evomem write authority.
     #
     # Daily snapshot (§3.2): at the 23:55 daily-safety-net tick, right after the
     # WAL checkpoint, take a `VACUUM INTO backup/evo-YYYYMMDD.db` online snapshot,
@@ -400,13 +388,11 @@ class SearchConfig:
     filter_superseded_by_default: bool = True
     # Hybrid semantic retrieval (BM25 ⊕ dense te3-large → RRF). Default ON, but the daemon only
     # activates it when an embeddings endpoint (OPENAI_*) is configured — otherwise it stays
-    # byte-identical BM25 (no vectors written/queried). Real production A/B justified the flip:
-    # on paraphrase queries (how users actually search Chinese memory) recall@10 went 0.025 → 0.76;
-    # on exact-token queries it costs ~0.04 (BM25's home turf). See
-    # docs/superpowers/specs/2026-06-25-production-hybrid-retrieval-design.md.
+    # byte-identical BM25 (no vectors written/queried). Benchmark claims live in
+    # persome-bench; core keeps only the runtime switch and deterministic fallback.
     hybrid_enabled: bool = True
     hybrid_recall_n: int = 50  # BM25/dense candidate pool depth before RRF
-    hybrid_rrf_k: int = 20  # RRF constant (benchmark-proven; prod paraphrase win is large at 50/20)
+    hybrid_rrf_k: int = 20  # RRF fusion constant
     # §3.3 associative RRF pool weights (memory-rebuild §7-3, PR #504 finding): the
     # slot contains-pools (entity/scene/window) and the relation graph-expansion
     # pool vote with these weights against the text backbone (bm25+dense, fixed
@@ -434,9 +420,8 @@ class SearchConfig:
     # per-needle recency 序）；关=回 recency（降级路径）。
     contains_pool_rerank: bool = True
     # 轴A 匹配面 (issue #557): the FTS5 entries table indexes the tags column, so a bare
-    # MATCH also hits classification LABELS (#intent/#kind:meeting/schema/fact/entity…) —
-    # on the real store 251 live hits for 'intent' carried the token only in their tags
-    # (recognizer CANDIDATE rows recalled by label). False = match the content column only
+    # MATCH can also hit classification labels rather than entry text. False =
+    # match the content column only
     # ({content}: filter, read-side, zero migration); True = legacy label-matchable.
     tags_matchable: bool = False
     # 轴B 时间衰减 (issue #557): the RRF fusion is rank-only / time-blind — a 3-week-old
@@ -486,27 +471,22 @@ class MCPServerSpec:
 
 @dataclass
 class ChatConfig:
-    # Chat assistant powered by the Anthropic SDK. Separate from the litellm-based
-    # [models.*] stages because the chat loop needs first-class Anthropic features
-    # (prompt caching, extended thinking, tool use) and goes through the native
-    # SDK rather than the litellm shim. Configured under [chat] in config.toml.
+    # Chat uses the Anthropic SDK directly for prompt caching, extended thinking,
+    # and tool use. Configured under [chat] in config.toml.
     #
     # API key and base URL are NOT in TOML — they come from the env vars
-    # ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_BASE_URL``, populated by Mens.app
-    # (single SoT) or by the user's shell for CLI debugging.
+    # ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_BASE_URL``, loaded from the runtime
+    # env file or the user's shell.
     #
     # NO routing prefix here. The chat agent calls the Anthropic SDK
     # directly (``anthropic.AsyncAnthropic`` in ``chat/agent.py``); whatever
     # string sits in ``model`` is sent verbatim in the request body and
     # validated by the gateway. DeepSeek's ``/anthropic`` endpoint only
     # accepts bare names (``deepseek-v4-flash`` / ``deepseek-v4-pro``); a
-    # litellm-style ``anthropic/...`` prefix would be rejected as an unknown
+    # routing-style ``anthropic/...`` prefix would be rejected as an unknown
     # model. Prompt caching for the chat agent is enabled via the
     # ``cache_control`` field on message content (see ``chat/agent.py``),
-    # independent of the model name. The litellm prefix rule documented
-    # elsewhere applies only to other LLM stages (timeline / reducer /
-    # classifier / compact) that route through ``writer/llm.py`` — leave
-    # those defaults alone.
+    # independent of the model name.
     model: str = "deepseek-v4-flash"
     # Extended thinking (Anthropic "thinking" block). 0 disables (default —
     # safe for non-reasoning models like deepseek-v4-flash). Set to >=1024
@@ -514,6 +494,9 @@ class ChatConfig:
     # claude-haiku-4+, deepseek-reasoner via /anthropic gateway, etc.).
     # Streamed back to the UI as ``type: reasoning`` SSE frames.
     thinking_budget: int = 0
+    # Shell, arbitrary filesystem, and web tools expand Chat beyond the paper
+    # runtime's model-access boundary. They are available only by explicit opt-in.
+    unsafe_local_tools_enabled: bool = False
     # MCP client connections: the chat agent connects to these as a client so the
     # model can invoke their tools alongside the built-in tool set.
     mcp_connect_daemon: bool = True  # auto-connect to daemon's own MCP server
@@ -570,9 +553,7 @@ class Config:
         return self.models.get(stage) or self.models.get("default") or ModelConfig()
 
 
-# Provider name → canonical env var prefix. Keep this list aligned with
-# Mens.app's ``kManagedEnvKeys`` so the App UI surfaces every supported
-# provider. New providers: add an entry here AND in the App.
+# Provider name -> canonical environment-variable prefix.
 _PROVIDER_ENV_PREFIX: dict[str, str] = {
     "anthropic": "ANTHROPIC",
     "openai": "OPENAI",
@@ -581,11 +562,11 @@ _PROVIDER_ENV_PREFIX: dict[str, str] = {
 
 
 def infer_provider(model: str) -> str:
-    """Best-effort provider name from a litellm-style model string.
+    """Best-effort provider name from an optional ``provider/model`` string.
 
     Recognises explicit ``provider/model`` prefixes first; falls back to a few
     well-known bare-name heuristics. Returns ``"openai"`` when unknown — the
-    litellm default — so legacy ``gpt-*`` configs keep working.
+    compatibility default so legacy ``gpt-*`` configs keep working.
     """
     head = model.split("/", 1)[0].lower() if "/" in model else ""
     if head in _PROVIDER_ENV_PREFIX:
@@ -715,8 +696,7 @@ DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
 # no model-name prefix is needed.
 #
 # Secrets (API keys, base URLs) are NOT in this file. They live in
-# ``~/.persome/env`` (dotenv format), managed by Mens.app as the single
-# source of truth. Canonical env var names: {PROVIDER}_API_KEY and
+# ``~/.persome/env`` (dotenv format). Canonical env var names: {PROVIDER}_API_KEY and
 # {PROVIDER}_BASE_URL where {PROVIDER} ∈ {ANTHROPIC, OPENAI, DEEPSEEK}.
 # For CLI debugging you may export the same vars in your shell.
 #
@@ -880,8 +860,9 @@ port = 8742
 # Anthropic SDK-based chat assistant. Set ANTHROPIC_API_KEY (and optionally
 # ANTHROPIC_BASE_URL to point at e.g. DeepSeek's /anthropic gateway) via
 # the env file next to config.toml, or export them in your shell for CLI debugging.
-# model = "deepseek-v4-flash"      # bare name only — chat agent uses Anthropic SDK directly, NOT litellm; no "anthropic/" prefix
+# model = "deepseek-v4-flash"      # bare name sent through the Anthropic SDK
 # thinking_budget = 0
+unsafe_local_tools_enabled = false # opt in to shell, arbitrary filesystem, and web tools
 mcp_connect_daemon = true         # auto-connect to the daemon's own MCP server
 
 # Add extra MCP servers the chat agent should connect to:

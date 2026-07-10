@@ -1,7 +1,6 @@
 """Agent-Native Persome Phase 3 — durable memory write-back from a dispatched agent.
 
-The load-bearing loop (spec docs/superpowers/specs/2026-06-25-agent-native-persome-design.md §6):
-an agent's findings become durable Persome memory the NEXT agent / the recognizer / the supervisor
+An agent's findings become durable Persome memory that a later model consumer
 can reuse. Writes funnel through the canonical memory writer (``store.entries.append_entry``), so
 they pass the same ``ensure_writes_allowed`` integrity gate + evomem write-inversion as every other
 writer — NO bypass.

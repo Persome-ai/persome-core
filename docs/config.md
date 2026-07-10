@@ -145,16 +145,16 @@ While a session is active, the classifier wakes up every `interval_minutes` and 
 
 Values `< 5` are clamped to 5 to keep LLM cost bounded. Pair with `[session] flush_minutes`: the reducer flushes at a higher frequency than the classifier, so a classifier tick always has fresh entries to look at.
 
-## `[schema]` — D2 schema miner daily tick
+## `[schema]` — daily personal-model build
 
-Drives the `schema-tick` daemon task. Once per local day it clusters durable
-facts per memory file and induces `schema-*.md` faces for the personal model.
-It runs after the daily safety net so it consumes freshly classified facts.
-No schema is written until enough clustered facts exist.
+Drives the `schema-tick` daemon task. Once per local day it invokes the same
+locked `ModelBuildCoordinator` used by `persome model build`: pending state
+formation, relation enrichment, Face/Volume/Root construction, vectors, and
+semantic layout. It runs after the safety net so it consumes closed sessions.
 
 ```toml
 [schema]
-enabled = true          # run the daily schema-tick (off = no D2 schema mining)
+enabled = true          # run the daily model build
 daily_tick_hour = 0     # local wall-clock hour
 daily_tick_minute = 15  # fires at 00:15 local, after the daily safety net
 cross_domain_enabled = true               # Hy-Memory cross-domain sweeper (default on)
@@ -168,6 +168,9 @@ the LLM whether they form a higher-level `schema-xdomain-*.md` face. Its behavio
 pre-filter is deterministic (app set, action distribution, and hour histogram),
 with no embedding call. Low-confidence output is born `forming` and excluded from
 active snapshots. Set `cross_domain_enabled = false` to disable the sweep.
+
+The build uses `<PERSOME_ROOT>/model-build.lock`; a simultaneous CLI build owns
+the lock, so the scheduled call skips instead of starting a duplicate pipeline.
 
 ## `[writer]`
 
@@ -193,7 +196,10 @@ Dormant files don't show in `list_memories` by default. Pass `include_dormant=tr
 
 ## `[evomem]` — SSOT-switch survivability base
 
-Survivability facilities for the **evomem SSOT switch** (design doc `docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md` §3, PR-1). Once `evo_nodes` becomes the single source of truth, a corrupt DB means data loss — these are the hedge (snapshots + self-check + write-freeze), not an equivalent replacement for the markdown-replay self-heal. They must run stable in production *before* any truth migration (backfill / dual-write) lands (§3.5). Everything here is a side channel: with the flags off, the daemon behaves exactly as before.
+Survivability facilities for evomem write authority. When `evo_nodes` is the
+single source of truth, snapshots, self-checks, and optional write freeze protect
+against database corruption; they do not replace Markdown replay when Markdown
+is the selected authority. With these flags off, the main pipeline is unchanged.
 
 ```toml
 [evomem]

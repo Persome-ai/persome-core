@@ -15,7 +15,7 @@ dual-read machinery were retired in PR-7 — chain truth lives in evo_nodes):
      markdown files under markdown authority). If a day of writes drifted
      it, recall folds wrong.
   3. schema-tick output         — the daily 00:15 tick should have produced
-     parseable schema-*.md files that the recall schema-prior can read.
+     parseable schema-*.md files that the model schema reader can read.
 
 Plus a recall smoke test (assemble_background must not crash and should fold).
 
@@ -96,22 +96,22 @@ def main() -> int:
             for f in schema_files:
                 print(f"    - {f.name}")
             try:
-                from persome.intent import schema_prior
+                from persome.model import schema_reader
 
-                inferences = schema_prior.active_schema_inferences(conn)
+                inferences = schema_reader.active_schema_inferences(conn)
                 print(
-                    f"✓ schema_prior reads {len(inferences)} active inference(s) from stable schemas"
+                    f"✓ schema reader found {len(inferences)} active inference(s) "
+                    "from stable schemas"
                 )
             except Exception as e:  # noqa: BLE001 — surface, don't crash the probe
                 failures.append(f"active_schema_inferences raised on real schemas: {e!r}")
 
-        # ---- 4. recall smoke (fold + trail + schema-prior must not crash) ----
+        # ---- 4. retrieval smoke (fold + trail + schema prior must not crash) ----
         try:
-            from persome.config import load
-            from persome.intent import recall, schema_prior
-
-            cfg = load().intent_recognizer
             import re
+
+            from persome.model import schema_reader
+            from persome.retrieval import layered
 
             hint_row = conn.execute(
                 "SELECT content FROM entries WHERE superseded=0 LIMIT 1"
@@ -121,21 +121,17 @@ def main() -> int:
             # gracefully, but we don't need the noise in a smoke test).
             words = re.findall(r"[\w一-鿿]{2,}", hint_row[0]) if hint_row else []
             hint = words[0] if words else "用户"
-            bg = recall.assemble_background(
+            bg = layered.assemble_background(
                 conn,
                 scope="timeline",
                 hints=[hint],
-                fold_superseded=cfg.recall_fold_superseded,
-                chain_trail=cfg.recall_chain_trail,
-                schema_prior=(
-                    schema_prior.active_schema_inferences(conn)
-                    if cfg.schema_prior_enabled
-                    else None
-                ),
+                fold_superseded=True,
+                chain_trail=True,
+                schema_prior=schema_reader.active_schema_inferences(conn),
             )
-            print(f"✓ recall.assemble_background ran (hint={hint!r}, {len(bg)} chars)")
+            print(f"✓ layered retrieval ran (hint={hint!r}, {len(bg)} chars)")
         except Exception as e:  # noqa: BLE001
-            failures.append(f"recall.assemble_background raised: {e!r}")
+            failures.append(f"layered retrieval raised: {e!r}")
 
     print()
     if failures:

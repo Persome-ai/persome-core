@@ -1,8 +1,7 @@
 """PR-7 退役对象「已无读者」grep 断言（SSOT 切换设计 §7 P0 守护）.
 
-设计稿 ``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md`` §7
-要求 PR-7 的 P0 守护 = 「删除对象已无读者的 grep 断言」。本测试把它定型为
-持续闸门：扫描 ``src/persome``（生产代码）与 ``scripts``（运维探针）
+evomem retirement requires a grep assertion that deleted objects have no
+readers. 本测试把它定型为持续闸门：扫描 ``src/persome``（生产代码）与 ``scripts``（运维探针）
 的每个 ``.py``，断言任何退役对象都没有**代码级**读者——
 
 - **标识符级**（tokenize NAME token）：entry_chain 三/四 helper

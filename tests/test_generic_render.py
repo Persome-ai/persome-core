@@ -1,6 +1,6 @@
 """Generic AX → clean text resolver (capture/generic_render.py).
 
-Covers the five levers from docs/superpowers/specs/2026-06-19-generic-ax-resolver-design.md:
+Covers the five generic AX rendering levers:
 chrome fold, container collapse, repeated-structure flatten, role-label
 suppression, and the fail-open floor.
 """

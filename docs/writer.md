@@ -93,9 +93,12 @@ On accept, compact now writes the compacted markdown, clears `needs_compact`, th
 
 > `writer/reconcile_apply.py` was deleted in PR-6a (write-entrance groundwork): its translation duty — evomem `ReconcileResult` → write口 — is carried natively by the evomem engine (`engine._apply_op` lands evo_nodes, the projection follows). Its two legacies (ABSTRACT chain-semantics ② and the caller-stage event fence) moved into the engine with it.
 
-## Stage 5 — Cross-domain sweeper (Hy-Memory batch 2)
+## Stage 5 — Cross-domain sweeper
 
-`writer/cross_domain_sweeper.py` runs as the **tail of the same `schema-tick`** (gated on `[schema] cross_domain_enabled`, default off — no new daemon task). The per-file miner can only see within-topic regularities; the sweeper finds **topic-far but behavior-near** ones — e.g. "在 A 项目反复手动重试" and "用 B 工具反复手动点" → "遇阻倾向硬刚而非找自动化".
+`writer/cross_domain_sweeper.py` runs after the per-file miner inside the shared
+model build (gated on `[schema] cross_domain_enabled`, default on). The per-file
+miner can only see within-topic regularities; the sweeper finds topic-far but
+behavior-near candidates.
 
 - **behavior dimension = deterministic signature, no embedding.** Each stable schema's source facts that carry an `occurred_at` (batch-1 meta-cognition) are traced to the surrounding `timeline_blocks`; the signature is app set + action-type distribution + hour histogram, distance = Jaccard + total-variation. It is a **cheap pre-filter** — an ungrounded schema (no `occurred_at` facts) yields distance 0 and is passed through to the LLM rather than filtered on the offset write-`timestamp`.
 - **topic dimension = LLM judge.** Only `_topic_distinct` + behavior-near pairs reach `[models.cross_domain_sweeper]` (`call_llm`, JSON), which decides collision and fuses.

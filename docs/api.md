@@ -38,7 +38,8 @@ static routes are package resources and are intentionally omitted from OpenAPI.
 | GET, POST | `/chat/sessions/{session_id}/messages` | Read messages or stream a reply. |
 
 Chat consumes the same memory and provenance interfaces as MCP. It is not a
-second model store.
+second model store. Shell, arbitrary filesystem, and Web tools are omitted by
+default and require `[chat] unsafe_local_tools_enabled = true`.
 
 ## Model contract
 

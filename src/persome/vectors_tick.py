@@ -1,6 +1,6 @@
 """Drain the dense-retrieval embed queue: pending entries → te3-large vectors (via relay).
 
-Spec: docs/superpowers/specs/2026-06-25-production-hybrid-retrieval-design.md (Phase 1).
+Queue worker for optional hybrid-retrieval embeddings.
 
 The write path only ENQUEUES (``vectors.maybe_enqueue``); this is where the actual embedding
 happens — off the capture path, on a daemon tick, in batches, fail-open. A failed batch leaves

@@ -1,6 +1,6 @@
 """Dense-retrieval vector index for memory entries.
 
-Spec: docs/superpowers/specs/2026-06-25-production-hybrid-retrieval-design.md (Phase 1).
+The public retrieval behavior is documented in ``docs/architecture.md``.
 
 A new ``entry_vectors`` table holds one embedding per memory entry (text-embedding-3-large,
 3072-d float32 BLOB). Writes do NOT embed inline (that would block capture on a network call):

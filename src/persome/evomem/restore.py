@@ -1,6 +1,6 @@
 """import_from_markdown — 从 markdown 投影逆向重建 evo_nodes（SSOT 切换 §3.4，PR-7 定型）。
 
-设计稿：``docs/superpowers/specs/2026-06-10-evomem-ssot-switch-design.md``。
+Restores a verified evomem snapshot.
 
 原 ``rebuild_index`` 的 from-markdown 全量逻辑「反向化」后的最后防线：解析投影
 markdown → 按 PR-6a 投影命名空间 colon-tag（``#layer:`` / ``#status:`` /

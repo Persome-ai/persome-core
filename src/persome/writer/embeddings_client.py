@@ -1,6 +1,6 @@
 """Embeddings via the Persome relay (text-embedding-3-large), authenticated by the user's JWT.
 
-Spec: docs/superpowers/specs/2026-06-25-production-hybrid-retrieval-design.md (§3.1).
+Provider-backed embeddings for optional hybrid retrieval.
 
 No bundled key — mirrors the LLM path: the daemon reads ``OPENAI_API_KEY`` (= the user's JWT)
 and ``OPENAI_BASE_URL`` (= the relay's OpenAI-compatible base) from ``~/.persome/chronicle/env``

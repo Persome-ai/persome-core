@@ -5,9 +5,8 @@ Covers the three things that make the招牌 capability self-driving:
      ``run_schema_tick`` returns immediately without scheduling work.
   2. ``cfg.schema.enabled = True`` → the registry carries ``schema-tick`` in full
      mode but never in capture-only mode (it's an LLM processing task).
-  3. ``run_schema_tick`` actually drives ``schema_miner_stage.mine_schemas_for_user``
-     when its scheduled moment arrives — verified by short-circuiting the
-     local-time sleep and monkeypatching the miner so the loop fires once.
+  3. ``run_schema_tick`` drives the same ``run_model_build`` service as the CLI
+     when its scheduled moment arrives.
 
 The schedule loop is an unbounded ``while True``; tests never run it raw. (2)
 asserts pure wiring on the registry; (3) replaces ``_seconds_until_next_local``
@@ -69,22 +68,33 @@ async def test_run_schema_tick_returns_immediately_when_disabled(monkeypatch) ->
     await asyncio.wait_for(session_tick.run_schema_tick(cfg), timeout=1.0)
 
 
-# ── (3): enabled tick drives the miner ───────────────────────────────────────
+# ── (3): enabled tick drives the shared build ───────────────────────────────
 
 
-async def test_run_schema_tick_invokes_miner(ac_root, monkeypatch) -> None:
+async def test_run_schema_tick_invokes_shared_model_build(ac_root, monkeypatch) -> None:
     cfg = Config(schema=SchemaConfig(enabled=True))
 
-    calls: list[str] = []
+    calls: list[tuple[float, str]] = []
 
-    def _fake_mine(_cfg, _conn, **_kw):
-        calls.append("mined")
-        # Return a lightweight stand-in with the attributes the tick logs.
-        from persome.writer.schema_miner_stage import SchemaRunResult
+    def _fake_build(_cfg, *, wait_seconds, trigger):
+        from types import SimpleNamespace
 
-        return SchemaRunResult()
+        calls.append((wait_seconds, trigger))
+        return SimpleNamespace(
+            status="complete",
+            stats={
+                "points": 1,
+                "evolution_lines": 1,
+                "relation_lines": 0,
+                "faces": 1,
+                "volumes": 1,
+                "roots": 1,
+            },
+        )
 
-    monkeypatch.setattr(session_tick.schema_miner_stage, "mine_schemas_for_user", _fake_mine)
+    import persome.model as model_mod
+
+    monkeypatch.setattr(model_mod, "run_model_build", _fake_build)
 
     # First call: no wait (fire now). Second call (post-run sleep): blow up so the
     # unbounded loop unwinds deterministically instead of looping forever.
@@ -101,4 +111,4 @@ async def test_run_schema_tick_invokes_miner(ac_root, monkeypatch) -> None:
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(session_tick.run_schema_tick(cfg), timeout=2.0)
 
-    assert calls == ["mined"]
+    assert calls == [(0.0, "daemon-schema-tick")]

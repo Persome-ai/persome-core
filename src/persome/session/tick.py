@@ -29,11 +29,8 @@ from ..store import parser_ticks as parser_ticks_store
 from ..writer import classifier as classifier_mod
 from ..writer import (
     contradiction_check,
-    cross_domain_sweeper,
     memory_decay,
     orphan_reaper,
-    root_synthesis,
-    schema_miner_stage,
     session_reducer,
 )
 from ..writer import pattern_detector as pattern_detector_mod
@@ -558,14 +555,7 @@ async def run_daily_safety_net(cfg: Config, manager: SessionManager) -> None:
 
 
 async def run_schema_tick(cfg: Config) -> None:
-    """Once per local day at HH:MM, run the D2 schema miner.
-
-    Clusters durable fact entries per file and induces predictive ``schema-*.md``
-    faces consumed by the personal-model snapshot. Scheduled after the daily
-    safety-net so it sees the latest closed sessions. The miner is sync (LLM + DB),
-    so it runs on a worker thread; the loop catches per-tick exceptions so a bad
-    run never kills the daemon task.
-    """
+    """Once per local day, run the shared personal-model build service."""
     if not cfg.schema.enabled:
         logger.info("schema tick loop not started (disabled)")
         return
@@ -576,68 +566,33 @@ async def run_schema_tick(cfg: Config) -> None:
         try:
             wait = _seconds_until_next_local(hour, minute)
             await asyncio.sleep(wait)
-            logger.info("schema tick: mining D2 schemas from durable facts")
+            logger.info("schema tick: running shared personal-model build")
+            from ..model import ModelBuildBusy, run_model_build
 
-            def _mine() -> schema_miner_stage.SchemaRunResult:
-                with fts.cursor() as conn:
-                    run = schema_miner_stage.mine_schemas_for_user(cfg, conn)
-                    # Tail step: collide topic-far/behavior-near schemas into
-                    # higher-level ones (Hy-Memory sweeper). Same conn, same tick —
-                    # it consumes the schemas the miner just refreshed. Gated off by
-                    # default; a sweep failure is logged but never fails the tick.
-                    if cfg.schema.cross_domain_enabled:
-                        try:
-                            sweep = cross_domain_sweeper.sweep_cross_domain(
-                                cfg,
-                                conn,
-                                behavior_max_distance=cfg.schema.cross_domain_behavior_max_distance,
-                                min_confidence=cfg.schema.cross_domain_min_confidence,
-                            )
-                            logger.info(
-                                "cross-domain sweep: %d fused (considered=%d probed=%d)",
-                                sweep.written_count,
-                                sweep.pairs_considered,
-                                sweep.pairs_probed,
-                            )
-                        except Exception:  # noqa: BLE001 - sweep must not fail the tick
-                            logger.exception("cross-domain sweep failed")
-                    # Tail-of-tail: synthesize the level-3 root apex from the 体/面 the
-                    # miner+sweeper just refreshed (2026-07-04 spec). Same conn, same tick.
-                    # Default ON; fail-open — a bad synthesis keeps the prior root, never
-                    # fails the tick.
-                    if getattr(cfg.schema, "root_synthesis_enabled", True):
-                        try:
-                            rr = root_synthesis.run_root_synthesis(cfg, conn)
-                            logger.info("root synthesis: %s (%s)", rr.reason, rr.face_id or "-")
-                        except Exception:  # noqa: BLE001 - root synth must not fail the tick
-                            logger.exception("root synthesis failed")
-                    return run
-
-            result = await asyncio.to_thread(_mine)
-            if result.written:
-                logger.info(
-                    "schema tick: wrote %d schema(s) (small=%d empty=%d)",
-                    result.written_count,
-                    result.skipped_small,
-                    result.skipped_empty,
+            try:
+                result = await asyncio.to_thread(
+                    run_model_build,
+                    cfg,
+                    wait_seconds=0.0,
+                    trigger="daemon-schema-tick",
                 )
-            else:
-                logger.info(
-                    "schema tick: no schemas written (small=%d empty=%d)",
-                    result.skipped_small,
-                    result.skipped_empty,
-                )
+            except ModelBuildBusy:
+                logger.info("schema tick: model build already in progress; skipping")
+                continue
+            logger.info(
+                "schema tick: model build %s (points=%d lines=%d faces=%d volumes=%d roots=%d)",
+                result.status,
+                result.stats["points"],
+                result.stats["evolution_lines"] + result.stats["relation_lines"],
+                result.stats["faces"],
+                result.stats["volumes"],
+                result.stats["roots"],
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("schema tick failed: %s", exc, exc_info=True)
             await asyncio.sleep(60)
-
-
-# Fires after safety-net (23:55) + schema (00:15), so it enriches the facts those
-# passes just landed.
-_EVOMEM_ENRICHMENT_HOUR = 0
-_EVOMEM_ENRICHMENT_MINUTE = 20
 
 
 def _run_evomem_enrichment_once(cfg: Config) -> None:
@@ -704,32 +659,3 @@ def _run_evomem_enrichment_once(cfg: Config) -> None:
                 logger.info("evomem enrichment: %d relation edge(s) promoted to ACTIVE", n_promoted)
         except Exception as exc:  # noqa: BLE001 — best-effort enrichment, never crash the tick
             logger.error("evomem enrichment: relation extraction failed: %s", exc, exc_info=True)
-
-
-async def run_evomem_enrichment_tick(cfg: Config) -> None:
-    """Once per local day, run the evomem enrichment pass (person graph + case cards).
-
-    Only started when at least one layer is enabled (the TaskDefinition gate also
-    checks this). Sync work runs on a worker thread; per-tick exceptions are caught so
-    a bad run never kills the daemon task.
-    """
-    if not (
-        getattr(cfg, "person_graph_enabled", False)
-        or getattr(cfg, "case_extraction_enabled", False)
-        or getattr(cfg, "relation_extraction_enabled", False)
-    ):
-        logger.info("evomem enrichment tick not started (all layers disabled)")
-        return
-    hour = _EVOMEM_ENRICHMENT_HOUR
-    minute = _EVOMEM_ENRICHMENT_MINUTE
-    logger.info("evomem enrichment tick started (fires at %02d:%02d local)", hour, minute)
-    while True:
-        try:
-            await asyncio.sleep(_seconds_until_next_local(hour, minute))
-            logger.info("evomem enrichment: ingesting person graph + extracting case cards")
-            await asyncio.to_thread(_run_evomem_enrichment_once, cfg)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.error("evomem enrichment tick failed: %s", exc, exc_info=True)
-            await asyncio.sleep(60)

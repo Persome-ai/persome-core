@@ -1,6 +1,6 @@
 """Phase 1 of the production hybrid-retrieval spec: the dense-vector index + embed tick.
 
-Spec: docs/superpowers/specs/2026-06-25-production-hybrid-retrieval-design.md (§8 acceptance).
+Contract: vector storage stays deterministic and degrades cleanly without a provider.
 
 Offline + deterministic (no network, no LLM): the relay embedder is replaced by a fake.
 Covers the vector DAO (schema/enqueue/save/evict/gc/live_matrix/count + the set_enabled
