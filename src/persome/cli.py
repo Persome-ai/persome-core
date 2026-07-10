@@ -196,9 +196,7 @@ def _watch_parent_death() -> None:
     so the daemon truly "dies with the app". No-op when ``PERSOME_PARENT_PID`` is unset (e.g. a plain
     ``persome start`` from a terminal, where the daemon is meant to outlive the shell).
     """
-    raw = os.environ.get("PERSOME_PARENT_PID") or os.environ.get(
-        "MENS_PARENT_PID"
-    )  # Mens is the legacy name
+    raw = os.environ.get("PERSOME_PARENT_PID")
     if not raw:
         return
     try:

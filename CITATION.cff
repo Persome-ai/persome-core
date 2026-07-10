@@ -6,6 +6,10 @@ version: "0.2.2"
 license: Apache-2.0
 repository-code: "https://github.com/Persome-ai/persome-core"
 url: "https://github.com/Persome-ai/persome-core"
+identifiers:
+  - type: url
+    value: "https://github.com/Persome-ai/persome-core/releases/tag/v0.2.2"
+    description: "Persome Runtime v0.2.2 release"
 abstract: >-
   Local-first screen-context memory daemon for macOS. It captures Accessibility
   tree events, distills them into persistent Markdown memory and SQLite indexes,
@@ -19,3 +23,11 @@ keywords:
   - agent
   - accessibility
   - local-first
+references:
+  - type: generic
+    title: "Persome publication artifacts"
+    authors:
+      - name: "Persome contributors"
+    notes: >-
+      The paper and benchmark are separate works with independent licenses;
+      this CFF file cites the Runtime software only.

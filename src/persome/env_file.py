@@ -24,10 +24,9 @@ from pathlib import Path
 from typing import Literal
 
 SCREENSHOT_KEY_ENV = "PERSOME_SCREENSHOT_KEY"
-LEGACY_SCREENSHOT_KEY_ENV = "MENS_SCREENSHOT_KEY"
 _SCREENSHOT_KEY_HEX_LENGTH = 64
 
-ScreenshotKeyStatus = Literal["existing", "migrated", "generated"]
+ScreenshotKeyStatus = Literal["existing", "generated"]
 
 
 def _parse_line(line: str) -> tuple[str, str] | None:
@@ -85,10 +84,9 @@ def ensure_screenshot_key(path: Path) -> ScreenshotKeyStatus:
     """Ensure ``path`` contains one valid machine-local screenshot key.
 
     The installer calls this after creating its virtualenv. Existing canonical
-    keys are preserved; a valid legacy Mens key is migrated verbatim so old
-    encrypted captures remain readable. Missing or malformed values are
-    replaced with a freshly generated 256-bit key. The key is never returned or
-    logged, and the dotenv file is atomically rewritten with mode ``0600``.
+    keys are preserved. Missing or malformed values are replaced with a freshly
+    generated 256-bit key. The key is never returned or logged, and the dotenv
+    file is atomically rewritten with mode ``0600``.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -97,7 +95,6 @@ def ensure_screenshot_key(path: Path) -> ScreenshotKeyStatus:
 
     lines = text.splitlines()
     canonical: str | None = None
-    legacy: str | None = None
     kept: list[str] = []
     for line in lines:
         parsed = _parse_line(line)
@@ -109,16 +106,11 @@ def ensure_screenshot_key(path: Path) -> ScreenshotKeyStatus:
             if canonical is None and is_valid_screenshot_key(value):
                 canonical = value
             continue
-        if key == LEGACY_SCREENSHOT_KEY_ENV and legacy is None and is_valid_screenshot_key(value):
-            legacy = value
         kept.append(line)
 
     if canonical is not None:
         value = canonical
         status: ScreenshotKeyStatus = "existing"
-    elif legacy is not None:
-        value = legacy
-        status = "migrated"
     else:
         value = secrets.token_hex(32)
         status = "generated"

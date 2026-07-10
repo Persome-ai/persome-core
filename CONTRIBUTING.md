@@ -37,6 +37,7 @@ Marker meanings:
 ```bash
 uv run ruff check .
 uv run ruff format --check .
+uv run python scripts/secret_scan.py
 uv run python scripts/language_scan.py
 ```
 
@@ -47,12 +48,13 @@ PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration" \
   --cov=persome --cov-report=term-missing
 ```
 
-## PII gate (required)
+## Secret and PII gates (required)
 
 No real names, emails, tokens, or captured personal content may enter the repo —
 test data is synthetic, always. Before pushing:
 
 ```bash
+uv run python scripts/secret_scan.py
 uv run python scripts/pii_scan.py   # must exit 0
 ```
 
@@ -92,5 +94,6 @@ the project's Apache-2.0 license.
 
 ## License
 
-Contributions are accepted under [Apache-2.0](LICENSE). This project derives in
-part from Einsia/OpenChronicle (MIT); see `NOTICE` and `THIRD_PARTY_NOTICES`.
+Contributions are accepted under [Apache-2.0](LICENSE). See [LICENSES.md](LICENSES.md)
+for the boundary between this Runtime and separate publication artifacts, and
+`NOTICE` / `THIRD_PARTY_NOTICES` for incorporated third-party work.

@@ -39,9 +39,6 @@ logger = get("persome.capture")
 #: provisions it; embedding products may inject it from their own secure store.
 KEY_ENV = "PERSOME_SCREENSHOT_KEY"
 
-#: Pre-rename key env var, still honoured on upgraded machines.
-LEGACY_KEY_ENV = "MENS_SCREENSHOT_KEY"  # Mens is the legacy name
-
 #: Magic prefix marking a sealed envelope. Versioned so the format can evolve
 #: without mistaking a future scheme for this one (or for raw base64 plaintext).
 MAGIC = "PSOMEGCM1:"
@@ -57,7 +54,7 @@ def load_key() -> bytes | None:
     valid hex — the caller treats ``None`` as "encryption unavailable" and falls
     back to plaintext. Never raises.
     """
-    raw = os.environ.get(KEY_ENV) or os.environ.get(LEGACY_KEY_ENV)
+    raw = os.environ.get(KEY_ENV)
     if not raw:
         return None
     raw = raw.strip()

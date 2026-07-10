@@ -414,9 +414,6 @@ PY
     existing)
       log "screenshot encryption key already configured"
       ;;
-    migrated)
-      log "migrated legacy screenshot encryption key to PERSOME_SCREENSHOT_KEY"
-      ;;
     generated)
       log "generated machine-local screenshot encryption key in ${env_path}"
       ;;

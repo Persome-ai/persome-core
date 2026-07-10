@@ -131,7 +131,7 @@ def test_fallback_on_529(monkeypatch):
 
     def _stub(cfg, stage, *, messages, tools=None, json_mode=False):
         calls.append("call")
-        env_snapshots.append(os.environ.get("_OC_FALLBACK_MODEL"))
+        env_snapshots.append(os.environ.get("PERSOME_FALLBACK_MODEL"))
         if len(calls) <= 3:
             raise ServiceUnavailableError("ServiceUnavailableError: overloaded 529")
         return llm_mod._build_response("")

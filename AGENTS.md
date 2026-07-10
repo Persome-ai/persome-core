@@ -34,6 +34,7 @@ bash install.sh
 PERSOME_LLM_MOCK=1 uv run pytest -m "not macos and not integration"
 uv run ruff check .
 uv run ruff format --check .
+uv run python scripts/secret_scan.py
 uv run python scripts/pii_scan.py
 uv run python scripts/language_scan.py
 
@@ -128,7 +129,8 @@ Update matching docs in the same change as behavior.
 
 ## Naming and provenance
 
-The active name is Persome throughout. `MENS_*` and `OPENCHRONICLE_ROOT` are
-annotated compatibility fallbacks only. OpenChronicle provenance remains in
-`NOTICE` and `THIRD_PARTY_NOTICES`. Do not add product-specific ports, launchd
-labels, paths, or UI behavior to this Runtime.
+The public Runtime uses Persome names and `PERSOME_*` configuration throughout.
+Historical product compatibility belongs in downstream consumers, not in this
+repository. Legally required third-party attribution remains in `NOTICE` and
+`THIRD_PARTY_NOTICES`. Do not add product-specific ports, launchd labels, paths,
+or UI behavior to this Runtime.

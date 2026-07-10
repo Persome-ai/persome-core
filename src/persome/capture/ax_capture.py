@@ -206,9 +206,7 @@ def _resolve_helper_path() -> Path | None:
     if platform.system() != "Darwin":
         return None
 
-    override = os.environ.get("PERSOME_AX_HELPER") or os.environ.get(
-        "MENS_CONTEXT_AX_HELPER"
-    )  # Mens is the legacy name
+    override = os.environ.get("PERSOME_AX_HELPER")
     if override:
         p = Path(override).expanduser().resolve()
         if p.is_file() and os.access(p, os.X_OK):

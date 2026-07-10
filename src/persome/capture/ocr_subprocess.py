@@ -207,20 +207,14 @@ def get_client() -> OCRWorkerClient:
 
 def _timeout_from_env() -> float:
     try:
-        return float(
-            os.environ.get("PERSOME_OCR_WORKER_TIMEOUT")
-            or os.environ.get("MENS_CONTEXT_OCR_WORKER_TIMEOUT", "20")
-        )  # Mens is the legacy name
+        return float(os.environ.get("PERSOME_OCR_WORKER_TIMEOUT", "20"))
     except ValueError:
         return 20.0
 
 
 def _startup_timeout_from_env() -> float:
     try:
-        return float(
-            os.environ.get("PERSOME_OCR_WORKER_STARTUP_TIMEOUT")
-            or os.environ.get("MENS_CONTEXT_OCR_WORKER_STARTUP_TIMEOUT", "120")
-        )
+        return float(os.environ.get("PERSOME_OCR_WORKER_STARTUP_TIMEOUT", "120"))
     except ValueError:
         return 120.0
 

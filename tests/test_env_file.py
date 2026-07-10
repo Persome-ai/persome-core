@@ -100,15 +100,6 @@ def test_ensure_screenshot_key_is_idempotent(tmp_path: Path) -> None:
     assert f"{env_file.SCREENSHOT_KEY_ENV}={original}" in path.read_text()
 
 
-def test_ensure_screenshot_key_migrates_legacy_value(tmp_path: Path) -> None:
-    path = tmp_path / "env"
-    legacy = "cd" * 32
-    path.write_text(f"{env_file.LEGACY_SCREENSHOT_KEY_ENV}={legacy}\n")
-
-    assert env_file.ensure_screenshot_key(path) == "migrated"
-    assert f"{env_file.SCREENSHOT_KEY_ENV}={legacy}" in path.read_text()
-
-
 def test_ensure_screenshot_key_replaces_invalid_duplicates(tmp_path: Path) -> None:
     path = tmp_path / "env"
     path.write_text(

@@ -55,6 +55,9 @@ jobs:
         # free of real names / emails / tokens. Must exit 0.
         run: uv run python scripts/pii_scan.py
 
+      - name: Secret and token scan
+        run: uv run python scripts/secret_scan.py
+
       - name: English-language source gate
         run: uv run python scripts/language_scan.py
 

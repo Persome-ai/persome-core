@@ -1,0 +1,49 @@
+name: Integration request
+description: Propose or validate a Persome MCP client or local runtime integration.
+labels: ["integration"]
+body:
+  - type: input
+    id: client
+    attributes:
+      label: Client or product
+      description: Name and version of the MCP client or local product.
+      placeholder: "Example: Cursor 1.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: MCP transport
+      options:
+        - Streamable HTTP at http://127.0.0.1:8742/mcp
+        - stdio via persome mcp
+        - Both
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: job
+    attributes:
+      label: User job
+      description: What should the client be able to retrieve, inspect, or correct?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Validation evidence
+      description: Include config shape, client logs, and redacted MCP results when available.
+      placeholder: |
+        Config:
+        Client connection result:
+        MCP tools listed:
+        Recall query tried:
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, personal captures, names, URLs, and message text.
+          required: true

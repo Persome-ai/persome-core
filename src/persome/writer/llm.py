@@ -235,20 +235,18 @@ def call_llm(
 
     Returns the OpenAI-shaped ``_Resp`` adapter (see module docstring), so
     ``run_tool_loop`` / ``extract_*`` and every caller stay unchanged.
-    Respects ``PERSOME_LLM_MOCK=1`` (test stub) and ``_OC_FALLBACK_MODEL``
+    Respects ``PERSOME_LLM_MOCK=1`` (test stub) and ``PERSOME_FALLBACK_MODEL``
     (529 fallback). ``cache_control`` on messages/tools/system passes through —
     the Anthropic protocol honors it natively (no stripping, no prefix tricks).
     ``extra`` merges raw request params into the call body (e.g.
     ``{"thinking": {"type": "disabled"}}`` for a fast stage) — forwarded
     verbatim, so the relay passes them to the upstream gateway.
     """
-    if (
-        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
-    ) == "1":  # Mens is the legacy name
+    if os.environ.get("PERSOME_LLM_MOCK") == "1":
         return _mock_response(stage, messages, tools, json_mode)
 
     model_cfg = cfg.model_for(stage)
-    override = os.environ.get("_OC_FALLBACK_MODEL")
+    override = os.environ.get("PERSOME_FALLBACK_MODEL")
     if override:
         model_cfg = ModelConfig(**{**model_cfg.__dict__, "model": override})
 
@@ -285,9 +283,7 @@ _MOCK_DEFAULTS: dict[str, str] = {
 
 def _mock_response(stage: str, messages, tools, json_mode):  # type: ignore[no-untyped-def]
     """Minimal stub for offline tests. Customize via PERSOME_LLM_MOCK_JSON."""
-    override = os.environ.get("PERSOME_LLM_MOCK_JSON") or os.environ.get(
-        "MENS_CONTEXT_LLM_MOCK_JSON"
-    )  # Mens is the legacy name
+    override = os.environ.get("PERSOME_LLM_MOCK_JSON")
     content = override if override else _MOCK_DEFAULTS.get(stage, "")
     return _build_response(content)
 
@@ -335,9 +331,7 @@ def ping_stage(cfg: Config, stage: str, *, timeout: float = 5.0) -> PingResult:
     informational callers must remain non-fatal.
     """
     model_cfg = cfg.model_for(stage)
-    if (
-        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
-    ) == "1":  # Mens is the legacy name
+    if os.environ.get("PERSOME_LLM_MOCK") == "1":
         return PingResult(
             stage=stage,
             model=model_cfg.model,
@@ -495,9 +489,7 @@ def count_tokens_api(cfg: Config, stage: str, messages: list[dict[str, Any]]) ->
     Returns None on any failure, when disabled, or when the gateway doesn't
     implement the endpoint — callers fall back to ``_estimate_tokens``.
     """
-    if (
-        os.environ.get("PERSOME_LLM_MOCK") or os.environ.get("MENS_CONTEXT_LLM_MOCK")
-    ) == "1":  # Mens is the legacy name
+    if os.environ.get("PERSOME_LLM_MOCK") == "1":
         return None
     if not cfg.writer.use_token_count_api:
         return None
@@ -575,11 +567,11 @@ def _call_llm_with_retry(
                     tag,
                     cfg.writer.llm_fallback_model,
                 )
-                os.environ["_OC_FALLBACK_MODEL"] = cfg.writer.llm_fallback_model
+                os.environ["PERSOME_FALLBACK_MODEL"] = cfg.writer.llm_fallback_model
                 try:
                     resp = call_llm(cfg, stage, messages=messages, tools=tools)
                 finally:
-                    os.environ.pop("_OC_FALLBACK_MODEL", None)
+                    os.environ.pop("PERSOME_FALLBACK_MODEL", None)
             else:
                 resp = call_llm(cfg, stage, messages=messages, tools=tools)
 

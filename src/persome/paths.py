@@ -7,20 +7,10 @@ from pathlib import Path
 
 
 def root() -> Path:
-    override = (
-        os.environ.get("PERSOME_ROOT")
-        or os.environ.get("MENS_CONTEXT_ROOT")  # Mens is the legacy name
-        or os.environ.get("OPENCHRONICLE_ROOT")  # OpenChronicle is the legacy name
-    )
+    override = os.environ.get("PERSOME_ROOT")
     if override:
         return Path(override).expanduser().resolve()
-    new = Path.home() / ".persome"
-    legacy = Path.home() / ".mens"  # Mens is the legacy name
-    # Migration-friendly default: a machine upgraded from the pre-rename daemon
-    # keeps its existing data dir until ~/.persome is created explicitly.
-    if legacy.exists() and not new.exists():
-        return legacy
-    return new
+    return Path.home() / ".persome"
 
 
 def memory_dir() -> Path:

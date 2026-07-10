@@ -60,9 +60,7 @@ def build_plist(binary: str) -> dict[str, object]:
     env: dict[str, str] = {}
     # Propagate the data-root override so a test/dev launchd job and the CLI
     # that registered it agree on where state lives.
-    root_override = (
-        os.environ.get("PERSOME_ROOT") or os.environ.get("MENS_CONTEXT_ROOT")
-    ) or os.environ.get("OPENCHRONICLE_ROOT")  # Mens is the legacy name
+    root_override = os.environ.get("PERSOME_ROOT")
     if root_override:
         env["PERSOME_ROOT"] = root_override
 

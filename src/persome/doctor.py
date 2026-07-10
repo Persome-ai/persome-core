@@ -117,9 +117,7 @@ def check_api_key() -> Check:
 
 def check_screenshot_key() -> Check:
     """Machine-local AES-256 screenshot key, without ever printing its value."""
-    raw = os.environ.get(env_file_mod.SCREENSHOT_KEY_ENV) or os.environ.get(
-        env_file_mod.LEGACY_SCREENSHOT_KEY_ENV
-    )
+    raw = os.environ.get(env_file_mod.SCREENSHOT_KEY_ENV)
     if env_file_mod.is_valid_screenshot_key(raw):
         return Check(env_file_mod.SCREENSHOT_KEY_ENV, "ok", "set (32-byte local key)")
     return Check(

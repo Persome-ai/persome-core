@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup help and questions
+    url: https://github.com/Persome-ai/persome-core/discussions
+    about: Ask questions and share integration patterns in Discussions.
+  - name: Security vulnerability
+    url: https://github.com/Persome-ai/persome-core/security/advisories/new
+    about: Report vulnerabilities privately. Never attach personal capture data.

@@ -27,7 +27,6 @@ def clean_llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_BASE_URL",
         "PERSOME_SCREENSHOT_KEY",
-        "MENS_SCREENSHOT_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
 
