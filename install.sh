@@ -441,6 +441,11 @@ Next steps:
      persome start
   3. Check status:
      persome status
+  4. Open the live personal-model viewer:
+     http://127.0.0.1:8742/model
+
+The viewer shows your current Point / Line / Face / Volume / Root model. A new
+install starts sparse and fills higher layers only as repeated evidence builds.
 
 Connect an agent (MCP):
   Point any MCP client at the daemon's memory server:
