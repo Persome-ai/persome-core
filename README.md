@@ -13,10 +13,11 @@ person, and serves that model to Chat and MCP agents.
 **[Star Persome on GitHub](https://github.com/Persome-ai/persome-core)** to
 follow the Runtime and help prioritize the next MCP integrations.
 
-![Persome's local personal-model viewer showing synthetic Points, Lines, Faces, a Volume, and Root](docs/assets/persome-model-hero.png)
+![Persome local personal-model viewer rendering a dense synthetic Point, Line, Face, Volume, and Root graph](docs/assets/persome-model-hero.png)
 
-_Actual `/model` screenshot produced by `scripts/sample_demo.py`: 4 synthetic
-Points, 2 Lines, 2 Faces, 1 Volume, and 1 Root. It contains no personal data._
+_Actual `/model` screenshot produced by `scripts/sample_demo.py --showcase`: 424
+synthetic Points, 146 Lines, 12 Faces, 4 Volumes, and 1 Root. It contains no
+personal data._
 
 ## Product job
 
@@ -46,6 +47,9 @@ git clone https://github.com/Persome-ai/persome-core.git
 cd persome-core
 uv run python scripts/sample_demo.py
 ```
+
+Add `--showcase` to render the denser, still fully synthetic model used in the
+README image.
 
 The script opens `http://127.0.0.1:8743/model`, serves MCP at
 `http://127.0.0.1:8743/mcp`, and deletes its temporary synthetic data when you
