@@ -60,11 +60,14 @@ upgrade, and gives its LaunchAgent umask `0077`.
 ## Startup recovery
 
 When the Runtime is stopped, startup validates `index.db` before opening it.
-If only the derived `captures_fts` search index is malformed, Persome rebuilds
-that index in place from the authoritative `captures` rows. Core database
-damage is still quarantined as `index.db.corrupt.<timestamp>` for inspection.
-The running daemon owns active SQLite writes, so `persome status`, MCP clients,
-and a second `persome start` do not repair or quarantine an open database.
+If only a derived search index is malformed, Persome rebuilds `captures_fts`
+from authoritative `captures` rows and `entries` from Markdown/evo_nodes. It
+also handles older SQLite builds that collapse both damaged FTS projections
+into a generic malformed-database error, while verifying every regular table
+before the narrow index reset. Core database damage is still quarantined as
+`index.db.corrupt.<timestamp>` for inspection. The running daemon owns active
+SQLite writes, so `persome status`, MCP clients, and a second `persome start`
+do not repair or quarantine an open database.
 
 ## Lifecycle and first recall
 

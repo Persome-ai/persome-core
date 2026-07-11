@@ -20,6 +20,14 @@ logger = get("persome.store")
 _MIN_SECURE_FTS_SQLITE = (3, 42, 0)
 _FTS_TABLES = ("entries", "captures_fts")
 _SECURE_FTS_MIGRATION_VERSION = 20260711
+_ENTRIES_FTS_OBJECTS = (
+    "entries",
+    "entries_data",
+    "entries_idx",
+    "entries_content",
+    "entries_docsize",
+    "entries_config",
+)
 _CAPTURES_FTS_OBJECTS = (
     "captures_fts",
     "captures_fts_data",
@@ -27,6 +35,19 @@ _CAPTURES_FTS_OBJECTS = (
     "captures_fts_docsize",
     "captures_fts_config",
 )
+# These indexes are projections. Their canonical sources are Markdown/evo_nodes
+# for entries and captures for screen-context search.
+DERIVED_FTS_SCHEMA_OBJECTS = _ENTRIES_FTS_OBJECTS + _CAPTURES_FTS_OBJECTS
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone()
+        is not None
+    )
+
 
 _CAPTURES_FTS_STATEMENTS = tuple(
     dedent(statement).strip()
@@ -332,11 +353,14 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     # the daemon calls ``checkpoint()`` from the daily tick so the
     # ``.db-wal`` and ``.db-shm`` sidecars don't drift unbounded.
     conn.execute("PRAGMA wal_autocheckpoint=1000")
-    had_captures_fts = (
-        conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='captures_fts'"
-        ).fetchone()
-        is not None
+    had_entries_fts = _table_exists(conn, "entries")
+    had_captures_fts = _table_exists(conn, "captures_fts")
+    # A new DB has neither source table. An interrupted FTS reset keeps at
+    # least one of these canonical projections, which makes it safe to rebuild
+    # entries after SCHEMA recreates the virtual table.
+    has_entry_sources = _table_exists(conn, "evo_nodes") or (
+        _table_exists(conn, "files")
+        and conn.execute("SELECT 1 FROM files LIMIT 1").fetchone() is not None
     )
     conn.executescript(SCHEMA)
     # A schema-level FTS recovery may have removed only this derived table
@@ -378,6 +402,13 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     from . import vectors as vectors_mod
 
     vectors_mod.ensure_schema(conn)
+    if not had_entries_fts and has_entry_sources:
+        # An interrupted derived-index recovery can leave entries absent after
+        # its canonical evo_nodes/Markdown sources remain intact. Do not run
+        # this projection step on a brand-new DB before its authority is ready.
+        from . import entries as entries_mod
+
+        entries_mod.rebuild_index(conn)
     if within_data_root:
         paths.ensure_private_file(db_path)
         paths.ensure_private_file(db_path.with_name(f"{db_path.name}-wal"))
@@ -429,6 +460,30 @@ def reset_corrupt_captures_fts_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             f"DELETE FROM sqlite_master WHERE name IN ({placeholders})",  # noqa: S608
             _CAPTURES_FTS_OBJECTS,
+        )
+        conn.execute(f"PRAGMA schema_version={schema_version + 1}")
+    finally:
+        conn.execute("PRAGMA writable_schema=OFF")
+
+
+def reset_corrupt_derived_fts_schema(conn: sqlite3.Connection) -> None:
+    """Remove both unloadable FTS projections without touching canonical data.
+
+    ``entries`` is rebuilt from Markdown/evo_nodes and ``captures_fts`` from
+    ``captures``. This handles the older SQLite failure mode where damage in
+    more than one FTS table is surfaced only as a generic malformed-database
+    error, so ordinary ``DROP TABLE`` is unavailable.
+    """
+    conn.execute("SELECT 1 FROM captures LIMIT 1")
+    for trigger in ("captures_ai", "captures_ad", "captures_au"):
+        conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+    schema_version = int(conn.execute("PRAGMA schema_version").fetchone()[0])
+    placeholders = ", ".join("?" for _ in DERIVED_FTS_SCHEMA_OBJECTS)
+    conn.execute("PRAGMA writable_schema=ON")
+    try:
+        conn.execute(
+            f"DELETE FROM sqlite_master WHERE name IN ({placeholders})",  # noqa: S608
+            DERIVED_FTS_SCHEMA_OBJECTS,
         )
         conn.execute(f"PRAGMA schema_version={schema_version + 1}")
     finally:

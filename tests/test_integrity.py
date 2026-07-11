@@ -11,7 +11,7 @@ import pytest
 
 from persome import config as config_mod
 from persome import integrity, paths
-from persome.store import fts
+from persome.store import entries, fts
 
 
 def _make_healthy_db() -> Path:
@@ -165,6 +165,46 @@ def test_connect_rebuilds_missing_derived_captures_fts(ac_root: Path) -> None:
     assert [hit.id for hit in hits] == ["capture-missing-fts-test"]
 
 
+def test_schema_reset_rebuilds_all_derived_fts_from_canonical_sources(ac_root: Path) -> None:
+    _make_healthy_db()
+    with fts.cursor() as conn:
+        entries.create_file(
+            conn,
+            name="project-derived-fts.md",
+            description="Derived FTS recovery",
+            tags=[],
+        )
+        memory_id = entries.append_entry(
+            conn,
+            name="project-derived-fts.md",
+            content="durable entry index recovery",
+            tags=[],
+        )
+        fts.insert_capture(
+            conn,
+            id="capture-all-derived-fts-test",
+            timestamp="2026-07-12T00:00:00+00:00",
+            app_name="Test App",
+            bundle_id="com.persome.test",
+            window_title="All derived index recovery",
+            focused_role="AXTextArea",
+            focused_value="needle",
+            visible_text="capture index recovery survives",
+            url="https://example.test/all-derived",
+        )
+        conn.execute("DELETE FROM entries_data WHERE id > 1")
+        conn.execute("DELETE FROM captures_fts_data WHERE id > 1")
+
+    integrity._rebuild_derived_fts_via_schema_reset(paths.index_db())
+
+    with fts.cursor() as conn:
+        assert [row[0] for row in conn.execute("PRAGMA integrity_check")] == ["ok"]
+        entry_hits = fts.search(conn, query="durable")
+        capture_hits = fts.search_captures(conn, query="capture")
+    assert [hit.id for hit in entry_hits] == [memory_id]
+    assert [hit.id for hit in capture_hits] == ["capture-all-derived-fts-test"]
+
+
 def test_derived_captures_fts_repair_defers_instead_of_quarantining(
     ac_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -178,7 +218,7 @@ def test_derived_captures_fts_repair_defers_instead_of_quarantining(
     )
     monkeypatch.setattr(
         integrity,
-        "_try_rebuild_captures_fts",
+        "_try_rebuild_derived_fts",
         lambda _db_path: None,
     )
 
@@ -189,13 +229,33 @@ def test_derived_captures_fts_repair_defers_instead_of_quarantining(
     assert list(ac_root.glob("index.db.corrupt.*")) == []
 
 
-def test_captures_fts_vtable_constructor_error_is_rebuildable() -> None:
-    assert integrity._is_captures_fts_vtable_failure(
+def test_derived_fts_vtable_constructor_error_is_rebuildable() -> None:
+    assert integrity._derived_fts_vtable_failure(
         sqlite3.DatabaseError("vtable constructor failed: captures_fts")
-    )
-    assert not integrity._is_captures_fts_vtable_failure(
+    ) == {"captures_fts"}
+    assert integrity._derived_fts_vtable_failure(
         sqlite3.DatabaseError("vtable constructor failed: entries")
+    ) == {"entries"}
+    assert (
+        integrity._derived_fts_vtable_failure(
+            sqlite3.DatabaseError("vtable constructor failed: unrelated")
+        )
+        == set()
     )
+
+
+def test_generic_malformed_error_requires_readable_canonical_tables(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_healthy_db()
+    conn = sqlite3.connect(paths.index_db())
+    error = sqlite3.DatabaseError("database disk image is malformed")
+    try:
+        assert integrity._is_generic_derived_fts_failure(conn, error)
+        monkeypatch.setattr(integrity, "_canonical_tables_are_readable", lambda _conn: False)
+        assert not integrity._is_generic_derived_fts_failure(conn, error)
+    finally:
+        conn.close()
 
 
 def test_corrupt_config_is_quarantined_and_default_rebuilt(ac_root: Path) -> None:
