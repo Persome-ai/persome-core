@@ -55,6 +55,15 @@ data, not harmless metadata. Persome enforces `0700` on the root/data
 directories and `0600` on sensitive files, repairs legacy modes once after an
 upgrade, and gives its LaunchAgent umask `0077`.
 
+## Startup recovery
+
+When the Runtime is stopped, startup validates `index.db` before opening it.
+If only the derived `captures_fts` search index is malformed, Persome rebuilds
+that index in place from the authoritative `captures` rows. Core database
+damage is still quarantined as `index.db.corrupt.<timestamp>` for inspection.
+The running daemon owns active SQLite writes, so `persome status`, MCP clients,
+and a second `persome start` do not repair or quarantine an open database.
+
 ## Lifecycle and first recall
 
 ```bash

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 
 from .. import paths
@@ -20,7 +21,42 @@ _MIN_SECURE_FTS_SQLITE = (3, 42, 0)
 _FTS_TABLES = ("entries", "captures_fts")
 _SECURE_FTS_MIGRATION_VERSION = 20260711
 
-SCHEMA = """
+_CAPTURES_FTS_STATEMENTS = tuple(
+    dedent(statement).strip()
+    for statement in (
+        """
+    CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts USING fts5(
+        app_name, window_title, focused_value, visible_text, url,
+        content='captures', content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+    )
+    """,
+        """
+    CREATE TRIGGER IF NOT EXISTS captures_ai AFTER INSERT ON captures BEGIN
+        INSERT INTO captures_fts(rowid, app_name, window_title, focused_value, visible_text, url)
+        VALUES (new.rowid, new.app_name, new.window_title, new.focused_value, new.visible_text, new.url);
+    END
+    """,
+        """
+    CREATE TRIGGER IF NOT EXISTS captures_ad AFTER DELETE ON captures BEGIN
+        INSERT INTO captures_fts(captures_fts, rowid, app_name, window_title, focused_value, visible_text, url)
+        VALUES ('delete', old.rowid, old.app_name, old.window_title, old.focused_value, old.visible_text, old.url);
+    END
+    """,
+        """
+    CREATE TRIGGER IF NOT EXISTS captures_au AFTER UPDATE ON captures BEGIN
+        INSERT INTO captures_fts(captures_fts, rowid, app_name, window_title, focused_value, visible_text, url)
+        VALUES ('delete', old.rowid, old.app_name, old.window_title, old.focused_value, old.visible_text, old.url);
+        INSERT INTO captures_fts(rowid, app_name, window_title, focused_value, visible_text, url)
+        VALUES (new.rowid, new.app_name, new.window_title, new.focused_value, new.visible_text, new.url);
+    END
+    """,
+    )
+)
+_CAPTURES_FTS_SCHEMA = ";\n\n".join(_CAPTURES_FTS_STATEMENTS) + ";"
+
+SCHEMA = (
+    """
 CREATE VIRTUAL TABLE IF NOT EXISTS entries USING fts5(
     id UNINDEXED,
     path UNINDEXED,
@@ -67,27 +103,9 @@ CREATE TABLE IF NOT EXISTS captures (
 CREATE INDEX IF NOT EXISTS idx_captures_ts  ON captures(timestamp);
 CREATE INDEX IF NOT EXISTS idx_captures_app ON captures(app_name);
 
-CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts USING fts5(
-    app_name, window_title, focused_value, visible_text, url,
-    content='captures', content_rowid='rowid',
-    tokenize='unicode61 remove_diacritics 2'
-);
-
-CREATE TRIGGER IF NOT EXISTS captures_ai AFTER INSERT ON captures BEGIN
-    INSERT INTO captures_fts(rowid, app_name, window_title, focused_value, visible_text, url)
-    VALUES (new.rowid, new.app_name, new.window_title, new.focused_value, new.visible_text, new.url);
-END;
-CREATE TRIGGER IF NOT EXISTS captures_ad AFTER DELETE ON captures BEGIN
-    INSERT INTO captures_fts(captures_fts, rowid, app_name, window_title, focused_value, visible_text, url)
-    VALUES ('delete', old.rowid, old.app_name, old.window_title, old.focused_value, old.visible_text, old.url);
-END;
-CREATE TRIGGER IF NOT EXISTS captures_au AFTER UPDATE ON captures BEGIN
-    INSERT INTO captures_fts(captures_fts, rowid, app_name, window_title, focused_value, visible_text, url)
-    VALUES ('delete', old.rowid, old.app_name, old.window_title, old.focused_value, old.visible_text, old.url);
-    INSERT INTO captures_fts(rowid, app_name, window_title, focused_value, visible_text, url)
-    VALUES (new.rowid, new.app_name, new.window_title, new.focused_value, new.visible_text, new.url);
-END;
-
+"""
+    + _CAPTURES_FTS_SCHEMA
+    + """
 -- (OCR is now on-device & synchronous: results are backfilled straight into
 -- captures.visible_text, so the former async ocr_jobs table was retired. Old DBs
 -- keep the orphaned table — harmless, never read.)
@@ -113,6 +131,7 @@ CREATE TABLE IF NOT EXISTS projection_state (
     projected_at TEXT NOT NULL
 );
 """
+)
 
 
 @dataclass
@@ -355,6 +374,23 @@ def cursor(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def rebuild_captures_fts(conn: sqlite3.Connection) -> None:
+    """Recreate the derived capture search index from authoritative capture rows.
+
+    Callers that need all-or-nothing recovery should open a transaction before
+    calling this helper; it deliberately does not commit.
+    """
+    # Leave whole-database recovery to the caller if the source data cannot be read.
+    conn.execute("SELECT 1 FROM captures LIMIT 1")
+    for trigger in ("captures_ai", "captures_ad", "captures_au"):
+        conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+    conn.execute("DROP TABLE IF EXISTS captures_fts")
+    for statement in _CAPTURES_FTS_STATEMENTS:
+        conn.execute(statement)
+    conn.execute("INSERT INTO captures_fts(captures_fts) VALUES('rebuild')")
+    conn.execute("INSERT INTO captures_fts(captures_fts, rank) VALUES('secure-delete', 1)")
 
 
 def purge_deleted_content(conn: sqlite3.Connection) -> None:

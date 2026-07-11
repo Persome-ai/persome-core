@@ -50,10 +50,11 @@ def _init() -> config_mod.Config:
     paths.ensure_dirs()
     # Logger first so the integrity check's JSON-line output lands in daemon.log.
     logger_mod.setup(console=False)
-    # Quarantine a corrupt DB / config before anything tries to open them (#202).
-    # Runs on every CLI entry through _init (start / status / …) so a damaged
-    # file is recovered the moment the user next touches the daemon.
-    integrity.check_and_recover()
+    # The daemon owns active SQLite writes. A status/MCP/second-start invocation
+    # must never quarantine or rebuild an index while that process has it open.
+    # When stopped, this remains the first database-touching operation.
+    if not _read_pid():
+        integrity.check_and_recover()
     created = config_mod.write_default_if_missing()
     if created:
         console.print(f"[green]Created default config at {paths.config_file()}[/green]")
@@ -237,6 +238,12 @@ def start(
     capture_only: bool = typer.Option(False, "--capture-only", help="Skip the writer loop."),
 ) -> None:
     """Start the Persome daemon."""
+    # Avoid even configuration/integrity writes when the caller only asked to
+    # start an already-running daemon. This is also the cross-process guard for
+    # editor-launched MCP clients that share the same local database.
+    if pid := _read_pid():
+        console.print(f"[yellow]Already running (pid {pid})[/yellow]")
+        raise typer.Exit(1)
     cfg = _init()
     # Source checkouts and upgrades may start without re-running install.sh.
     # Provision the local HTTP boundary before the daemon binds; the helper is
@@ -245,8 +252,7 @@ def start(
     # Source the owner-only env file before any fork so the daemon and every
     # subsystem reading os.environ see the same values regardless of launcher.
     env_file_mod.load_env_file(paths.env_file())
-    pid = _read_pid()
-    if pid:
+    if pid := _read_pid():
         console.print(f"[yellow]Already running (pid {pid})[/yellow]")
         raise typer.Exit(1)
 

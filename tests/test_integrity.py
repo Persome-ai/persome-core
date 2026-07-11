@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 from pathlib import Path
 
@@ -71,6 +72,73 @@ def test_corrupt_db_is_quarantined_and_rebuilt(ac_root: Path) -> None:
     with fts.cursor() as conn:
         rows = conn.execute("PRAGMA integrity_check").fetchall()
     assert [r[0] for r in rows] == ["ok"]
+
+
+def test_malformed_derived_captures_fts_is_rebuilt_without_quarantine(ac_root: Path) -> None:
+    _make_healthy_db()
+    with fts.cursor() as conn:
+        fts.insert_capture(
+            conn,
+            id="capture-derived-fts-test",
+            timestamp="2026-07-12T00:00:00+00:00",
+            app_name="Test App",
+            bundle_id="com.persome.test",
+            window_title="Derived index recovery",
+            focused_role="AXTextArea",
+            focused_value="needle",
+            visible_text="needle survives a derived-index rebuild",
+            url="https://example.test/recovery",
+        )
+        # Deleting a live FTS segment corrupts only the derived inverted index;
+        # the canonical captures row remains intact.
+        conn.execute("DELETE FROM captures_fts_data WHERE id > 1")
+
+    assert "captures_fts" in (integrity._db_corruption_reason(paths.index_db()) or "")
+
+    recovered = integrity.check_and_recover()
+
+    assert recovered == []
+    assert paths.index_db().exists()
+    assert not paths.integrity_recovery_marker().exists()
+    assert list(ac_root.glob("index.db.corrupt.*")) == []
+    with fts.cursor() as conn:
+        assert [row[0] for row in conn.execute("PRAGMA integrity_check")] == ["ok"]
+        assert conn.execute("SELECT count(*) FROM captures").fetchone()[0] == 1
+        hits = fts.search_captures(conn, query="needle")
+    assert [hit.id for hit in hits] == ["capture-derived-fts-test"]
+
+
+def test_derived_captures_fts_repair_defers_instead_of_quarantining(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_healthy_db()
+    with fts.cursor() as conn:
+        fts.insert_capture(
+            conn,
+            id="capture-deferred-fts-test",
+            timestamp="2026-07-12T00:00:00+00:00",
+            app_name="Test App",
+            bundle_id="com.persome.test",
+            window_title="Deferred index recovery",
+            focused_role="AXTextArea",
+            focused_value="needle",
+            visible_text="needle waits for a retry",
+            url="https://example.test/deferred",
+        )
+        conn.execute("DELETE FROM captures_fts_data WHERE id > 1")
+
+    monkeypatch.setattr(
+        fts,
+        "rebuild_captures_fts",
+        lambda conn: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+
+    recovered = integrity.check_and_recover()
+
+    assert recovered == []
+    assert paths.index_db().exists()
+    assert list(ac_root.glob("index.db.corrupt.*")) == []
+    assert "captures_fts" in (integrity._db_corruption_reason(paths.index_db()) or "")
 
 
 def test_corrupt_config_is_quarantined_and_default_rebuilt(ac_root: Path) -> None:
