@@ -259,16 +259,18 @@ def _try_rebuild_derived_fts(db_path: Path) -> bool | None:
         if not damaged_fts:
             return False
 
-        from .store import fts
-
         if requires_full_schema_reset or "entries" in damaged_fts:
             conn.close()
             conn = None
             _rebuild_derived_fts_via_schema_reset(db_path)
         elif "captures_fts" in damaged_fts:
-            conn.execute("BEGIN IMMEDIATE")
-            fts.rebuild_captures_fts(conn)
-            conn.commit()
+            # A normal DROP/CREATE can still leave older macOS SQLite builds
+            # unable to construct the replacement virtual table on the next
+            # connection. The narrow schema reset plus VACUUM removes those
+            # unreachable shadow pages before recreating the derived index.
+            conn.close()
+            conn = None
+            _rebuild_captures_fts_via_schema_reset(db_path)
         else:
             return False
         # Older macOS SQLite builds can retain the malformed virtual-table
