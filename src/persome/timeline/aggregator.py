@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .. import paths
 from ..capture.ax_models import ax_tree_to_markdown
-from ..capture.timestamps import parse_capture_path_timestamp, parse_capture_stem
+from ..capture.timestamps import parse_capture_path_timestamp
 from ..config import Config
 from ..logger import get
 from ..parsers import parser_for_capture
@@ -208,18 +208,6 @@ def _focus_structured_with_outcome(
     if fallback_bundle is not None:
         return "", fallback_bundle, "fallback", None
     return "", None, None, None
-
-
-def _capture_stem_in_window(stem: str, start: datetime, end: datetime) -> bool:
-    """Parse the filename stem back to a datetime and check window membership."""
-    ts = _stem_to_dt(stem)
-    if ts is None:
-        return False
-    return start <= ts < end
-
-
-def _stem_to_dt(stem: str) -> datetime | None:
-    return parse_capture_stem(stem)
 
 
 def captures_in_window(start: datetime, end: datetime) -> list[Path]:

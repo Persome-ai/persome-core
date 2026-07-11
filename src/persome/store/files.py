@@ -177,7 +177,6 @@ class ParsedFile:
     entry_count: int
     needs_compact: bool
     entries: list[ParsedEntry] = field(default_factory=list)
-    raw_frontmatter: dict[str, Any] = field(default_factory=dict)
 
 
 def memory_path(name: str) -> Path:
@@ -256,7 +255,6 @@ def read_file(path: Path) -> ParsedFile:
         entry_count=int(fm.get("entry_count", len(entries)) or 0),
         needs_compact=bool(fm.get("needs_compact", False)),
         entries=entries,
-        raw_frontmatter=fm,
     )
 
 

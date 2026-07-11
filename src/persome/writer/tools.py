@@ -369,16 +369,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
 
-# Re-exported for callers that need to know which tools are concurrency-safe
-# without importing from llm.py (avoid circular deps).
-CONCURRENCY_SAFE_TOOLS: frozenset[str] = frozenset(
-    {
-        "read_memory",
-        "search_memory",
-        "drill_chat_captures",
-    }
-)
-
 
 def _validate_tool_args(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
     """Validate tool args with Pydantic. Returns error dict on failure, None if valid."""

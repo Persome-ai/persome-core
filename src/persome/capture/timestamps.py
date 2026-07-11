@@ -83,17 +83,6 @@ def parse_capture_stem(stem: str) -> datetime | None:
     return parse_capture_timestamp(_stem_iso_value(match)) if match is not None else None
 
 
-def capture_stem_is_ambiguous_local_time(stem: str) -> bool:
-    """Whether a naive legacy ID falls in a local DST gap/repeated hour."""
-    match = _STEM_RE.fullmatch(stem)
-    if match is None:
-        return False
-    has_timezone = any(match.group(name) is not None for name in ("marker", "legacy_hour", "zulu"))
-    if has_timezone:
-        return False
-    return capture_timestamp_is_ambiguous_local_time(_stem_iso_value(match))
-
-
 def capture_timestamp_is_ambiguous_local_time(value: str) -> bool:
     """Whether a naive ISO value maps to two local offsets at a DST edge."""
     try:

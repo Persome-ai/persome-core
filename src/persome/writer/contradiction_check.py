@@ -76,7 +76,6 @@ class ContradictionRunResult:
     candidates: int = 0
     judged: int = 0
     flagged: int = 0
-    skipped_seen: int = 0
 
 
 def _bigrams(text: str) -> set[str]:
@@ -187,7 +186,6 @@ def run_contradiction_check(
     if not cfg.evomem.contradiction_check_enabled:
         return result
     seen = contradictions_store.seen_pairs(conn)
-    result.skipped_seen = len(seen)
     pairs = find_candidate_pairs(conn, max_pairs=cfg.evomem.contradiction_max_pairs, skip=seen)
     result.candidates = len(pairs)
     if not pairs:

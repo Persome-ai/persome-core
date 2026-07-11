@@ -44,7 +44,6 @@ _W_ACTIONS = 0.4
 _W_HOURS = 0.2
 
 _CENTRAL_MARKER = "central:"
-_SUMMARY_MARKER = "summary:"
 
 
 @dataclass
