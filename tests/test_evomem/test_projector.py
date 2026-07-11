@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -269,7 +268,7 @@ def test_projection_byte_identical_to_real_markdown(
         assert projected == original, name
 
 
-def test_projection_orphan_retire_diff_is_only_valid_until_tag(
+def test_projection_orphan_retire_round_trips_valid_until_tag(
     ac_root: Path, tmp_path: Path, _deterministic_ids
 ) -> None:
     with fts.cursor() as conn:
@@ -285,7 +284,5 @@ def test_projection_orphan_retire_diff_is_only_valid_until_tag(
 
     original = (paths.memory_dir() / "person-bob.md").read_text()
     projected = (out / "person-bob.md").read_text()
-    assert projected != original
-    stripped = re.sub(r" #valid-until:\S+", "", projected)
-    assert stripped == original
-    assert re.search(r"#valid-until:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", projected)
+    assert projected == original
+    assert "#valid-until:" in projected
