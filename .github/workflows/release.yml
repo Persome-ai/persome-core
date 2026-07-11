@@ -91,6 +91,7 @@ jobs:
               "mac-url-handlers.swift",
               "model_assets/LICENSE",
               "model_assets/three.module.js",
+              "model_assets/layout.mjs",
               "model_assets/viewer.css",
               "model_assets/viewer.js",
               "model_assets/jsm/controls/OrbitControls.js",

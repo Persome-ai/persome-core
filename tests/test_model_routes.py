@@ -64,17 +64,21 @@ class TestViewPage:
 
     def test_bundled_viewer_assets_are_served(self, ac_root):
         three = routes.model_asset("three.module.js")
+        layout = routes.model_asset("layout.mjs")
         viewer = routes.model_asset("viewer.js")
         css = routes.model_asset("viewer.css")
 
         assert len(three.body) > 1_000_000
         assert b"class WebGLRenderer" in three.body
+        assert b"computeClusterLayout" in layout.body
+        assert b'from "./layout.mjs"' in viewer.body
         assert b"model.points" in viewer.body
         assert b"model.lines" in viewer.body
         assert b"model.faces" in viewer.body
         assert b"model.volumes" in viewer.body
         assert b"model.root" in viewer.body
         assert viewer.media_type == "text/javascript"
+        assert layout.media_type == "text/javascript"
         assert css.media_type == "text/css"
 
 

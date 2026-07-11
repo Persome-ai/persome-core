@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+import { computeClusterLayout } from "./layout.mjs";
 
 const COLORS = {
   points: 0x25c2a0,
@@ -75,6 +76,9 @@ let pickables = [];
 let positions = new Map();
 let items = new Map();
 let layerObjects = freshLayerObjects();
+let currentLayout = null;
+let layoutRadius = 6;
+let framedRadius = 0;
 const layerVisible = { points: true, lines: true, faces: true, volumes: true, root: true };
 const raycaster = new THREE.Raycaster();
 raycaster.params.Line.threshold = 0.12;
@@ -96,6 +100,14 @@ function hash(text) {
 function shortLabel(text, max = 34) {
   const value = String(text || "Untitled").replace(/\s+/g, " ").trim();
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function strongestIds(values, limit) {
+  return new Set([...values].sort((left, right) => {
+    const leftStrength = Number(left.observations || 0) * 2 + Number(left.confidence || 0);
+    const rightStrength = Number(right.observations || 0) * 2 + Number(right.confidence || 0);
+    return rightStrength - leftStrength || String(left.id).localeCompare(String(right.id));
+  }).slice(0, limit).map((item) => item.id));
 }
 
 function itemTime(item) {
@@ -170,48 +182,33 @@ function disposeGraph() {
   layerObjects = freshLayerObjects();
 }
 
-function pointPosition(point, index, count) {
-  const offset = (hash(point.id) - 0.5) * 0.3;
-  const angle = ((index + 0.5) / Math.max(count, 1)) * Math.PI * 2 + offset;
-  const radius = 3.0 + (index % 2) * 0.45;
-  const height = -0.15 + (hash(`${point.id}:height`) - 0.5) * 0.45;
-  return new THREE.Vector3(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
-}
-
-function addPoint(point, position) {
+function addPoint(point, position, baseRadius, showLabel, promoted) {
   const active = point.is_latest && point.status === "active";
-  const geometry = new THREE.SphereGeometry(active ? 0.19 : 0.14, 24, 18);
+  const clusterScale = promoted ? 1 : 0.72;
+  const radius = (active ? baseRadius : baseRadius * 0.68) * clusterScale;
+  const geometry = new THREE.SphereGeometry(radius, 14, 10);
   const material = new THREE.MeshStandardMaterial({
     color: COLORS.points,
     emissive: COLORS.points,
-    emissiveIntensity: active ? 0.48 : 0.12,
+    emissiveIntensity: active ? (promoted ? 0.42 : 0.15) : 0.05,
     transparent: true,
-    opacity: active ? 0.98 : 0.35,
+    opacity: active ? (promoted ? 0.96 : 0.46) : (promoted ? 0.2 : 0.09),
     roughness: 0.35,
   });
   const mesh = registerPickable(new THREE.Mesh(geometry, material), "points", "point", point);
   mesh.position.copy(position);
-  addLabel(point.content, position.clone().add(new THREE.Vector3(0, 0.34, 0)), "points", active ? 55 : 25);
+  if (showLabel) {
+    addLabel(point.content, position.clone().add(new THREE.Vector3(0, radius + 0.16, 0)), "points", active ? 55 : 25);
+  }
 }
 
-function relationContextIds() {
-  const pointIds = new Set(model.points.map((point) => point.id));
-  const ids = new Set();
-  model.lines.filter((line) => line.kind === "relation" && visibleAt(line)).forEach((line) => {
-    if (!pointIds.has(line.source)) ids.add(line.source);
-    if (!pointIds.has(line.target)) ids.add(line.target);
-  });
-  return [...ids].sort();
-}
-
-function addContextNode(id, index, count) {
-  const angle = ((index + 0.5) / Math.max(count, 1)) * Math.PI * 2;
-  const position = new THREE.Vector3(Math.cos(angle) * 1.35, -1.05, Math.sin(angle) * 1.35);
+function addContextNode(id) {
+  const position = positions.get(id);
+  if (!position) return;
   const item = { id, content: id === "self" ? "USER" : id, kind: "context" };
-  positions.set(id, position);
   const mesh = registerPickable(
     new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.2, 0.2),
+      new THREE.BoxGeometry(0.14, 0.14, 0.14),
       new THREE.MeshStandardMaterial({ color: COLORS.context, roughness: 0.5 })
     ),
     "points",
@@ -219,60 +216,38 @@ function addContextNode(id, index, count) {
     item
   );
   mesh.position.copy(position);
-  addLabel(item.content, position.clone().add(new THREE.Vector3(0, 0.3, 0)), "points", 30, true);
-}
-
-function averagePositions(ids, fallback) {
-  const available = ids.map((id) => positions.get(id)).filter(Boolean);
-  if (!available.length) return fallback.clone();
-  return available.reduce((sum, value) => sum.add(value.clone()), new THREE.Vector3()).multiplyScalar(1 / available.length);
-}
-
-function faceSurface(memberPositions, apex, item) {
-  if (!memberPositions.length) return;
-  const vertices = [];
-  if (memberPositions.length === 1) {
-    const base = memberPositions[0];
-    vertices.push(
-      base.x - 0.34, base.y, base.z,
-      base.x + 0.34, base.y, base.z,
-      apex.x, apex.y, apex.z
-    );
-  } else {
-    for (let index = 0; index < memberPositions.length; index += 1) {
-      const first = memberPositions[index];
-      const second = memberPositions[(index + 1) % memberPositions.length];
-      vertices.push(first.x, first.y, first.z, second.x, second.y, second.z, apex.x, apex.y, apex.z);
-    }
+  if (id === "self" || hash(id) < 0.16) {
+    addLabel(item.content, position.clone().add(new THREE.Vector3(0, 0.24, 0)), "points", 30, true);
   }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.computeVertexNormals();
-  const mesh = registerPickable(
+}
+
+function addClusterHalo(memberPositions, center) {
+  if (memberPositions.length < 2) return;
+  const radius = Math.min(1.9, Math.max(0.55, ...memberPositions.map((member) => member.distanceTo(center))) + 0.18);
+  const mesh = register(
     new THREE.Mesh(
-      geometry,
-      new THREE.MeshStandardMaterial({
+      new THREE.SphereGeometry(1, 16, 10),
+      new THREE.MeshBasicMaterial({
         color: COLORS.faces,
         transparent: true,
-        opacity: 0.19,
-        side: THREE.DoubleSide,
+        opacity: 0.035,
+        wireframe: true,
         depthWrite: false,
-        roughness: 0.5,
       })
     ),
-    "faces",
-    "face",
-    item
+    "faces"
   );
+  mesh.position.copy(center);
+  mesh.scale.setScalar(radius);
   mesh.renderOrder = 1;
 }
 
-function addFace(face, index) {
-  const memberPositions = face.members.map((id) => positions.get(id)).filter(Boolean);
-  const position = averagePositions(face.members, new THREE.Vector3((index - 1) * 1.3, 0, 0));
-  position.y = 2.0 + index * 0.24;
-  positions.set(face.id, position);
-  faceSurface(memberPositions, position, face);
+function addFace(face, showLabel) {
+  const position = positions.get(face.id);
+  if (!position) return;
+  const memberIds = currentLayout?.facePointIds.get(face.id) || [];
+  const memberPositions = memberIds.map((id) => positions.get(id)).filter(Boolean);
+  addClusterHalo(memberPositions, position);
   const node = registerPickable(
     new THREE.Mesh(
       new THREE.OctahedronGeometry(0.28, 0),
@@ -288,14 +263,13 @@ function addFace(face, index) {
     face
   );
   node.position.copy(position);
-  addLabel(face.signature, position.clone().add(new THREE.Vector3(0, 0.4, 0)), "faces", 75);
-  memberPositions.forEach((member) => addLine(member, position, COLORS.hierarchy, 0.42, true, null));
+  if (showLabel) addLabel(face.signature, position.clone().add(new THREE.Vector3(0, 0.4, 0)), "faces", 75);
+  memberPositions.forEach((member) => addLine(member, position, COLORS.hierarchy, 0.1, true, null));
 }
 
-function addVolume(volume, index) {
-  const position = averagePositions(volume.members, new THREE.Vector3((index - 0.5) * 1.2, 3, 0));
-  position.y = 4.15 + index * 0.25;
-  positions.set(volume.id, position);
+function addVolume(volume, showLabel) {
+  const position = positions.get(volume.id);
+  if (!position) return;
   const mesh = registerPickable(
     new THREE.Mesh(
       new THREE.IcosahedronGeometry(0.48, 1),
@@ -313,18 +287,18 @@ function addVolume(volume, index) {
     volume
   );
   mesh.position.copy(position);
-  addLabel(volume.signature, position.clone().add(new THREE.Vector3(0, 0.55, 0)), "volumes", 90);
-  volume.members.map((id) => positions.get(id)).filter(Boolean)
-    .forEach((member) => addLine(member, position, COLORS.volumes, 0.5, false, null));
+  if (showLabel) addLabel(volume.signature, position.clone().add(new THREE.Vector3(0, 0.55, 0)), "volumes", 90);
+  const memberIds = currentLayout?.volumeFaceIds.get(volume.id) || [];
+  memberIds.map((id) => positions.get(id)).filter(Boolean)
+    .forEach((member) => addLine(member, position, COLORS.volumes, 0.22, false, null));
 }
 
 function addRoot(root) {
-  const position = averagePositions(root.members || [], new THREE.Vector3());
-  position.y = 6.05;
-  positions.set(root.id, position);
+  const position = positions.get(root.id);
+  if (!position) return;
   const mesh = registerPickable(
     new THREE.Mesh(
-      new THREE.DodecahedronGeometry(0.55, 0),
+      new THREE.DodecahedronGeometry(0.62, 0),
       new THREE.MeshStandardMaterial({
         color: COLORS.root,
         emissive: COLORS.root,
@@ -338,9 +312,9 @@ function addRoot(root) {
   );
   mesh.position.copy(position);
   addLabel(root.signature, position.clone().add(new THREE.Vector3(0, 0.66, 0)), "root", 120);
-  const parentIds = (root.members || []).length ? root.members : model.volumes.map((volume) => volume.id);
+  const parentIds = currentLayout?.rootVolumeIds || [];
   parentIds.map((id) => positions.get(id)).filter(Boolean)
-    .forEach((member) => addLine(member, position, COLORS.root, 0.58, false, null));
+    .forEach((member) => addLine(member, position, COLORS.root, 0.32, false, null));
 }
 
 function addModelLine(line) {
@@ -349,67 +323,93 @@ function addModelLine(line) {
   const end = positions.get(line.target);
   if (!start || !end) return;
   const evolution = line.kind === "evolution";
-  addLine(start, end, evolution ? COLORS.lines : 0x6ebf8e, evolution ? 0.9 : 0.72, !evolution, line);
+  const sourceCluster = currentLayout?.pointClusterById.get(line.source);
+  const targetCluster = currentLayout?.pointClusterById.get(line.target);
+  const sameCluster = sourceCluster && sourceCluster === targetCluster;
+  const opacity = evolution ? (sameCluster ? 0.34 : 0.08) : 0.34;
+  addLine(start, end, evolution ? COLORS.lines : 0x6ebf8e, opacity, !evolution, line);
 }
 
 function addGround() {
-  const grid = new THREE.GridHelper(11, 11, 0x30353d, 0x1b1f24);
-  grid.position.y = -1.25;
+  const size = Math.max(12, layoutRadius * 2.4);
+  const divisions = Math.max(10, Math.min(24, Math.round(size / 1.2)));
+  const grid = new THREE.GridHelper(size, divisions, 0x30353d, 0x1b1f24);
+  grid.position.y = (currentLayout?.diagnostics.bounds.min[1] || -3) - 0.8;
   const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
   materials.forEach((material) => {
     material.transparent = true;
-    material.opacity = 0.34;
+    material.opacity = 0.2;
   });
   graph.add(grid);
 }
 
 function buildScene() {
   disposeGraph();
+  const visiblePoints = model.points.filter(visibleAt).sort((a, b) => a.id.localeCompare(b.id));
+  const visibleFaces = model.faces.filter(visibleAt);
+  const visibleVolumes = model.volumes.filter(visibleAt);
+  const visibleRoot = model.root && visibleAt(model.root) ? model.root : null;
+  const visibleLines = model.lines.filter(visibleAt);
+  currentLayout = computeClusterLayout({
+    points: visiblePoints,
+    lines: visibleLines,
+    faces: visibleFaces,
+    volumes: visibleVolumes,
+    root: visibleRoot,
+  });
+  positions = new Map(
+    [...currentLayout.positions].map(([id, position]) => [id, new THREE.Vector3(...position)])
+  );
+  layoutRadius = currentLayout.diagnostics.bounds.radius;
+  scene.fog.density = Math.max(0.006, Math.min(0.018, 0.09 / Math.max(layoutRadius, 5)));
   addGround();
 
-  const visiblePoints = model.points.filter(visibleAt).sort((a, b) => a.id.localeCompare(b.id));
-  visiblePoints.forEach((point, index) => {
-    const position = pointPosition(point, index, visiblePoints.length);
-    positions.set(point.id, position);
-    addPoint(point, position);
+  const labelEveryPoint = visiblePoints.length <= 60;
+  const labeledFaces = strongestIds(visibleFaces, 10);
+  const labeledVolumes = strongestIds(visibleVolumes, 6);
+  visiblePoints.forEach((point) => {
+    const active = point.is_latest && point.status === "active";
+    const promoted = currentLayout.pointClusterById.get(point.id)?.startsWith("face:") || false;
+    const showLabel = labelEveryPoint || (promoted && (
+      currentLayout.directPointIds.has(point.id) || (active && hash(point.id) < 0.035)
+    ));
+    addPoint(point, positions.get(point.id), currentLayout.pointRadius, showLabel, promoted);
   });
-
-  const contextIds = relationContextIds();
-  contextIds.forEach((id, index) => addContextNode(id, index, contextIds.length));
-  model.lines.forEach(addModelLine);
-
-  const visibleFaces = model.faces.filter(visibleAt);
-  visibleFaces.forEach(addFace);
-  const visibleVolumes = model.volumes.filter(visibleAt);
-  visibleVolumes.forEach(addVolume);
-  if (model.root && visibleAt(model.root)) addRoot(model.root);
+  currentLayout.contextIds.forEach(addContextNode);
+  visibleLines.forEach(addModelLine);
+  visibleFaces.forEach((face) => addFace(face, labeledFaces.has(face.id)));
+  visibleVolumes.forEach((volume) => addVolume(volume, labeledVolumes.has(volume.id)));
+  if (visibleRoot) addRoot(visibleRoot);
 
   applyLayerVisibility();
   renderStatus();
   emptyEl.hidden = visiblePoints.length > 0;
+  frameLayout(false);
+  const renderedLines = visibleLines.filter((line) => positions.has(line.source) && positions.has(line.target)).length;
   window.__persomeViewerState = {
     schemaVersion: model.schema_version,
     commit: model.build?.core_commit || null,
     stats: model.stats,
     rendered: {
       points: visiblePoints.length,
-      lines: model.lines.filter((line) => positions.has(line.source) && positions.has(line.target)).length,
+      lines: renderedLines,
       faces: visibleFaces.length,
       volumes: visibleVolumes.length,
-      root: Boolean(model.root && visibleAt(model.root)),
-      context: contextIds.length,
+      root: Boolean(visibleRoot),
+      context: currentLayout.contextIds.length,
     },
     layers: { ...layerVisible },
+    layout: currentLayout.diagnostics,
   };
+  window.__persomeLayoutState = currentLayout.diagnostics;
   viewerEl.dataset.schemaVersion = String(model.schema_version || "");
   viewerEl.dataset.renderedPoints = String(visiblePoints.length);
-  viewerEl.dataset.renderedLines = String(
-    model.lines.filter((line) => positions.has(line.source) && positions.has(line.target)).length
-  );
+  viewerEl.dataset.renderedLines = String(renderedLines);
   viewerEl.dataset.renderedFaces = String(visibleFaces.length);
   viewerEl.dataset.renderedVolumes = String(visibleVolumes.length);
-  viewerEl.dataset.renderedRoot = String(Boolean(model.root && visibleAt(model.root)));
+  viewerEl.dataset.renderedRoot = String(Boolean(visibleRoot));
   viewerEl.dataset.coreCommit = model.build?.core_commit || "";
+  viewerEl.dataset.layoutVersion = currentLayout.diagnostics.version;
 }
 
 function renderStatus() {
@@ -568,17 +568,28 @@ async function loadModel(force = false) {
   }
 }
 
-function resetCamera() {
+function frameLayout(force) {
   const portrait = window.innerWidth / window.innerHeight < 0.72;
   portraitMode = portrait;
-  camera.position.set(portrait ? 8.5 : 8.2, portrait ? 8.6 : 7.2, portrait ? 17 : 12.5);
-  controls.target.set(0, 2.25, 0);
+  const radius = Math.max(4.8, layoutRadius);
+  if (!force && framedRadius > 0 && radius <= framedRadius * 1.16) return;
+  const direction = new THREE.Vector3(portrait ? 0.58 : 0.72, portrait ? 1.25 : 1.05, 1).normalize();
+  const distance = Math.max(portrait ? 15 : 12, radius * (portrait ? 3.0 : 2.55));
+  camera.position.copy(direction.multiplyScalar(distance));
+  controls.target.set(0, 0, 0);
+  controls.minDistance = Math.max(2.8, radius * 0.3);
+  controls.maxDistance = Math.max(32, radius * 5);
+  framedRadius = radius;
   controls.update();
+}
+
+function resetCamera() {
+  frameLayout(true);
 }
 
 function cullLabels() {
   const occupied = [];
-  const maxLabels = window.innerWidth < 760 ? 10 : 28;
+  const maxLabels = window.innerWidth < 760 ? 8 : 20;
   let shown = 0;
   const projected = new THREE.Vector3();
   const candidates = labels.filter((label) => label.visible).map((label) => {

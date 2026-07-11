@@ -264,6 +264,7 @@ def model_view() -> HTMLResponse:
 
 _MODEL_ASSETS = {
     "three.module.js",
+    "layout.mjs",
     "viewer.css",
     "viewer.js",
     "jsm/controls/OrbitControls.js",

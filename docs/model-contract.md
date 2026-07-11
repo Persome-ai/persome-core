@@ -46,6 +46,20 @@ A Face becomes active only after mined and emergent signals agree across stable 
 Volume has one honest producer (the cross-domain sweeper), so it becomes active after two stable
 sweeper resamples. This preserves the two-observation bar without inventing a second extractor.
 
+## Viewer layout
+
+The loopback viewer projects the snapshot as a deterministic hierarchy; it does not mutate or
+re-cluster stored model objects. Root stays at the center, Volumes occupy the inner shell, Faces
+form outward semantic clusters, and Points grow as stable local clouds around their primary Face.
+The viewer resolves Face membership through `member_receipts` and infers Volume-to-Face membership
+from inherited `source_receipts`, because stored `members` may be internal stable keys rather than
+public node IDs. Evolution-chain and same-source evidence inherit a Face cluster when possible;
+unpromoted evidence remains in deterministic source clusters instead of a flat global ring.
+
+The layout is append-stable for normal chronological growth: existing nodes keep their local
+coordinates while later evidence expands the surrounding cloud. `window.__persomeLayoutState`
+exposes aggregate layout health for local visual smoke tests without exposing node content or IDs.
+
 ## Evidence sources
 
 Relation edges may carry the nullable triplet `source_kind`, `source_id`, and `source_receipt`.
