@@ -2272,6 +2272,13 @@ def model_open() -> None:
     console.print("[green]Opened the authenticated local model viewer.[/green]")
 
 
+@model_app.callback(invoke_without_command=True)
+def model_default(ctx: typer.Context) -> None:
+    """Open the authenticated model viewer when no subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        model_open()
+
+
 @writer_app.command("run")
 def writer_run() -> None:
     """Reduce pending sessions and finish their personal-model stages."""

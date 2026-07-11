@@ -54,6 +54,16 @@ def test_model_open_exchanges_bearer_for_one_time_browser_url(ac_root: Path, mon
     assert token not in opened[0]
 
 
+def test_bare_model_command_opens_viewer(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    opened: list[bool] = []
+    monkeypatch.setattr(cli, "model_open", lambda: opened.append(True))
+
+    result = CliRunner().invoke(cli.app, ["model"])
+
+    assert result.exit_code == 0, result.output
+    assert opened == [True]
+
+
 def test_model_open_rejects_absolute_bootstrap_url(ac_root: Path, monkeypatch) -> None:
     monkeypatch.setenv(LOCAL_API_TOKEN_ENV, "t" * 48)
     monkeypatch.setattr(
