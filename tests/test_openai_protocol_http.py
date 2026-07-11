@@ -30,10 +30,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "body": body,
             }
         )
-        if body.get("stream"):
-            self._stream(body)
-        else:
-            self._json_completion(body)
+        self._json_completion(body)
 
     def _json_completion(self, body: dict[str, Any]) -> None:
         message: dict[str, Any] = {"role": "assistant", "content": "ok"}
@@ -68,45 +65,6 @@ class _Handler(BaseHTTPRequestHandler):
         raw = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
-
-    def _stream(self, body: dict[str, Any]) -> None:
-        has_tool_result = any(message.get("role") == "tool" for message in body["messages"])
-        if has_tool_result:
-            delta: dict[str, Any] = {"role": "assistant", "content": "tool result received"}
-            finish_reason = "stop"
-        else:
-            delta = {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "index": 0,
-                        "id": "call_1",
-                        "type": "function",
-                        "function": {"name": "lookup", "arguments": '{"query":"project"}'},
-                    }
-                ],
-            }
-            finish_reason = "tool_calls"
-        chunk = {
-            "id": "chatcmpl-stream",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": "test-model",
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": delta,
-                    "finish_reason": finish_reason,
-                }
-            ],
-        }
-        raw = f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)

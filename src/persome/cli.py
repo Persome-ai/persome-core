@@ -2872,6 +2872,7 @@ def clean_all(
         f"  - {tlb_count} timeline block(s)\n"
         f"  - {memory_count} memory file(s) and {entry_count} index entries\n"
         "  - canonical model, exports, backups, and logs\n"
+        "  - legacy Chat-era chat-history/ and skills/ trees (if present)\n"
         "[bold]Config, env, and the installed venv are kept.[/bold]"
     )
     if not _confirm("Proceed with full wipe?", yes):
