@@ -153,7 +153,7 @@ def check_local_api_token() -> Check:
     return Check(
         env_file_mod.LOCAL_API_TOKEN_ENV,
         "fail",
-        "missing or invalid — protected REST, Chat, viewer, and HTTP MCP are unavailable; "
+        "missing or invalid — protected REST, viewer, and HTTP MCP are unavailable; "
         "rerun install.sh to provision it",
     )
 

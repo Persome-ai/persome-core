@@ -1,7 +1,7 @@
 """§5 production read cutover — `retrieval.associative.associative_read`.
 
-The single router every query-time consumer (MCP search / chat memory tool /
-writer tool-loop) now hangs on. Deterministic, zero-LLM, zero-network (no
+The single router every query-time consumer (MCP search / writer tool-loop)
+now hangs on. Deterministic, zero-LLM, zero-network (no
 embedder → dense pool inert; the associative entrance's slot-less degrade IS
 search_hybrid, so parity is structural, and these tests pin the router's own
 contracts: kill-switch verbatim fallback, caller-bound precedence, the slot

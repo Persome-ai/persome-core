@@ -74,7 +74,7 @@ for _dep in (
     "opencv-contrib-python", "pyclipper", "pypdfium2", "python-bidi",
     "shapely", "imagesize", "lxml", "scikit-learn", "scipy",
     "safetensors", "einops", "ftfy", "regex",
-    "beautifulsoup4", "Jinja2", "latex2mathml", "openpyxl",
+    "Jinja2", "latex2mathml", "openpyxl",
     "premailer", "sentencepiece", "tiktoken",
 ):
     try:

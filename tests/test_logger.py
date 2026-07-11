@@ -46,7 +46,7 @@ def test_json_formatter_emits_jq_parseable_line_with_field_set() -> None:
 
 def test_json_formatter_carries_trace_id() -> None:
     fmt = logger_mod.JsonFormatter()
-    rec = _record(logging.INFO, "POST /chat")
+    rec = _record(logging.INFO, "POST /captures/ingest")
     rec.trace_id = "ab12cd34ef56"
 
     obj = json.loads(fmt.format(rec))

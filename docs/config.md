@@ -14,7 +14,7 @@ The daemon loads configuration once. Restart it after editing.
 
 ## Providers and stage models
 
-One profile powers semantic stages and Chat. Persome supports native Anthropic
+One profile powers the semantic stages. Persome supports native Anthropic
 Messages and OpenAI-compatible Chat Completions. Use the guided path instead of
 editing secrets by hand:
 
@@ -336,7 +336,7 @@ Hybrid retrieval automatically degrades to BM25 when no embeddings endpoint is
 configured. Query-time consumers use one associative entrance; absent entity,
 scene, time, or relation slots simply contribute no votes.
 
-## MCP and Chat
+## MCP
 
 ```toml
 [mcp]
@@ -346,36 +346,16 @@ host = "127.0.0.1"
 port = 8742
 read_receipt_enabled = true
 entity_graph_enabled = true
-
-[chat]
-# The complete models.default profile is inherited unless overridden here.
-thinking_budget = 0
-unsafe_local_tools_enabled = false
-mcp_connect_daemon = true
-
-# [[chat.mcp_servers]]
-# type = "http"
-# url = "http://127.0.0.1:9000/mcp"
 ```
 
-The daemon HTTP transport hosts MCP, REST, Chat routes, and `/model` on the same
+The daemon HTTP transport hosts MCP, REST routes, and `/model` on the same
 loopback port. `stdio` is started explicitly with `persome mcp`; do not use it
 as an in-daemon transport. HTTP requires the dedicated
 `PERSOME_LOCAL_API_TOKEN` provisioned in `<PERSOME_ROOT>/env`; automatic client
 installers prefer stdio so the token is not duplicated.
 
-Chat loads only user-installed `skills/` Markdown as model guidance;
-model-generated `memory/skills` content is data, never instructions.
-Executable `skills/*/tools.py`, shell, arbitrary filesystem, and Web tools load
-only when `unsafe_local_tools_enabled=true`, and the terminal client still asks
-for exact one-shot approval before execution. Configured external MCP servers
-are another explicit trust expansion and their calls use the same approval
-boundary. The REST Chat surface refuses calls needing approval. The Runtime
-ships a terminal client (`persome chat`), not a browser Chat page.
-
-Anthropic profiles retain prompt caching and optional extended thinking.
-OpenAI-compatible profiles use streamed Chat Completions and the same built-in
-and MCP tools; `thinking_budget` is ignored on that protocol.
+A stale `[chat]` table left behind by a release that still shipped the removed
+Chat feature is silently ignored.
 
 ## Privacy and API flags
 

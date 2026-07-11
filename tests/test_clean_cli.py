@@ -97,16 +97,17 @@ def test_clean_memory_removes_canonical_model_exports_and_backups(ac_root) -> No
         assert conn.execute("SELECT COUNT(*) FROM captures").fetchone()[0] == 1
 
 
-def test_clean_all_keeps_only_install_configuration_and_custom_skills(ac_root) -> None:
+def test_clean_all_keeps_only_install_configuration(ac_root) -> None:
     _seed_capture()
     _seed_model()
     paths.config_file().write_text("[capture]\n")
     paths.env_file().write_text("PERSOME_LLM_API_KEY=synthetic\n")
     (paths.root() / "venv").mkdir()
-    paths.skills_dir().mkdir()
-    (paths.skills_dir() / "custom.md").write_text("Synthetic skill.")
+    # Legacy Chat-era data from an older install: a full wipe must still purge it.
     (paths.root() / "chat-history").mkdir()
     (paths.root() / "chat-history" / "active.json").write_text("[]")
+    (paths.root() / "skills").mkdir()
+    (paths.root() / "skills" / "custom.md").write_text("Synthetic legacy skill.")
     paths.logs_dir().mkdir(exist_ok=True)
     (paths.logs_dir() / "daemon.log").write_text("synthetic")
 
@@ -115,12 +116,12 @@ def test_clean_all_keeps_only_install_configuration_and_custom_skills(ac_root) -
     assert paths.config_file().exists()
     assert paths.env_file().exists()
     assert (paths.root() / "venv").is_dir()
-    assert (paths.skills_dir() / "custom.md").exists()
     for deleted in (
         paths.capture_buffer_dir(),
         paths.memory_dir(),
         paths.logs_dir(),
         paths.root() / "chat-history",
+        paths.root() / "skills",
         paths.index_db(),
     ):
         assert not deleted.exists()

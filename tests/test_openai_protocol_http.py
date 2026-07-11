@@ -8,10 +8,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-import pytest
-
-from persome.chat.agent import ChatAgent
-from persome.config import ChatConfig, Config, ModelConfig
+from persome.config import Config, ModelConfig
 from persome.llm_setup import probe_profile
 from persome.providers import make_profile
 from persome.writer.llm import call_llm, extract_text
@@ -175,40 +172,3 @@ def test_onboarding_probe_uses_real_openai_sdk(monkeypatch) -> None:
     assert result.tool_call_ok is True
     assert len(requests) == 2
     assert requests[1]["body"]["tool_choice"]["function"]["name"] == "persome_setup_check"
-
-
-@pytest.mark.asyncio
-async def test_chat_uses_real_openai_sdk_streaming_tool_loop(monkeypatch) -> None:
-    monkeypatch.setenv("PERSOME_LLM_API_KEY", "wire-secret")
-    with _server() as (base_url, requests):
-        cfg = ChatConfig(
-            provider="custom-openai",
-            protocol="openai",
-            model="test-model",
-            base_url=base_url,
-            api_key_env="PERSOME_LLM_API_KEY",
-        )
-        schema = {
-            "type": "function",
-            "function": {
-                "name": "lookup",
-                "description": "Look up memory",
-                "parameters": {"type": "object", "properties": {}},
-            },
-        }
-        seen: list[dict[str, Any]] = []
-        agent = ChatAgent(
-            cfg,
-            [schema],
-            {"lookup": lambda arguments: seen.append(arguments) or {"ok": True}},
-        )
-        messages = [{"role": "user", "content": "Use the tool"}]
-
-        result = await agent.run_turn(messages, "Use tools when needed.")
-        await agent.aclose()
-
-    assert result.error is None
-    assert result.assistant_message == "tool result received"
-    assert seen == [{"query": "project"}]
-    assert len(requests) == 2
-    assert requests[1]["body"]["messages"][-1]["role"] == "tool"

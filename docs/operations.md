@@ -5,7 +5,7 @@ inspection, correction, export, erasure, and uninstall behavior.
 
 ## Support matrix
 
-| Host | AX capture | PP-OCRv6 | Daemon, MCP, Chat, model |
+| Host | AX capture | PP-OCRv6 | Daemon, MCP, model |
 |---|---|---|---|
 | macOS 13+ Apple Silicon | yes | yes, bundled and local | supported |
 | macOS 13+ Intel | yes | no compatible Paddle runtime | supported without OCR |
@@ -43,7 +43,7 @@ explicit opt-out.
 | `capture-buffer/` | AX text and optional encrypted screenshot payloads |
 | `memory/` | readable Markdown memory |
 | `index.db` | FTS, canonical evomem nodes, relations, sessions, and geometry |
-| `chat-history/` | local terminal/API Chat sessions |
+| `chat-history/`, `skills/` | legacy Chat-era data from older releases; purged by `persome clean all` |
 | `exports/` | redacted model exports by default; mode `0600` |
 | `backup/` | SQLite safety snapshots containing personal model state |
 | `logs/` | daemon and launchd logs; may contain operational context |
@@ -133,12 +133,12 @@ persome stop
 
 # Delete every file under memory/, FTS entries, canonical evomem, relations,
 # Faces, Volumes, Root, exports, projections, backups, and recovery markers.
-# Captures/timeline/Chat remain.
+# Captures/timeline remain.
 persome clean memory
 
 # Delete all personal data, including captures, timeline/session state, model,
-# Chat history, exports, backups, logs, and SQLite files. Keep config, env,
-# installed venv, and custom skills.
+# legacy Chat-era history and skills, exports, backups, logs, and SQLite files.
+# Keep config, env, and the installed venv.
 persome clean all
 ```
 

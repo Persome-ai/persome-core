@@ -5,7 +5,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from . import paths
 from . import providers as provider_mod
@@ -365,7 +365,7 @@ class SearchConfig:
     slot_pool_weight: float = 0.3
     relation_pool_weight: float = 1.0
     # §5 production read cutover (memory-rebuild §3.2): query-time consumers (MCP
-    # search / chat memory tool / writer tool-loop) route through
+    # search / writer tool-loop) route through
     # retrieval.associative.associative_read — zero-LLM Q distillation feeding the
     # multi-head entrance, degrading to search_hybrid on slot-less queries. ON by
     # default per the 2026-07-03 sweep verdict (exact parity at the 0.3 weights);
@@ -408,48 +408,6 @@ class MCPConfig:
 
 
 @dataclass
-class UserConfig:
-    # The name of the person this instance belongs to.
-    # When set, the chat system prompt will tell the model who it is talking to,
-    # so questions like "who am I" are answered correctly in first/second person.
-    name: str = ""
-
-
-@dataclass
-class MCPServerSpec:
-    """One external MCP server the chat agent should connect to as a client."""
-
-    type: Literal["http", "stdio"] = "http"
-    url: str = ""  # for type="http" (streamable-http endpoint)
-    command: str = ""  # for type="stdio" (executable name)
-    args: list[str] = field(default_factory=list)  # extra args for stdio command
-
-
-@dataclass
-class ChatConfig:
-    # Chat inherits the default model profile unless one of these values is
-    # explicitly overridden under [chat].
-    model: str = "deepseek-v4-flash"
-    provider: str = ""
-    protocol: str = ""
-    api_key_env: str = ""
-    base_url: str = ""
-    # Extended thinking (Anthropic "thinking" block). 0 disables (default —
-    # safe for non-reasoning models like deepseek-v4-flash). Set to >=1024
-    # to enable; requires a reasoning-capable model (Claude Opus/Sonnet 4.5+,
-    # claude-haiku-4+, deepseek-reasoner via /anthropic gateway, etc.).
-    # Streamed back to the UI as ``type: reasoning`` SSE frames.
-    thinking_budget: int = 0
-    # Shell, arbitrary filesystem, and web tools expand Chat beyond the default
-    # model-access boundary. They are available only by explicit opt-in.
-    unsafe_local_tools_enabled: bool = False
-    # MCP client connections: the chat agent connects to these as a client so the
-    # model can invoke their tools alongside the built-in tool set.
-    mcp_connect_daemon: bool = True  # auto-connect to daemon's own MCP server
-    mcp_servers: list[MCPServerSpec] = field(default_factory=list)  # extra servers
-
-
-@dataclass
 class Config:
     models: dict[str, ModelConfig] = field(default_factory=dict)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
@@ -467,8 +425,6 @@ class Config:
     orphan_reaper: OrphanReaperConfig = field(default_factory=OrphanReaperConfig)
     skill_check: SkillCheckConfig = field(default_factory=SkillCheckConfig)
     schema: SchemaConfig = field(default_factory=SchemaConfig)
-    user: UserConfig = field(default_factory=UserConfig)
-    chat: ChatConfig = field(default_factory=ChatConfig)
     # Cross-cutting runtime/model feature flags. Capture privacy controls live
     # under CaptureConfig because capture workers receive that object directly.
     api_require_local_origin: bool = True
@@ -525,42 +481,6 @@ def _build_dataclass(cls, raw: dict):  # type: ignore[no-untyped-def]
     return cls(**allowed)
 
 
-def _build_chat(raw: dict, default_model: ModelConfig) -> ChatConfig:
-    # The LLM route inherits from [models.default]. Chat-only controls remain
-    # independent. Explicit [chat] values override only their matching fields.
-    default_is_explicit = bool(default_model.provider or default_model.protocol)
-    inherited = (
-        {
-            "model": default_model.model,
-            "provider": default_model.provider,
-            "protocol": default_model.protocol,
-            "api_key_env": default_model.api_key_env,
-            "base_url": default_model.base_url,
-        }
-        if default_is_explicit
-        else {}
-    )
-    scalar_fields = {
-        k: v for k, v in raw.items() if k in ChatConfig.__dataclass_fields__ and k != "mcp_servers"
-    }
-    if not raw.get("provider") and not raw.get("protocol"):
-        # Old ChatConfig ignored these keys. Do not let stale TOML silently
-        # override a newly selected default route during migration.
-        scalar_fields.pop("api_key_env", None)
-        scalar_fields.pop("base_url", None)
-    cfg = ChatConfig(**{**inherited, **scalar_fields})
-    # Parse [[chat.mcp_servers]] array-of-tables
-    raw_servers = raw.get("mcp_servers", [])
-    if isinstance(raw_servers, list):
-        for entry in raw_servers:
-            if isinstance(entry, dict):
-                allowed = {
-                    k: v for k, v in entry.items() if k in MCPServerSpec.__dataclass_fields__
-                }
-                cfg.mcp_servers.append(MCPServerSpec(**allowed))
-    return cfg
-
-
 def _build_capture(raw: dict) -> CaptureConfig:
     """Build `[capture]`, accepting the former top-level privacy keys."""
     section = dict(_as_dict(raw.get("capture")))
@@ -606,8 +526,6 @@ def load(path: Path | None = None) -> Config:
         orphan_reaper=_build_dataclass(OrphanReaperConfig, _as_dict(raw.get("orphan_reaper"))),
         skill_check=_build_dataclass(SkillCheckConfig, _as_dict(raw.get("skill_check"))),
         schema=_build_dataclass(SchemaConfig, _as_dict(raw.get("schema"))),
-        user=_build_dataclass(UserConfig, _as_dict(raw.get("user"))),
-        chat=_build_chat(_as_dict(raw.get("chat")), models["default"]),
         # Competitive-enhancement flat toggles (spec 2026-06-23): top-level TOML
         # scalars so config.toml can override the safe defaults.
         api_require_local_origin=bool(raw.get("api_require_local_origin", True)),
@@ -619,7 +537,7 @@ def load(path: Path | None = None) -> Config:
 
 
 DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
-# One verified profile powers timeline reduction, personal modeling, and Chat.
+# One verified profile powers timeline reduction and personal modeling.
 # Persome supports Anthropic Messages and OpenAI-compatible Chat Completions.
 # Run `persome llm setup` to choose a provider and enter its key. Provider presets
 # supply the endpoint and default model, then Persome tests completion + tool
@@ -628,7 +546,7 @@ DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
 #
 # API keys never belong in this file. The active secret is always named
 # PERSOME_LLM_API_KEY and lives in ~/.persome/env (mode 0600). Endpoints are not
-# secrets and are stored here so Chat and daemon subprocesses use the same route.
+# secrets and are stored here so daemon subprocesses use the same route.
 # `persome llm providers` lists hosted/local presets. Azure and custom compatible
 # gateways use the clearly separated advanced setup path.
 
@@ -638,12 +556,6 @@ person_graph_enabled = true
 case_extraction_enabled = true
 relation_extraction_enabled = false
 edge_promote_fanout = 20
-
-[user]
-# Your name — tells the chat assistant who it is talking to.
-# When set, questions like "who am I" or "who is <your name>" will be answered
-# in second person rather than as a third-party lookup.
-# name = "Alice"
 
 [models.default]
 # `persome llm setup` writes provider, protocol, model, base_url, and the
@@ -781,25 +693,6 @@ entity_graph_enabled = true       # Register direct entity-graph reads
 transport = "streamable-http"     # "streamable-http" | "sse" (deprecated 2026-04-01) | "stdio"
 host = "127.0.0.1"                # bind address; loopback only (non-loopback is rejected)
 port = 8742
-
-[chat]
-# Chat inherits the complete [models.default] provider profile. Override model,
-# provider, protocol, or base_url here only when Chat intentionally uses another
-# endpoint. The active credential remains PERSOME_LLM_API_KEY.
-# thinking_budget applies only to Anthropic models.
-# thinking_budget = 0
-unsafe_local_tools_enabled = false # opt in to shell, arbitrary filesystem, and web tools
-mcp_connect_daemon = true         # auto-connect to the daemon's own MCP server
-
-# Add extra MCP servers the chat agent should connect to:
-# [[chat.mcp_servers]]
-# type = "http"
-# url = "http://127.0.0.1:9000/mcp"
-#
-# [[chat.mcp_servers]]
-# type = "stdio"
-# command = "mcp-filesystem"
-# args = ["--root", "/Users/me/projects"]
 
 [skill_check]
 enabled = true                    # detect skill matches inside the per-minute timeline LLM call

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from persome.chat.tool_handlers import tool_read_memory, tool_search_memory
 from persome.store import entries as entries_mod
 from persome.store import fts
 
@@ -122,69 +121,6 @@ def test_supersede_with_no_prior_retrievals_does_not_create_row(ac_root: Path) -
         # also without a row.
         assert _new_count(conn, old) == 0
         assert _new_count(conn, new_id) == 0
-
-
-def test_search_memory_chat_handler_increments(ac_root: Path) -> None:
-    """The chat tool handler path (LLM-driven retrieval) increments counts too."""
-    with fts.cursor() as conn:
-        entries_mod.create_file(
-            conn,
-            name="topic-async.md",
-            description="async patterns",
-            tags=["topic"],
-        )
-        eid = entries_mod.append_entry(
-            conn,
-            name="topic-async.md",
-            content="Curio and Trio inspired structured concurrency.",
-            tags=["topic"],
-        )
-    result = tool_search_memory({"query": "structured concurrency", "top_k": 5})
-    assert any(r["id"] == eid for r in result)
-    with fts.cursor() as conn:
-        assert _new_count(conn, eid) == 1
-
-
-def test_read_memory_increments_for_returned_entries(ac_root: Path) -> None:
-    with fts.cursor() as conn:
-        entries_mod.create_file(
-            conn,
-            name="user-preferences.md",
-            description="prefs",
-            tags=["preferences"],
-        )
-        eid1 = entries_mod.append_entry(
-            conn,
-            name="user-preferences.md",
-            content="prefers dark mode",
-            tags=["preferences"],
-        )
-        eid2 = entries_mod.append_entry(
-            conn,
-            name="user-preferences.md",
-            content="prefers tabs over spaces",
-            tags=["preferences"],
-        )
-
-    result = tool_read_memory({"path": "user-preferences.md"})
-    assert {e["id"] for e in result["entries"]} == {eid1, eid2}
-    with fts.cursor() as conn:
-        assert _new_count(conn, eid1) == 1
-        assert _new_count(conn, eid2) == 1
-
-
-def test_read_memory_tail_n_only_increments_tail(ac_root: Path) -> None:
-    with fts.cursor() as conn:
-        entries_mod.create_file(conn, name="topic-x.md", description="x", tags=["topic"])
-        eid1 = entries_mod.append_entry(conn, name="topic-x.md", content="first", tags=["topic"])
-        eid2 = entries_mod.append_entry(conn, name="topic-x.md", content="second", tags=["topic"])
-        eid3 = entries_mod.append_entry(conn, name="topic-x.md", content="third", tags=["topic"])
-
-    tool_read_memory({"path": "topic-x.md", "tail_n": 1})
-    with fts.cursor() as conn:
-        assert _new_count(conn, eid1) == 0
-        assert _new_count(conn, eid2) == 0
-        assert _new_count(conn, eid3) == 1
 
 
 def test_increment_retrieval_counts_noop_on_empty(ac_root: Path) -> None:

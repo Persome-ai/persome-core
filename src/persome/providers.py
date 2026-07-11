@@ -404,7 +404,7 @@ def _legacy_anthropic_profile(model_cfg: Any) -> ResolvedLLMProfile | None:
 
 
 def resolve_profile(model_cfg: Any) -> ResolvedLLMProfile:
-    """Resolve a model/chat config into one complete runtime profile."""
+    """Resolve a model config into one complete runtime profile."""
     legacy = _legacy_anthropic_profile(model_cfg)
     if legacy is not None:
         return legacy

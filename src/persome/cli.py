@@ -1351,7 +1351,7 @@ def llm_setup(
     allow_no_tools: bool = typer.Option(
         False,
         "--allow-no-tools",
-        help="Save even when tool calling cannot be confirmed (modeling/Chat may degrade).",
+        help="Save even when tool calling cannot be confirmed (modeling may degrade).",
     ),
     skip_check: bool = typer.Option(
         False,
@@ -1527,7 +1527,7 @@ def llm_setup(
             break
         console.print(
             "[yellow]The endpoint completed a prompt, but this model did not call the test "
-            "tool. Persome modeling and Chat rely on tool calling.[/yellow]"
+            "tool. Persome modeling relies on tool calling.[/yellow]"
         )
         if result.error:
             console.print(f"[dim]{result.error}[/dim]")
@@ -2602,16 +2602,6 @@ def config() -> None:
     console.print(p.read_text())
 
 
-@app.command()
-def chat() -> None:
-    """Interactive chat with memory-aware tool calling."""
-    env_file_mod.load_env_file(paths.env_file())
-    cfg = _init()
-    from .chat import run_chat_sync
-
-    run_chat_sync(cfg)
-
-
 clean_app = typer.Typer(help="Delete past data. Destructive — use with care.")
 app.add_typer(clean_app, name="clean")
 
@@ -2844,7 +2834,7 @@ def clean_memory(
 def clean_all(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
-    """Delete all personal data while keeping config, env, venv, and custom skills."""
+    """Delete all personal data while keeping config, env, and the installed venv."""
     _require_stopped_for_clean()
     _init()
     buf = paths.capture_buffer_dir()
@@ -2860,8 +2850,8 @@ def clean_all(
         f"  - {capture_count} capture file(s)\n"
         f"  - {tlb_count} timeline block(s)\n"
         f"  - {memory_count} memory file(s) and {entry_count} index entries\n"
-        "  - canonical model, exports, backups, Chat history, and logs\n"
-        "[bold]Config, env, installed venv, and custom skills are kept.[/bold]"
+        "  - canonical model, exports, backups, and logs\n"
+        "[bold]Config, env, and the installed venv are kept.[/bold]"
     )
     if not _confirm("Proceed with full wipe?", yes):
         console.print("[yellow]Aborted.[/yellow]")
@@ -2874,7 +2864,10 @@ def clean_all(
         paths.exports_dir(),
         paths.backup_dir(),
         paths.root() / "projection-md",
+        # Legacy Chat-era data written by versions that still shipped the Chat
+        # feature; keep purging it so a full wipe stays a full wipe.
         paths.root() / "chat-history",
+        paths.root() / "skills",
         paths.index_db(),
         paths.index_db().with_name(f"{paths.index_db().name}-wal"),
         paths.index_db().with_name(f"{paths.index_db().name}-shm"),
@@ -2901,7 +2894,7 @@ def clean_all(
     )
     console.print(
         f"[green]Done. Removed {removed} personal data artifact(s). "
-        "Config, env, venv, and custom skills were kept.[/green]"
+        "Config, env, and the installed venv were kept.[/green]"
     )
 
 

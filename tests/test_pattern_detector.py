@@ -311,3 +311,33 @@ def test_collect_candidates_uses_durable_event_memory_not_intents(ac_root: Path)
     assert "intents" not in candidates
     assert candidates["event_memory"][0]["id"] == entry_id
     assert candidates["event_memory"][0]["receipt"] == (f"⟨{entry_id}:event-2026-05-11.md⟩")
+
+
+def test_pattern_detector_renders_durable_event_memory(ac_root: Path) -> None:
+    now = datetime.now().astimezone()
+    with fts.cursor() as conn:
+        entries_store.create_file(
+            conn,
+            name="event-2026-07-10.md",
+            description="Synthetic completed activity",
+            tags=["event"],
+        )
+        entry_id = entries_store.append_entry(
+            conn,
+            name="event-2026-07-10.md",
+            content="Reviewed the Persome runtime architecture.",
+            tags=["work"],
+        )
+        candidates = pd_mod._collect_candidates(
+            conn,
+            lookback_start=now - timedelta(days=7),
+            window_end=now + timedelta(minutes=1),
+            min_occurrences=2,
+        )
+        assert "event_memory" in candidates
+        ctx = pd_mod._assemble_context(
+            candidates=candidates, event_daily_path="event-x.md", session_id="s1"
+        )
+        assert "Durable event memory" in ctx
+        assert "Reviewed the Persome runtime architecture." in ctx
+        assert f"⟨{entry_id}:event-2026-07-10.md⟩" in ctx

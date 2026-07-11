@@ -79,6 +79,8 @@ model = "gpt-5.4-nano"
 api_key_env = "OPENAI_API_KEY"
 api_key = "sk-old"
 
+# Stale [chat] table from an install that predates the Chat removal — load()
+# must silently ignore it rather than crash.
 [chat]
 api_key_env = "LEGACY_CHAT_API_KEY"
 api_key = "sk-old"
@@ -89,16 +91,12 @@ base_url = "https://api.example/anthropic"
     default = cfg.model_for("default")
     assert not hasattr(default, "api_key")
     assert default.api_key_env == "OPENAI_API_KEY"
-    assert not hasattr(cfg.chat, "api_key")
-    assert cfg.chat.model == "deepseek-v4-flash"
-    assert cfg.chat.api_key_env == ""
-    assert cfg.chat.base_url == ""
+    assert not hasattr(cfg, "chat")
 
     from persome.providers import resolve_profile
 
     assert resolve_profile(default).legacy is True
     assert resolve_profile(default).protocol == "anthropic"
-    assert resolve_profile(cfg.chat).legacy is True
 
 
 def test_write_default_creates_file(tmp_path: Path) -> None:
@@ -133,25 +131,3 @@ def test_infer_provider() -> None:
     # Unknown bare names default to openai (litellm's own default).
     assert config.infer_provider("gpt-5.4-nano") == "openai"
     assert config.infer_provider("mystery-model") == "openai"
-
-
-def test_chat_inherits_default_provider_profile(tmp_path: Path) -> None:
-    path = tmp_path / "config.toml"
-    path.write_text(
-        """
-[models.default]
-provider = "openrouter"
-protocol = "openai"
-model = "anthropic/claude-sonnet-4"
-base_url = "https://openrouter.ai/api/v1"
-api_key_env = "PERSOME_LLM_API_KEY"
-
-[chat]
-thinking_budget = 0
-"""
-    )
-    cfg = config.load(path)
-    assert cfg.chat.provider == "openrouter"
-    assert cfg.chat.protocol == "openai"
-    assert cfg.chat.model == "anthropic/claude-sonnet-4"
-    assert cfg.chat.api_key_env == "PERSOME_LLM_API_KEY"

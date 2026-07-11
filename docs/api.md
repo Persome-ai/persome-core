@@ -1,8 +1,8 @@
 # HTTP API
 
 Persome exposes a deliberately small loopback HTTP API from the same ASGI
-application that hosts MCP. HTTP owns health, trusted capture ingestion, the
-model explorer, and optional Chat. Memory retrieval and correction live in MCP.
+application that hosts MCP. HTTP owns health, trusted capture ingestion, and
+the model explorer. Memory retrieval and correction live in MCP.
 
 The generated contract is [`openapi.json`](../openapi.json). Regenerate it after
 route or model changes:
@@ -39,26 +39,6 @@ the explicit `GET /status?check_models=true` request and are cached briefly.
 `/status.data.ocr` reports the configured tier, Runtime and model availability,
 kill switch, Screen Recording, and effective readiness. `/health` exposes only
 the compact OCR state because it is the unauthenticated liveness route.
-
-## Chat routes
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET, POST | `/chat/sessions` | List or create local chat sessions. |
-| GET, DELETE | `/chat/sessions/{session_id}` | Read or delete a session. |
-| GET, POST | `/chat/sessions/{session_id}/messages` | Read messages or stream a reply. |
-
-Chat consumes the same memory and provenance interfaces as MCP. It is not a
-second model store. Shell, arbitrary filesystem, and Web tools are omitted by
-default. The terminal client requires `[chat] unsafe_local_tools_enabled =
-true` plus exact one-shot approval for each call. HTTP Chat has no trusted
-approval channel and refuses these calls. Only user-installed skill Markdown
-can load as guidance; model-generated `memory/skills` content is excluded.
-Configured external MCP servers are separate explicit trust grants and their
-calls also need approval.
-
-There is no browser Chat page in this repository. `persome chat` is the shipped
-interactive client; the routes above support trusted local product clients.
 
 ## Model contract
 

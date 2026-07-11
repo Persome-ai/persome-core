@@ -1,13 +1,13 @@
 """The API middleware must stay *pure ASGI* — never Starlette BaseHTTPMiddleware.
 
 ``BaseHTTPMiddleware`` pumps the response body through an anyio memory stream, which
-breaks long-lived streaming responses such as Chat message SSE
+breaks long-lived streaming responses: a client disconnect
 surfaces as ``RuntimeError("No response returned")`` and uvicorn logs a spurious HTTP
 500. These tests pin the transport behavior without depending on a product event route.
-These tests pin the fix: (1) the API app carries no ``BaseHTTPMiddleware``, and (2) an
-SSE response streams cleanly *through* the three pure-ASGI middleware. The middleware's
-actual behaviour (trace id, access log, origin/host guard) stays covered by
-``test_trace_middleware.py`` and ``test_api_origin_guard.py``.
+These tests pin the fix: (1) the API app carries no ``BaseHTTPMiddleware``, and (2) a
+streaming response passes cleanly *through* the three pure-ASGI middleware. The
+middleware's actual behaviour (trace id, access log, origin/host guard) stays covered
+by ``test_trace_middleware.py`` and ``test_api_origin_guard.py``.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import StreamingResponse
 
 from persome.api import (
     _AccessLogMiddleware,
@@ -45,22 +46,20 @@ def test_origin_guard_is_outermost() -> None:
 
 
 def test_sse_streams_through_all_three_middleware() -> None:
-    """A finite SSE response passes cleanly through the pure-ASGI stack and arrives
-    intact — the streaming case BaseHTTPMiddleware buffered/broke."""
-    from sse_starlette.sse import EventSourceResponse
-
+    """A finite SSE-style response passes cleanly through the pure-ASGI stack and
+    arrives intact — the streaming case BaseHTTPMiddleware buffered/broke."""
     app = FastAPI()
     app.add_middleware(_AccessLogMiddleware)
     app.add_middleware(_TraceIdMiddleware)
     app.add_middleware(_OriginGuardMiddleware, require_local_origin=True)
 
     @app.get("/sse")
-    async def _sse() -> EventSourceResponse:
+    async def _sse() -> StreamingResponse:
         async def _gen():
-            yield {"data": json.dumps({"n": 1})}
-            yield {"data": json.dumps({"n": 2})}
+            yield f"data: {json.dumps({'n': 1})}\n\n"
+            yield f"data: {json.dumps({'n': 2})}\n\n"
 
-        return EventSourceResponse(_gen())
+        return StreamingResponse(_gen(), media_type="text/event-stream")
 
     client = TestClient(app, headers={"host": "127.0.0.1"})
     resp = client.get("/sse")

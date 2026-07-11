@@ -93,10 +93,6 @@ def backup_dir() -> Path:
     return root() / "backup"
 
 
-def skills_dir() -> Path:
-    return root() / "skills"
-
-
 def launchd_stdout_log() -> Path:
     """stdout sink for the launchd-managed daemon. Lives under logs/ so the
     diagnostic bundle (which globs logs/) collects it automatically."""
@@ -300,8 +296,10 @@ def _migrate_existing_permissions() -> None:
         logs_dir(),
         exports_dir(),
         backup_dir(),
-        skills_dir(),
         root() / "projection-md",
+        # Legacy trees written by versions that shipped the removed Chat
+        # feature; existing installs keep owner-only permissions on them.
+        root() / "skills",
         root() / "chat-history",
     )
     for tree in private_trees:
@@ -355,8 +353,9 @@ def ensure_dirs() -> None:
     for d in (
         exports_dir(),
         backup_dir(),
-        skills_dir(),
         root() / "projection-md",
+        # Legacy Chat-era trees — protected when present, never created.
+        root() / "skills",
         root() / "chat-history",
     ):
         if d.exists():

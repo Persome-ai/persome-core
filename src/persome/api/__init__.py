@@ -26,11 +26,10 @@ from ..security.body_limit import (
     RequestConcurrencyLimitMiddleware,
 )
 from ..trace import generate_trace_id, set_trace_id
-from .chat_routes import set_config as _set_chat_config
 from .routes import router
 from .routes import set_config as _set_route_config
 
-_access_logger = _get_logger("persome.api.chat")
+_access_logger = _get_logger("persome.api.access")
 
 # ── Local-origin guard helpers (see _OriginGuardMiddleware) ───────────────────
 _LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
@@ -69,24 +68,23 @@ def _is_rebinding_host(host: str | None) -> bool:
 # ── Middleware: PURE ASGI, deliberately NOT BaseHTTPMiddleware ────────────────
 # Starlette's ``BaseHTTPMiddleware`` / ``@app.middleware("http")`` pumps the
 # response body through an anyio memory stream, which is incompatible with a
-# long-lived streaming response (such as Chat message SSE): when the client
+# long-lived streaming response: when the client
 # disconnects, the pump raises ``anyio.EndOfStream`` / ``CancelledError`` and the
 # middleware ends with ``RuntimeError: No response returned``, which uvicorn logs
 # as a spurious HTTP 500. Pure ASGI middleware passes
-# ``receive`` / ``send`` straight through, so an SSE disconnect is a clean
+# ``receive`` / ``send`` straight through, so a streaming disconnect is a clean
 # cancellation the route handles — no synthetic 500. Keep these pure ASGI; do not
 # reintroduce BaseHTTPMiddleware on this app (tests/test_api_middleware_asgi.py).
 
 
 class _AccessLogMiddleware:
-    """4xx/5xx + /chat/* access trail to ``~/.persome/logs/chat.log``.
+    """4xx/5xx access trail to ``~/.persome/logs/api.log``.
 
     Uvicorn's own access log isn't wired (this app is mounted into FastMCP's
     Starlette rather than launched via ``uvicorn.run(...)``), so this is the only
-    honest access trail. Filter to keep chat.log signal/noise sane:
+    honest access trail. Filter to keep api.log signal/noise sane:
       - 4xx / 5xx anywhere    → WARNING   (always interesting)
-      - 2xx / 3xx on /chat/*  → INFO      (the feature we care about)
-      - 2xx / 3xx elsewhere   → skip      (eg. /health polling, /status)
+      - 2xx / 3xx             → skip      (eg. /health polling, /status)
     Status is sniffed off the ``http.response.start`` ASGI message.
     """
 
@@ -112,8 +110,6 @@ class _AccessLogMiddleware:
         method = scope["method"]
         if status >= 400:
             _access_logger.warning("%s %s -> %d (%.0fms)", method, path, status, elapsed_ms)
-        elif path.startswith("/chat/"):
-            _access_logger.info("%s %s -> %d (%.0fms)", method, path, status, elapsed_ms)
 
 
 class _TraceIdMiddleware:
@@ -259,7 +255,6 @@ def render_openapi_json() -> str:
     """
     cfg = Config()
     _set_route_config(cfg)
-    _set_chat_config(cfg)
     app = build_api_app(cfg, auth_enabled=False)
     return json.dumps(app.openapi_schema, indent=2, ensure_ascii=False) + "\n"
 
@@ -275,12 +270,10 @@ def register_routes(
     Called from :func:`persome.mcp.server.build_server` before the
     server is returned.
     """
-    from .chat_routes import set_config as set_chat_config
     from .routes import set_config
 
     # Wire config so endpoints can resolve settings without re-reading disk
     set_config(cfg)
-    set_chat_config(cfg)
 
     api_app = build_api_app(cfg, auth_enabled=auth_enabled)
     server._custom_starlette_routes.append(Mount("", app=api_app))

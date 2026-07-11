@@ -95,11 +95,9 @@ use streamable HTTP or stdio.
 - `get_model_snapshot` redacts by default.
 - `remember` and `correct_memory` are deliberate writes with audit history.
 
-The daemon HTTP endpoint also serves `/model`, but no browser Chat UI. Open the
+The daemon HTTP endpoint also serves `/model`. Open the
 viewer with `persome model open`; it uses a short-lived, one-time browser
-capability rather than placing the long-lived token in a URL. Use `persome
-chat` for the bundled interactive client or the authenticated Chat REST routes
-from a trusted local application.
+capability rather than placing the long-lived token in a URL.
 
 See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) for the full data and egress
 model. The implementation-oriented reference remains

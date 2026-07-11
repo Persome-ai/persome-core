@@ -162,8 +162,7 @@ def associative_read(
     mmr_diversity: float = 0.0,
 ) -> Any:
     """The PRODUCTION read entrance (§3.2/§5 cutover — the single choke point
-    every query-time consumer hangs on: MCP search, the chat memory tool, the
-    writer tool-loop).
+    every query-time consumer hangs on: MCP search and the writer tool-loop).
 
     Distills the caller's query into the multi-slot Q (zero LLM) and routes
     through ``fts.search_associative`` — which itself degrades to

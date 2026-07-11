@@ -2,7 +2,7 @@
 
 **The local-first Personal Model Runtime for macOS.** Persome observes the apps
 you already use, turns cross-app activity into an inspectable model of a real
-person, and serves that model to Chat and MCP agents.
+person, and serves that model to MCP agents.
 
 [![CI](https://github.com/Persome-ai/persome-core/actions/workflows/ci.yml/badge.svg)](https://github.com/Persome-ai/persome-core/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Persome-ai/persome-core)](https://github.com/Persome-ai/persome-core/releases)
@@ -27,8 +27,7 @@ Persome runs quietly on one Mac and does four jobs:
    optional on-device OCR fallback for AX-poor surfaces.
 2. **Model** observations into sourced facts, evolving relations, stable
    patterns, cross-domain structure, and one current Root.
-3. **Serve** local memory and model tools over MCP, plus an optional terminal
-   Chat that uses the same tools.
+3. **Serve** local memory and model tools over MCP.
 4. **Give control back** through receipts, time travel, correction, export, and
    deletion.
 
@@ -164,7 +163,6 @@ cloud recorder.
 
 - Authenticated streamable HTTP MCP: `http://127.0.0.1:8742/mcp`
 - stdio MCP: `persome mcp`
-- Local Chat: `persome chat`
 - Stable model contract: `persome model export` and `GET /model/graph`
 - Evidence tools: `search`, `read_receipt`, `verify_fact`, and
   `get_model_snapshot`
@@ -286,7 +284,7 @@ flowchart LR
   PL --> FV[Faces and Volumes]
   FV --> ROOT[Root]
   PL --> RET[BM25 and optional dense retrieval]
-  FV --> MCP[MCP, Chat, export, viewer]
+  FV --> MCP[MCP, export, viewer]
   ROOT --> MCP
   RET --> MCP
 ```
@@ -350,8 +348,6 @@ advice, export sensitivity, reset behavior, and manual removal steps.
 - MCP capture tools can return raw screen text, titles, URLs, and focused-field
   values. Bearer/stdio access is a personal-data capability; connect only
   clients you trust.
-- Model-generated memory never becomes trusted Chat skill instructions;
-  unsafe/external Chat tools require exact one-shot terminal approval.
 - Screenshots are omitted from MCP by default and encrypted at rest when
   retention is enabled.
 - `persome model export` is redacted by default; `--raw` is an explicit opt-out.

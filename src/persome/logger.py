@@ -145,13 +145,9 @@ def setup(*, console: bool = True, verbose: bool = False) -> None:
     _sink("persome.session", "session.log", level=level, human=human_files)
     _sink("persome.daemon", "daemon.log", level=level, human=human_files)
     _sink("persome.mcp", "daemon.log", level=level, human=human_files)
-    # Chat: previously silently dropped. ``persome.chat`` covers the
-    # agent loop (turn start/end/error + tool elapsed in chat/agent.py);
-    # ``persome.api.chat`` covers HTTP request handling (send_message
-    # exceptions in chat_routes.py + access log middleware in api/__init__.py).
-    # Both flow to a single ``chat.log``.
-    _sink("persome.chat", "chat.log", level=level, human=human_files)
-    _sink("persome.api.chat", "chat.log", level=level, human=human_files)
+    # ``persome.api.access`` covers the REST 4xx/5xx access trail written by
+    # the access-log middleware in api/__init__.py.
+    _sink("persome.api.access", "api.log", level=level, human=human_files)
 
     _INITIALIZED = True
 

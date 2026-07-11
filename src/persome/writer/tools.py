@@ -72,7 +72,7 @@ def tool_search_memory(
             path_patterns=path_patterns,
         )
     else:
-        # §5 read cutover (same single choke point as MCP/chat)
+        # §5 read cutover (same single choke point as MCP)
         from ..retrieval import associative as assoc_mod
 
         hits = assoc_mod.associative_read(

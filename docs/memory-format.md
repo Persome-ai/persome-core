@@ -108,8 +108,7 @@ consolidation_cadence = 8    # drain flagged files every N completed passes
 **Reading.** Any tool that can read Markdown works. `grep -r user- ~/.persome/memory/` is a valid first pass.
 
 **Writing.** Use `persome correct` or an explicitly trusted MCP client's
-`remember` / `correct_memory` tools. Bundled Chat's implicit daemon connection
-is read-only. Direct editing depends on write authority:
+`remember` / `correct_memory` tools. Direct editing depends on write authority:
 
 - Under default `write_authority="markdown"`, edit Markdown only when you intend
   to own the correction, then run `persome rebuild-index`.

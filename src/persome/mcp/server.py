@@ -757,7 +757,7 @@ def _protect_http_app(app: Any, *, host: str, auth_enabled: bool) -> Any:
 
     FastMCP's own bearer hook requires authentication only on its MCP route;
     custom REST mounts are otherwise left open.  Wrapping the final SDK app is
-    therefore the single outer boundary for MCP, REST, Chat, and future custom
+    therefore the single outer boundary for MCP, REST, and future custom
     routes.  Keep this helper composable with other outer ASGI limits.
     """
     if auth_enabled:
@@ -1405,7 +1405,7 @@ def build_server(
 
     @server.tool()
     def remember(content: str, tags: str = "", run_id: str = "") -> str:
-        """Write a durable finding back into Persome memory so later agents and Chat
+        """Write a durable finding back into Persome memory so later agents
         can reuse it. Call this when you learn
         something durable about the user, their project, a tool, or a decision while running.
 

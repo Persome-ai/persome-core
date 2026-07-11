@@ -89,7 +89,7 @@ def test_corrupt_config_is_quarantined_and_default_rebuilt(ac_root: Path) -> Non
     # A fresh default config was written and parses cleanly.
     assert config.exists()
     loaded = config_mod.load()
-    assert loaded.chat.model  # default template populated something sane.
+    assert loaded.models["default"].model  # default template populated something sane.
 
 
 def test_recovery_marker_written_with_paths(ac_root: Path) -> None:

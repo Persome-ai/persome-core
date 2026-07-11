@@ -74,18 +74,16 @@ port = 8742
 ## Security and privacy
 
 - The HTTP transport is loopback-only by default.
-- HTTP MCP uses the same required bearer boundary as REST and Chat; only
+- HTTP MCP uses the same required bearer boundary as REST; only
   canonical `GET /health` is public.
 - MCP returns local personal data, including raw screen text from capture tools;
   only connect trusted clients.
 - The MCP server does not forward results to a model provider by itself. A
-  connected agent may do so, and Persome Chat sends invoked tool results to its
-  configured Runtime LLM endpoint.
+  connected agent may do so.
 - Screenshots are excluded unless a tool call explicitly requests one.
 - `get_model_snapshot` redacts detectable secrets and local paths by default.
 - Write tools are explicit and auditable; the removed computer-use tools are
   not part of this server.
 
-The same loopback ASGI app serves `/model` and the authenticated Chat REST
-routes. Use `persome model open` for a one-time browser bootstrap. The Runtime
-does not ship a browser Chat page; `persome chat` is its interactive client.
+The same loopback ASGI app serves `/model` and the authenticated REST
+routes. Use `persome model open` for a one-time browser bootstrap.
