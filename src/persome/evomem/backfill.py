@@ -119,7 +119,7 @@ def map_entry_to_node(
     agent_id: str,
 ) -> MemoryNode:
     superseded = entries_mod._superseded_from_tags(e)
-    content = entries_mod._strip_strike(e.body) if superseded else e.body
+    content = entries_mod._content_from_markdown_entry(e, superseded=superseded)
     chain_is_latest = 0 if superseded else 1
     ts = _parse_minute_iso(e.timestamp)
     schema_summary = schema_inferences = schema_confidence = None
