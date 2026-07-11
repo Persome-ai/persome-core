@@ -490,6 +490,35 @@ def doctor() -> None:
         raise typer.Exit(code=1)
 
 
+@app.command()
+def onboard(
+    tier: str = typer.Option("tiny", "--tier", help="OCR tier: tiny | small | medium."),
+    gui: bool = typer.Option(
+        True,
+        "--gui/--no-gui",
+        help="Use native macOS dialogs (falls back to terminal prompts).",
+    ),
+) -> None:
+    """Grant capture permissions, verify OCR, start Persome, and prove capture."""
+    from . import onboarding as onboarding_mod
+
+    _init()
+    env_file_mod.load_env_file(paths.env_file())
+    try:
+        proof = onboarding_mod.onboard(tier=tier, gui=gui)
+    except onboarding_mod.OnboardingCancelled as exc:
+        console.print(f"[yellow]Onboarding stopped: {exc}.[/yellow]")
+        raise typer.Exit(1) from exc
+    except onboarding_mod.OnboardingError as exc:
+        console.print(f"[red]Onboarding failed: {exc}.[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print("[green]✓ Accessibility granted[/green]")
+    console.print("[green]✓ Local OCR and Screen Recording ready[/green]")
+    console.print(f"[green]✓ Persome running and healthy[/green] (pid {proof.pid})")
+    console.print(f"[green]✓ Fresh capture verified[/green] ({proof.capture_path})")
+
+
 def _ping_stages(cfg: config_mod.Config, stages: tuple[str, ...]) -> dict:
     """Probe each stage's configured model, deduping identical configs.
 
@@ -573,17 +602,9 @@ app.add_typer(ocr_app, name="ocr")
 
 
 def _open_screen_recording_settings() -> None:
-    if sys.platform != "darwin":
-        return
-    subprocess.run(
-        [
-            "open",
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        ],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    from .onboarding import open_screen_recording_settings
+
+    open_screen_recording_settings()
 
 
 @ocr_app.command("setup")
@@ -1357,7 +1378,7 @@ def llm_setup(
     allow_no_tools: bool = typer.Option(
         False,
         "--allow-no-tools",
-        help="Save even when tool calling cannot be confirmed (modeling/Chat may degrade).",
+        help="Save even when tool calling cannot be confirmed (modeling may degrade).",
     ),
     skip_check: bool = typer.Option(
         False,
@@ -1533,7 +1554,7 @@ def llm_setup(
             break
         console.print(
             "[yellow]The endpoint completed a prompt, but this model did not call the test "
-            "tool. Persome modeling and Chat rely on tool calling.[/yellow]"
+            "tool. Persome modeling relies on tool calling.[/yellow]"
         )
         if result.error:
             console.print(f"[dim]{result.error}[/dim]")
@@ -2608,16 +2629,6 @@ def config() -> None:
     console.print(p.read_text())
 
 
-@app.command()
-def chat() -> None:
-    """Interactive chat with memory-aware tool calling."""
-    env_file_mod.load_env_file(paths.env_file())
-    cfg = _init()
-    from .chat import run_chat_sync
-
-    run_chat_sync(cfg)
-
-
 clean_app = typer.Typer(help="Delete past data. Destructive — use with care.")
 app.add_typer(clean_app, name="clean")
 
@@ -2850,7 +2861,7 @@ def clean_memory(
 def clean_all(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
-    """Delete all personal data while keeping config, env, venv, and custom skills."""
+    """Delete all personal data while keeping config, env, and the installed venv."""
     _require_stopped_for_clean()
     _init()
     buf = paths.capture_buffer_dir()
@@ -2866,8 +2877,9 @@ def clean_all(
         f"  - {capture_count} capture file(s)\n"
         f"  - {tlb_count} timeline block(s)\n"
         f"  - {memory_count} memory file(s) and {entry_count} index entries\n"
-        "  - canonical model, exports, backups, Chat history, and logs\n"
-        "[bold]Config, env, installed venv, and custom skills are kept.[/bold]"
+        "  - canonical model, exports, backups, and logs\n"
+        "  - legacy Chat-era chat-history/ and skills/ trees (if present)\n"
+        "[bold]Config, env, and the installed venv are kept.[/bold]"
     )
     if not _confirm("Proceed with full wipe?", yes):
         console.print("[yellow]Aborted.[/yellow]")
@@ -2880,7 +2892,10 @@ def clean_all(
         paths.exports_dir(),
         paths.backup_dir(),
         paths.root() / "projection-md",
+        # Legacy Chat-era data written by versions that still shipped the Chat
+        # feature; keep purging it so a full wipe stays a full wipe.
         paths.root() / "chat-history",
+        paths.root() / "skills",
         paths.index_db(),
         paths.index_db().with_name(f"{paths.index_db().name}-wal"),
         paths.index_db().with_name(f"{paths.index_db().name}-shm"),
@@ -2907,7 +2922,7 @@ def clean_all(
     )
     console.print(
         f"[green]Done. Removed {removed} personal data artifact(s). "
-        "Config, env, venv, and custom skills were kept.[/green]"
+        "Config, env, and the installed venv were kept.[/green]"
     )
 
 

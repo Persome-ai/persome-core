@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -207,3 +209,22 @@ def test_resolve_watcher_path_darwin_smoke() -> None:
     """On real macOS, resolution returns a Path or None without raising."""
     result = watcher._resolve_watcher_path()
     assert result is None or hasattr(result, "is_file")
+
+
+def test_request_accessibility_uses_one_shot_native_watcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary = tmp_path / "mac-ax-watcher"
+    binary.write_text("", encoding="utf-8")
+    binary.chmod(0o755)
+    seen: list[list[str]] = []
+    monkeypatch.setattr(watcher, "_resolve_watcher_path", lambda: binary)
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        seen.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(watcher.subprocess, "run", fake_run)
+
+    assert watcher.request_accessibility_permission() is True
+    assert seen == [[str(binary), "--request-accessibility"]]

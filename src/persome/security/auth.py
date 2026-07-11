@@ -1,4 +1,4 @@
-"""One bearer-token boundary for daemon-hosted HTTP, REST, Chat, and MCP.
+"""One bearer-token boundary for daemon-hosted HTTP, REST, and MCP.
 
 The daemon's owner-only env file is loaded into :mod:`os.environ` before the
 runtime starts.  This module deliberately reads only ``PERSOME_LOCAL_API_TOKEN``

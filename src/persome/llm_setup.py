@@ -36,7 +36,7 @@ def probe_profile(profile: ResolvedLLMProfile, *, timeout: float = 20.0) -> Prob
 
     A successful completion is the hard connectivity gate. Tool calling is
     reported separately because some compatible models authenticate correctly
-    but cannot run Persome's modeling and Chat tool loops.
+    but cannot run Persome's modeling tool loops.
     """
     started = time.monotonic()
     try:

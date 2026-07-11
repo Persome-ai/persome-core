@@ -13,8 +13,8 @@ identifiers:
 abstract: >-
   Local-first screen-context memory daemon for macOS. It captures Accessibility
   tree events, distills them into persistent Markdown memory and SQLite indexes,
-  builds an auditable personal model, and exposes that model through MCP, Chat,
-  and a local browser viewer.
+  builds an auditable personal model, and exposes that model through MCP and a
+  local browser viewer.
 authors:
   - name: "Persome contributors"
 keywords:

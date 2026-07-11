@@ -1,7 +1,7 @@
 [project]
 name = "persome-core"
 version = "0.2.2"
-description = "Local-first macOS Runtime for screen-context memory, personal modeling, Chat, and MCP."
+description = "Local-first macOS Runtime for screen-context memory, personal modeling, and MCP."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
@@ -31,7 +31,6 @@ dependencies = [
     # of relying on FastAPI or MCP to keep pulling them transitively.
     "pydantic>=2.7",
     "starlette>=0.40",
-    "sse-starlette>=2.1",
     # Directly required: the daemon serves the FastAPI/MCP ASGI app via uvicorn.
     # Currently pulled in transitively by `mcp`, but we depend on it ourselves —
     # declare it so a future `mcp` slim-down can't silently break the server.
@@ -51,12 +50,6 @@ dependencies = [
     # Vector retrieval and the OCR in-process decode path import numpy directly;
     # do not rely on the transitive copy pulled in by Paddle on arm64.
     "numpy>=1.26",
-]
-
-[project.optional-dependencies]
-chat = [
-    "ddgs>=7.0",
-    "beautifulsoup4>=4.12",
 ]
 
 [project.scripts]

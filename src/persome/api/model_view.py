@@ -88,6 +88,3 @@ def render_memory_view(base_path: str = "/model/") -> str:
     if _MODEL_BASE_RE.fullmatch(base_path) is None:
         raise ValueError("invalid model viewer base path")
     return _MEMORY_VIEW_TEMPLATE.replace("__PERSOME_MODEL_BASE__", base_path)
-
-
-MEMORY_VIEW_HTML = render_memory_view()

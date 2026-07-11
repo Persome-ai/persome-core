@@ -32,7 +32,6 @@ flowchart LR
     EVO --> BUILD["case, schema, cross-domain, Root, layout"]
     BUILD --> SNAP["versioned personal model"]
     SNAP --> MCP["MCP"]
-    SNAP --> CHAT["Chat"]
     SNAP --> VIEW["localhost /model"]
 ```
 
@@ -111,7 +110,7 @@ The registry in `src/persome/daemon.py` is the authoritative task list.
 | `vector-embed-tick` | Every 60 seconds when hybrid retrieval is enabled; drains the embedding queue. It is a no-op without credentials. |
 | `model-refresh` | Every `schema.refresh_minutes` when new Point/Line evidence exists; refreshes Face/Volume/Root. |
 | `schema-tick` | At 00:15 by default; invokes the shared personal-model build. |
-| `mcp` | Hosts streamable HTTP MCP, REST, Chat routes, and `/model`; restarts with backoff after a crash. |
+| `mcp` | Hosts streamable HTTP MCP, REST routes, and `/model`; restarts with backoff after a crash. |
 
 `--capture-only` keeps `capture`, `session`, `reducer-retry`, the daily safety
 net, and configured MCP. It disables timeline, flush, classifier, vectors, and
@@ -141,8 +140,6 @@ readers and writers coexist under WAL mode.
 
 - **CLI:** lifecycle, recovery, inspection, correction, and model build/export.
 - **MCP:** memory/model reads, provenance drill-down, and explicit audited writes.
-- **Chat:** `persome chat` or the loopback Chat REST routes; it uses the same
-  memory and model, not a second store.
 - **Viewer:** `persome model open` while the daemon HTTP server is active. It
   exchanges the owner bearer for a one-time browser capability, then reads
   `/model/graph` and packaged local Three.js assets.

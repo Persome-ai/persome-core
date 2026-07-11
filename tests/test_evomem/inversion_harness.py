@@ -18,11 +18,10 @@ FROZEN_MINUTE = "2026-06-11T10:00"
 
 
 _MARKER_LINE_RE = re.compile(r"^projected: .*\n", re.MULTILINE)
-_VALID_UNTIL_TAG_RE = re.compile(r" #valid-until:\S+")
 
 
 def normalize_projection(text: str) -> str:
-    return _VALID_UNTIL_TAG_RE.sub("", _MARKER_LINE_RE.sub("", text))
+    return _MARKER_LINE_RE.sub("", text)
 
 
 @dataclass

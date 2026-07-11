@@ -35,7 +35,6 @@ class ExtractionResult:
     deterministic_count: int = 0
     llm_count: int = 0
     reinforced: int = 0  # open edges whose evidence-count strength grew this run
-    skipped: int = 0
 
     @property
     def written_count(self) -> int:
@@ -69,7 +68,6 @@ class _Activity:
     identity: str
     label: str
     quote: str
-    status: str
     participants: list[str]  # canonical person identities (consolidated only)
     ts: str | None = None  # source-event time — the activity edge's valid_from
     source_kind: str = ""
@@ -215,7 +213,6 @@ def _load_terminal_activities(conn, people: _People) -> list[_Activity]:
                 identity=event.stable_id,
                 label="activity",
                 quote=event.summary,
-                status="completed",
                 participants=participants,
                 ts=event.occurred_at,
                 source_kind=event.source_kind,

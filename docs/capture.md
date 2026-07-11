@@ -4,8 +4,10 @@ Capture is the only layer that touches the outside world. It produces one JSON f
 
 Live capture requires macOS Accessibility permission for the process that runs
 Persome. Screen Recording is additionally required when screenshots or OCR are
-enabled. `install.sh` enables and verifies bundled OCR on supported Apple
-Silicon Macs, then requests Screen Recording from the same Runtime identity.
+enabled. In an interactive install, `persome onboard` explains and requests
+Accessibility and Screen Recording separately, verifies bundled OCR on
+supported Apple Silicon Macs, starts the daemon, checks local health, and proves
+one fresh capture before returning success.
 
 ## Two signal sources
 
@@ -29,9 +31,11 @@ The same capture scheduler also invokes `SessionManager.on_event` (wired as a `p
 
 ## Local OCR fallback
 
-The installer runs `persome ocr setup`, which checks the native Runtime and
-bundled weights, requests Screen Recording, starts the isolated worker, and
-writes `enable_ocr_fallback = true` only after the worker initializes. The
+The installer runs `persome onboard`, whose OCR step checks the native Runtime
+and bundled weights, requests Screen Recording after an explicit explanation,
+starts the isolated worker, and writes `enable_ocr_fallback = true` only after
+the worker initializes. The standalone `persome ocr setup` repair command keeps
+the same worker and persistence checks. The
 focused screenshot is used locally and is never placed in an LLM prompt. The
 OCR path is:
 
@@ -50,6 +54,7 @@ loaded at all. `PERSOME_OCR_IN_PROCESS=1` exists only for debugging and removes
 that isolation.
 
 ```bash
+persome onboard            # permissions + OCR + daemon + health + fresh capture
 persome ocr setup          # enable, request permission, verify worker
 persome ocr status         # quick config/runtime/model/TCC state
 persome ocr status --check # also start and verify the worker engine

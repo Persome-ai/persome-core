@@ -217,12 +217,3 @@ def _startup_timeout_from_env() -> float:
         return float(os.environ.get("PERSOME_OCR_WORKER_STARTUP_TIMEOUT", "120"))
     except ValueError:
         return 120.0
-
-
-def reset_client_for_tests(client: OCRWorkerClient | None) -> None:
-    """Swap the module singleton (tests only)."""
-    global _client
-    with _client_lock:
-        if _client is not None:
-            _client.shutdown()
-        _client = client

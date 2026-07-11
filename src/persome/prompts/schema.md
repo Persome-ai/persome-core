@@ -18,7 +18,7 @@
 | `person-` | Another person the user mentions or interacts with | person-alice.md |
 | `org-` | A company, team, or institution | org-anthropic.md |
 | `event-` | **Session-level activity log.** One file per day: `event-YYYY-MM-DD.md`. Each entry is a time-ranged sub-task list written by the S2 reducer (the Classifier never writes here). Scheduled events / appointments / interviews belong in the non-event file for whichever entity anchors them (person-/org-/project-) when they represent a durable fact; transient occurrences stay in the event log only. | event-2026-04-22.md |
-| `skills/skill-` | **Observed behavioral patterns.** Stores repeated, evidence-backed sequences and context-dependent habits. Written by the pattern detector and readable by Chat as personalization guidance. | skills/skill-morning-routine.md |
+| `skills/skill-` | **Observed behavioral patterns.** Stores repeated, evidence-backed sequences and context-dependent habits. Written by the pattern detector and consumable by connected agents as personalization guidance. | skills/skill-morning-routine.md |
 
 `event-YYYY-MM-DD.md` is **owned by the S2 reducer, not the classifier.** You never write there. Transient one-off activity ("had a 1:1 with Alice on Tuesday") is already in that file — do not mirror it into a durable file just because it has a date. Only durable facts with lasting value belong in the non-event files.
 

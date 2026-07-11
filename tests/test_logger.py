@@ -46,7 +46,7 @@ def test_json_formatter_emits_jq_parseable_line_with_field_set() -> None:
 
 def test_json_formatter_carries_trace_id() -> None:
     fmt = logger_mod.JsonFormatter()
-    rec = _record(logging.INFO, "POST /chat")
+    rec = _record(logging.INFO, "POST /captures/ingest")
     rec.trace_id = "ab12cd34ef56"
 
     obj = json.loads(fmt.format(rec))
@@ -169,3 +169,23 @@ def test_log_handler_rejects_symlink_without_touching_victim(ac_root: Path) -> N
 
     assert victim.read_text(encoding="utf-8") == "ORIGINAL\n"
     assert stat.S_IMODE(victim.stat().st_mode) == 0o644
+
+
+def test_setup_time_cleanup_removes_stale_chat_logs(ac_root: Path) -> None:
+    """chat.log* from a Chat-era install has no sink anymore — setup() must
+    sweep it while leaving live sinks' files alone."""
+    from persome import paths
+
+    # Fresh module state so setup() actually runs (same pattern as above).
+    logger_mod._INITIALIZED = False
+    logging.getLogger().handlers.clear()
+
+    (paths.logs_dir() / "chat.log").write_text("stale", encoding="utf-8")
+    (paths.logs_dir() / "chat.log.2").write_text("stale rotation", encoding="utf-8")
+    (paths.logs_dir() / "api.log").write_text("live", encoding="utf-8")
+
+    logger_mod.setup(console=False)
+
+    assert not (paths.logs_dir() / "chat.log").exists()
+    assert not (paths.logs_dir() / "chat.log.2").exists()
+    assert (paths.logs_dir() / "api.log").read_text(encoding="utf-8") == "live"

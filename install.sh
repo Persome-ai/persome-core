@@ -16,6 +16,7 @@ INSTALL_BIN_DIR=""
 PYTHON_TARGET=""
 INSTALL_TRANSACTION_ACTIVE=0
 OLD_VENV_BACKUP=""
+ONBOARDING_COMPLETED=0
 
 rollback_uncommitted_install() {
   local status=$?
@@ -57,8 +58,8 @@ usage() {
 Usage: bash install.sh [options]
 
 Installs Persome into a dedicated virtualenv, compiles the macOS AX
-helpers, creates a `persome` shim, and optionally injects MCP config
-into detected clients.
+helpers, creates a `persome` shim, runs permission/runtime onboarding in an
+interactive session, and optionally injects MCP config into detected clients.
 
 Options:
   --python <version>       Python version to target when a managed runtime is needed
@@ -519,19 +520,25 @@ PY
   echo "you never need to enter or manage it manually."
 }
 
-configure_ocr() {
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Local OCR Setup"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo "Persome enables bundled PP-OCRv6 for AX-poor apps such as WeChat and"
-  echo "Feishu. Recognition runs in an isolated local process with no API key,"
-  echo "upload, or network model download. macOS will request Screen Recording."
-  echo ""
-  if ! PERSOME_ROOT="${INSTALL_HOME}" "${INSTALL_BIN_DIR}/persome" ocr setup --tier tiny; then
-    warn "OCR is not ready; grant Screen Recording and rerun 'persome ocr setup'"
+run_onboarding() {
+  if [[ ! -t 0 ]]; then
+    log "non-interactive install: run 'persome onboard' from a logged-in macOS session"
+    return 0
   fi
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Permission and Runtime Onboarding"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  echo "Persome will explain and request Accessibility and Screen Recording in"
+  echo "separate macOS dialogs. It then verifies local OCR, starts the daemon,"
+  echo "checks the local health endpoint, and writes one fresh capture."
+  echo ""
+  if ! PERSOME_ROOT="${INSTALL_HOME}" "${INSTALL_BIN_DIR}/persome" onboard --tier tiny; then
+    die "onboarding is incomplete; rerun 'persome onboard' to finish permissions and runtime verification"
+  fi
+  ONBOARDING_COMPLETED=1
 }
 
 ensure_screenshot_key() {
@@ -596,18 +603,9 @@ Virtualenv   : ${VENV_DIR}
 CLI shim     : ${INSTALL_BIN_DIR}/persome
 
 Next steps:
-  1. Grant Accessibility so Persome can read focused AX text and structure:
-     System Settings -> Privacy & Security -> Accessibility
-     The installer requested Screen Recording for on-device OCR and encrypted
-     screenshot capture. If it is still denied, enable the terminal or Persome
-     runtime entry shown by macOS under:
-     System Settings -> Privacy & Security -> Screen Recording
-     Persome does not require Full Disk Access or Automation permission.
-  2. Start the daemon:
-     persome start
-  3. Check status:
+  1. Check status:
      persome status
-  4. Open the live personal-model viewer:
+  2. Open the live personal-model viewer:
      persome model open
 
 Event memory can appear during a session's five-minute flushes. Points and Lines
@@ -630,6 +628,25 @@ Change or verify the LLM provider:
   persome llm setup
   persome llm status --check
 EOF
+
+  if [[ ${ONBOARDING_COMPLETED} -eq 1 ]]; then
+    cat <<'EOF'
+
+Onboarding proof:
+  - Accessibility was granted for focused AX text and structure.
+  - Screen Recording and the isolated local OCR worker were verified.
+  - Persome was started, its local health endpoint passed, and a fresh capture
+    record was written. Persome does not require Full Disk Access or Automation.
+EOF
+  else
+    cat <<'EOF'
+
+Onboarding pending:
+  This non-interactive install could not request macOS permissions. From a
+  logged-in macOS session, run `persome onboard`; it will not report success
+  until Accessibility, local OCR, daemon health, and a fresh capture all pass.
+EOF
+  fi
 
   case ":${PATH}:" in
     *":${INSTALL_BIN_DIR}:"*)
@@ -658,7 +675,7 @@ main() {
   install_shim
   inject_detected_clients
   maybe_configure_llm
-  configure_ocr
+  run_onboarding
   print_summary
 }
 

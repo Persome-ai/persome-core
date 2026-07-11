@@ -35,7 +35,6 @@ from ..security.auth import (
     issue_browser_bootstrap_nonce,
 )
 from ..store import fts
-from .chat_routes import router as chat_router
 from .models import ApiResponse, CaptureIngestBody, ModelPing
 
 logger = get("persome.api")
@@ -578,6 +577,3 @@ def _node_tree(root: str) -> dict[str, Any]:
             return expand(conn, root, {root}, 0)
     except Exception:  # noqa: BLE001
         return {"id": root, "edges": []}
-
-
-router.include_router(chat_router)

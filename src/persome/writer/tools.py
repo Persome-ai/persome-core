@@ -72,7 +72,7 @@ def tool_search_memory(
             path_patterns=path_patterns,
         )
     else:
-        # §5 read cutover (same single choke point as MCP/chat)
+        # §5 read cutover (same single choke point as MCP)
         from ..retrieval import associative as assoc_mod
 
         hits = assoc_mod.associative_read(
@@ -368,16 +368,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 
 
 TOOL_NAMES = {t["function"]["name"] for t in TOOL_SCHEMAS}
-
-# Re-exported for callers that need to know which tools are concurrency-safe
-# without importing from llm.py (avoid circular deps).
-CONCURRENCY_SAFE_TOOLS: frozenset[str] = frozenset(
-    {
-        "read_memory",
-        "search_memory",
-        "drill_chat_captures",
-    }
-)
 
 
 def _validate_tool_args(name: str, args: dict[str, Any]) -> dict[str, Any] | None:

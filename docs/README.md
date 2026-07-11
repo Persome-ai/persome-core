@@ -30,7 +30,7 @@ this directory explains operation and implementation details.
 | [`memory-format.md`](memory-format.md) | Markdown memory-file format. |
 | [`model-contract.md`](model-contract.md) | Snapshot implementation and build locking. |
 | [`mcp.md`](mcp.md) | MCP implementation reference. |
-| [`api.md`](api.md) | REST/Chat routes and OpenAPI drift rule. |
+| [`api.md`](api.md) | REST routes and OpenAPI drift rule. |
 | [`config.md`](config.md) | `config.toml` fields and feature gates. |
 | [`runtime-internals.md`](runtime-internals.md) | Secrets, daemon lifecycle, paths, and recovery. |
 | [`troubleshooting.md`](troubleshooting.md) | Operational diagnosis. |

@@ -7,8 +7,8 @@ description: Local-first Personal Model Runtime for macOS
 # Persome
 
 Persome is a local-first macOS Runtime that collects focused cross-app context,
-builds an inspectable model of one real person, and exposes it to trusted Chat
-and MCP clients.
+builds an inspectable model of one real person, and exposes it to trusted MCP
+clients.
 
 ![Synthetic Persome model with Points, Lines, Faces, Volume, and Root](assets/persome-model-hero.png)
 

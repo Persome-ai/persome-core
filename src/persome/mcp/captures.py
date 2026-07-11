@@ -20,7 +20,6 @@ from .. import paths
 from ..capture import screenshot_crypto
 from ..capture.timestamps import (
     parse_capture_path_timestamp,
-    parse_capture_stem,
     parse_capture_timestamp,
 )
 from ..store import fts as fts_store
@@ -29,11 +28,6 @@ from ..store import fts as fts_store
 # return is tagged with this provenance — DATA the agent reads, never instructions
 # (spec 2026-06-25-agent-native-persome-design §7). One definition for all return sites.
 CAPTURE_PROVENANCE = "observed"
-
-
-def _parse_stem(stem: str) -> datetime | None:
-    """Invert ``scheduler._safe_filename``. Returns None on malformed input."""
-    return parse_capture_stem(stem)
 
 
 def _parse_at(text: str) -> datetime:

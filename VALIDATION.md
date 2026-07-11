@@ -77,10 +77,12 @@ After installing the Swift helpers and granting Accessibility permission:
 
 ```bash
 bash install.sh
+persome onboard
 persome llm status --check
 persome ocr status --check
 persome doctor
-persome start
+persome status
+persome capture-once
 
 # Work normally while the daemon performs incremental modeling.
 persome model status
@@ -125,8 +127,12 @@ PERSOME_ROOT=/tmp/persome-wheel-root \
   /tmp/persome-wheel-venv/bin/persome llm providers
 ```
 
-`install.sh` runs `persome ocr setup`, which requests Screen Recording and
-performs a full bundled worker initialization on Apple Silicon.
+In an interactive macOS session, `install.sh` runs `persome onboard`. The
+onboarding command separately requests Accessibility and Screen Recording,
+performs a full bundled OCR worker initialization on Apple Silicon, starts the
+daemon, polls the canonical local health endpoint, and requires a fresh capture
+record before it succeeds. Non-interactive packaging environments must run the
+command later from a logged-in macOS session.
 `persome ocr-selftest <image>` remains available for a known-image inference
 check.
 

@@ -7,7 +7,7 @@ documents explain its public contract and operational intent.
 
 Persome Runtime is a local-first macOS daemon that observes one real person's
 screen context, forms durable state, builds an auditable personal model, and
-serves it to Chat and MCP clients. The public geometry is Point, Line, Face,
+serves it to MCP clients. The public geometry is Point, Line, Face,
 Volume, and at most one Root. `/model` renders the current geometry locally.
 
 This repository owns:
@@ -16,7 +16,7 @@ This repository owns:
 - timeline and deterministic session formation;
 - incremental session reduction and personal modeling;
 - Markdown/SQLite/evomem storage, provenance, correction, and forgetting;
-- the versioned model snapshot, local viewer, Chat, REST, and MCP.
+- the versioned model snapshot, local viewer, REST, and MCP.
 
 It does not own product dashboards, notification/task lifecycles, computer-use
 actuation, meeting audio, or evaluation datasets and runners.
@@ -44,7 +44,6 @@ persome llm status --check
 persome start
 persome status
 persome stop
-persome chat
 persome mcp
 persome model build
 persome model status
@@ -80,7 +79,7 @@ mac-ax-watcher or trusted ingest
        -> evidence-gated memory_delta + deterministic apply
   -> debounced/daily/explicit structural model build
        -> cases -> Faces -> Volumes -> Root
-  -> snapshot / MCP / Chat / localhost viewer
+  -> snapshot / MCP / localhost viewer
 ```
 
 The windowed modeling service in `writer/agent.py` is shared by active flush,
@@ -119,11 +118,10 @@ Update matching docs in the same change as behavior.
   reintroduce parallel writers.
 - Every modeled object preserves evidence receipts and bitemporal history.
 - At most one live Root exists. Missing geometry is `degraded`, never fabricated.
-- Chat skill Markdown is safe to load. Executable `skills/*/tools.py`, shell,
-  arbitrary filesystem, and Web tools require
-  `[chat] unsafe_local_tools_enabled = true`.
-- The HTTP server is loopback by default. There is no second authentication
-  layer; treat local endpoint access as access to personal data.
+- The HTTP server is loopback by default. Except canonical `GET /health`,
+  every REST, viewer, and HTTP MCP route requires the owner-local
+  `PERSOME_LOCAL_API_TOKEN` bearer (or the one-use viewer capability); still
+  treat local endpoint access as access to personal data.
 - Prompt edits follow `docs/prompt-engineering.md`: define an eval criterion,
   then change and verify the smallest prompt surface.
 - Live capture uses compiled Swift helpers bundled into the wheel. On supported

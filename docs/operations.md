@@ -5,7 +5,7 @@ inspection, correction, export, erasure, and uninstall behavior.
 
 ## Support matrix
 
-| Host | AX capture | PP-OCRv6 | Daemon, MCP, Chat, model |
+| Host | AX capture | PP-OCRv6 | Daemon, MCP, model |
 |---|---|---|---|
 | macOS 13+ Apple Silicon | yes | yes, bundled and local | supported |
 | macOS 13+ Intel | yes | no compatible Paddle runtime | supported without OCR |
@@ -28,9 +28,11 @@ Grant permissions to the executable that launches Persome. If a terminal starts
 the daemon, grant that terminal. If launchd later owns the daemon, rerun
 `persome doctor` after the handoff and confirm live capture.
 
-`install.sh` requests Screen Recording during OCR onboarding. Verify the whole
-local path with `persome ocr status --check`; use `persome ocr disable` for an
-explicit opt-out.
+Interactive `install.sh` runs `persome onboard`. It presents separate native
+dialogs for Accessibility and Screen Recording, waits for both live TCC probes,
+verifies the OCR worker, starts the daemon, polls local health, and writes one
+fresh capture. Rerun `persome onboard` after changing the launcher identity;
+use `persome ocr disable` for an explicit OCR opt-out.
 
 ## Local paths
 
@@ -43,7 +45,7 @@ explicit opt-out.
 | `capture-buffer/` | AX text and optional encrypted screenshot payloads |
 | `memory/` | readable Markdown memory |
 | `index.db` | FTS, canonical evomem nodes, relations, sessions, and geometry |
-| `chat-history/` | local terminal/API Chat sessions |
+| `chat-history/`, `skills/` | legacy Chat-era data from older releases; purged by `persome clean all` (stale Chat-era `logs/chat.log*` files are removed at startup) |
 | `exports/` | redacted model exports by default; mode `0600` |
 | `backup/` | SQLite safety snapshots containing personal model state |
 | `logs/` | daemon and launchd logs; may contain operational context |
@@ -67,6 +69,7 @@ and a second `persome start` do not repair or quarantine an open database.
 ## Lifecycle and first recall
 
 ```bash
+persome onboard
 persome llm status --check
 persome ocr status --check
 persome doctor
@@ -142,12 +145,12 @@ persome stop
 
 # Delete every file under memory/, FTS entries, canonical evomem, relations,
 # Faces, Volumes, Root, exports, projections, backups, and recovery markers.
-# Captures/timeline/Chat remain.
+# Captures/timeline remain.
 persome clean memory
 
 # Delete all personal data, including captures, timeline/session state, model,
-# Chat history, exports, backups, logs, and SQLite files. Keep config, env,
-# installed venv, and custom skills.
+# legacy Chat-era history and skills, exports, backups, logs, and SQLite files.
+# Keep config, env, and the installed venv.
 persome clean all
 ```
 

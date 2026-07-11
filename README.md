@@ -2,7 +2,7 @@
 
 **The local-first Personal Model Runtime for macOS.** Persome observes the apps
 you already use, turns cross-app activity into an inspectable model of a real
-person, and serves that model to Chat and MCP agents.
+person, and serves that model to MCP agents.
 
 [![CI](https://github.com/Persome-ai/persome-core/actions/workflows/ci.yml/badge.svg)](https://github.com/Persome-ai/persome-core/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Persome-ai/persome-core)](https://github.com/Persome-ai/persome-core/releases)
@@ -27,8 +27,7 @@ Persome runs quietly on one Mac and does four jobs:
    optional on-device OCR fallback for AX-poor surfaces.
 2. **Model** observations into sourced facts, evolving relations, stable
    patterns, cross-domain structure, and one current Root.
-3. **Serve** local memory and model tools over MCP, plus an optional terminal
-   Chat that uses the same tools.
+3. **Serve** local memory and model tools over MCP.
 4. **Give control back** through receipts, time travel, correction, export, and
    deletion.
 
@@ -74,8 +73,10 @@ Requirements: macOS 13 or newer, Xcode Command Line Tools, and a Python build
 with SQLite 3.42+ (the installer verifies the secure FTS capability). The installer
 finds or installs `uv`, provisions Python 3.11-3.13, compiles the Swift AX
 helpers, generates the local screenshot-encryption key, enables and verifies
-local OCR, requests Screen Recording, and offers to register detected MCP
-clients. Its fallback `uv` download is version-pinned and checked
+local OCR, and offers to register detected MCP clients. Before it reports
+success, a native onboarding flow explains and requests Accessibility and
+Screen Recording separately, starts Persome, checks local health, and writes a
+fresh capture. Its fallback `uv` download is version-pinned and checked
 against repository-pinned SHA-256 digests; the Runtime environment is installed
 from the committed `uv.lock`, and the complete build-backend closure is
 hash-constrained rather than resolved afresh.
@@ -86,21 +87,21 @@ cd persome-core
 bash install.sh
 
 persome doctor
+persome onboard
 persome ocr status --check
-persome start
 persome model open
 ```
 
-Grant **Accessibility** to the terminal or app that launches Persome in
-**System Settings -> Privacy & Security -> Accessibility**. This permission is
-required to read focused AX text and structure. The installer enables bundled
-local OCR, requests **Screen Recording**, verifies the isolated OCR worker, and
-opens the correct settings pane when permission remains denied. OCR supplies
-text for AX-poor apps such as WeChat and Feishu; pixels never enter an LLM
-prompt. Persome does not require Full Disk Access.
+`persome onboard` is the repeatable recovery path. It shows one plain-language
+macOS dialog before each system permission request and does not complete until
+**Accessibility** and **Screen Recording** are granted. It then verifies the
+isolated OCR worker, leaves the daemon running, polls `GET /health`, and forces
+one fresh capture. OCR supplies text for AX-poor apps such as WeChat and Feishu;
+pixels never enter an LLM prompt. Persome does not require Full Disk Access.
 
 ```bash
 # Recheck or repair OCR onboarding; disable is always explicit and reversible.
+persome onboard
 persome ocr setup
 persome ocr status --check
 persome ocr disable
@@ -164,7 +165,6 @@ cloud recorder.
 
 - Authenticated streamable HTTP MCP: `http://127.0.0.1:8742/mcp`
 - stdio MCP: `persome mcp`
-- Local Chat: `persome chat`
 - Stable model contract: `persome model export` and `GET /model/graph`
 - Evidence tools: `search`, `read_receipt`, `verify_fact`, and
   `get_model_snapshot`
@@ -286,7 +286,7 @@ flowchart LR
   PL --> FV[Faces and Volumes]
   FV --> ROOT[Root]
   PL --> RET[BM25 and optional dense retrieval]
-  FV --> MCP[MCP, Chat, export, viewer]
+  FV --> MCP[MCP, export, viewer]
   ROOT --> MCP
   RET --> MCP
 ```
@@ -350,8 +350,6 @@ advice, export sensitivity, reset behavior, and manual removal steps.
 - MCP capture tools can return raw screen text, titles, URLs, and focused-field
   values. Bearer/stdio access is a personal-data capability; connect only
   clients you trust.
-- Model-generated memory never becomes trusted Chat skill instructions;
-  unsafe/external Chat tools require exact one-shot terminal approval.
 - Screenshots are omitted from MCP by default and encrypted at rest when
   retention is enabled.
 - `persome model export` is redacted by default; `--raw` is an explicit opt-out.

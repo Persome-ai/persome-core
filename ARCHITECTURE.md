@@ -25,7 +25,7 @@ trusted ingest API┘                              |
                                                    |
                             ┌──────────────────────┼──────────────────────┐
                             v                      v                      v
-                     model snapshot            MCP/Chat              /model
+                     model snapshot              MCP                 /model
 ```
 
 The capture path is macOS-only. The storage, model projection, and offline
@@ -94,9 +94,8 @@ legacy completed activity can be read through a neutral adapter.
 ## Public surfaces
 
 - CLI: capture/daemon lifecycle plus `model build|status|export`.
-- REST: health, permissions, status, trusted capture ingest, model viewer, and
-  Chat API. The shipped interactive Chat UI is the `persome chat` terminal
-  client; `/model` is the browser viewer. See [`docs/api.md`](docs/api.md).
+- REST: health, permissions, status, trusted capture ingest, and the model
+  viewer; `/model` is the browser viewer. See [`docs/api.md`](docs/api.md).
 - MCP: model retrieval, provenance, recent context, and explicit correction.
   See [MCP.md](MCP.md).
 - Snapshot: versioned Point/Line/Face/Volume/Root JSON. See

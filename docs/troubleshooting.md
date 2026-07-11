@@ -43,6 +43,7 @@ Read the console output. Common culprits:
 Most common cause: **Accessibility permission not granted** to the terminal you launched from.
 
 ```bash
+persome onboard
 persome capture-once
 cat ~/.persome/capture-buffer/*.json | jq '.ax_tree | length' | head
 ```
@@ -56,10 +57,11 @@ fallback for old installs or a changed TCC principal.
 
 Second most common cause: **`ax_depth` too shallow for Electron apps.** See [capture.md](capture.md#ax-depth-the-1-footgun).
 
-The installer normally enables local OCR and requests Screen Recording. Check
-the complete state first:
+The installer normally completes Accessibility, local OCR, daemon health, and a
+fresh capture through `persome onboard`. Rerun that end-to-end gate first:
 
 ```bash
+persome onboard
 persome ocr status --check
 ```
 
@@ -216,7 +218,7 @@ installers continue to work.
 The Runtime supports loopback HTTP and local stdio. A cloud-hosted MCP
 client cannot reach `127.0.0.1`; exposing Persome through a tunnel changes the
 privacy boundary and is not a supported deployment. Use a local
-MCP client or `persome chat`.
+MCP client.
 
 ## MCP client connects but doesn't use the memory
 

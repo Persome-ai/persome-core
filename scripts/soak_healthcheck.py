@@ -16,7 +16,7 @@ that can silently drift over time:
   3. schema-tick output         — the daily 00:15 tick should have produced
      parseable schema-*.md files that the model schema reader can read.
 
-Plus a smoke test through the same associative entrance used by MCP and Chat.
+Plus a smoke test through the same associative entrance used by MCP.
 
 Run against a live or sandbox data dir (real memory is at ~/.persome):
 

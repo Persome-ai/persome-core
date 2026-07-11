@@ -8,10 +8,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-import pytest
-
-from persome.chat.agent import ChatAgent
-from persome.config import ChatConfig, Config, ModelConfig
+from persome.config import Config, ModelConfig
 from persome.llm_setup import probe_profile
 from persome.providers import make_profile
 from persome.writer.llm import call_llm, extract_text
@@ -33,10 +30,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "body": body,
             }
         )
-        if body.get("stream"):
-            self._stream(body)
-        else:
-            self._json_completion(body)
+        self._json_completion(body)
 
     def _json_completion(self, body: dict[str, Any]) -> None:
         message: dict[str, Any] = {"role": "assistant", "content": "ok"}
@@ -71,45 +65,6 @@ class _Handler(BaseHTTPRequestHandler):
         raw = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
-
-    def _stream(self, body: dict[str, Any]) -> None:
-        has_tool_result = any(message.get("role") == "tool" for message in body["messages"])
-        if has_tool_result:
-            delta: dict[str, Any] = {"role": "assistant", "content": "tool result received"}
-            finish_reason = "stop"
-        else:
-            delta = {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "index": 0,
-                        "id": "call_1",
-                        "type": "function",
-                        "function": {"name": "lookup", "arguments": '{"query":"project"}'},
-                    }
-                ],
-            }
-            finish_reason = "tool_calls"
-        chunk = {
-            "id": "chatcmpl-stream",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": "test-model",
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": delta,
-                    "finish_reason": finish_reason,
-                }
-            ],
-        }
-        raw = f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
@@ -175,40 +130,3 @@ def test_onboarding_probe_uses_real_openai_sdk(monkeypatch) -> None:
     assert result.tool_call_ok is True
     assert len(requests) == 2
     assert requests[1]["body"]["tool_choice"]["function"]["name"] == "persome_setup_check"
-
-
-@pytest.mark.asyncio
-async def test_chat_uses_real_openai_sdk_streaming_tool_loop(monkeypatch) -> None:
-    monkeypatch.setenv("PERSOME_LLM_API_KEY", "wire-secret")
-    with _server() as (base_url, requests):
-        cfg = ChatConfig(
-            provider="custom-openai",
-            protocol="openai",
-            model="test-model",
-            base_url=base_url,
-            api_key_env="PERSOME_LLM_API_KEY",
-        )
-        schema = {
-            "type": "function",
-            "function": {
-                "name": "lookup",
-                "description": "Look up memory",
-                "parameters": {"type": "object", "properties": {}},
-            },
-        }
-        seen: list[dict[str, Any]] = []
-        agent = ChatAgent(
-            cfg,
-            [schema],
-            {"lookup": lambda arguments: seen.append(arguments) or {"ok": True}},
-        )
-        messages = [{"role": "user", "content": "Use the tool"}]
-
-        result = await agent.run_turn(messages, "Use tools when needed.")
-        await agent.aclose()
-
-    assert result.error is None
-    assert result.assistant_message == "tool result received"
-    assert seen == [{"query": "project"}]
-    assert len(requests) == 2
-    assert requests[1]["body"]["messages"][-1]["role"] == "tool"

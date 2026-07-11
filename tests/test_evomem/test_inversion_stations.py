@@ -11,59 +11,6 @@ from persome.store import fts
 from .inversion_harness import assert_equivalent, run_in_both_modes
 
 
-def test_station_chat_memory_extractor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from persome.chat import memory_extractor
-
-    def _script() -> None:
-        with fts.cursor() as conn:
-            memory_extractor._write_memory(
-                conn,
-                {
-                    "type": "preference",
-                    "name": "Coffee",
-                    "description": "drinks",
-                    "content": "prefers oat-milk latte",
-                },
-            )
-
-            memory_extractor._write_memory(
-                conn,
-                {
-                    "type": "preference",
-                    "name": "Coffee",
-                    "description": "drinks",
-                    "content": "prefers oat-milk latte",
-                },
-            )
-            memory_extractor._write_memory(
-                conn,
-                {
-                    "type": "project",
-                    "name": "acme",
-                    "description": "main repo",
-                    "content": "works on acme-mono",
-                },
-            )
-
-    snap_md, snap_evo = run_in_both_modes(monkeypatch, tmp_path, _script)
-    assert len(snap_md.entries) == 2
-    assert_equivalent(snap_md, snap_evo)
-
-
-def test_station_chat_tool_handlers_set_user_name(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from persome.chat import tool_handlers
-
-    def _script() -> None:
-        assert tool_handlers.tool_set_user_name({"name": "Alice"}) == {"ok": True, "name": "Alice"}
-        assert tool_handlers.tool_set_user_name({"name": "Bob"})["ok"]
-
-    snap_md, snap_evo = run_in_both_modes(monkeypatch, tmp_path, _script)
-    assert "user-profile.md" in snap_md.memory
-    assert_equivalent(snap_md, snap_evo)
-
-
 def test_station_writer_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from persome.writer import tools
 

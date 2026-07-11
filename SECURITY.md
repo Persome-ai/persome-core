@@ -1,7 +1,7 @@
 # Security policy
 
-The Runtime's data handling, network egress, local API boundary, Chat tool
-policy, export caveats, and threat model are documented in
+The Runtime's data handling, network egress, local API boundary, export
+caveats, and threat model are documented in
 [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md).
 
 ## Supported versions

@@ -12,6 +12,7 @@ eye during development. Console output is always human-readable.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import json
 import logging
@@ -118,11 +119,22 @@ def _sink(
     return logger
 
 
+def _remove_stale_chat_logs() -> None:
+    """Drop ``chat.log*`` left behind by the removed Chat feature's sink.
+
+    No sink writes there anymore, so rotation would never reclaim these files;
+    they are personal data and must not linger on upgraded installs."""
+    for stale in paths.logs_dir().glob("chat.log*"):
+        with contextlib.suppress(OSError):
+            stale.unlink()
+
+
 def setup(*, console: bool = True, verbose: bool = False) -> None:
     global _INITIALIZED
     if _INITIALIZED:
         return
     paths.ensure_dirs()
+    _remove_stale_chat_logs()
 
     level = logging.DEBUG if verbose else logging.INFO
     # File sinks emit JSON by default; DEBUG=1 or --verbose makes them readable.
@@ -145,13 +157,9 @@ def setup(*, console: bool = True, verbose: bool = False) -> None:
     _sink("persome.session", "session.log", level=level, human=human_files)
     _sink("persome.daemon", "daemon.log", level=level, human=human_files)
     _sink("persome.mcp", "daemon.log", level=level, human=human_files)
-    # Chat: previously silently dropped. ``persome.chat`` covers the
-    # agent loop (turn start/end/error + tool elapsed in chat/agent.py);
-    # ``persome.api.chat`` covers HTTP request handling (send_message
-    # exceptions in chat_routes.py + access log middleware in api/__init__.py).
-    # Both flow to a single ``chat.log``.
-    _sink("persome.chat", "chat.log", level=level, human=human_files)
-    _sink("persome.api.chat", "chat.log", level=level, human=human_files)
+    # ``persome.api.access`` covers the REST 4xx/5xx access trail written by
+    # the access-log middleware in api/__init__.py.
+    _sink("persome.api.access", "api.log", level=level, human=human_files)
 
     _INITIALIZED = True
 

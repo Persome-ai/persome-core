@@ -425,7 +425,11 @@ def supersede_entry(
     new_tags += entries_mod._metadata_tags(confidence, conflicted, occurred_at)
 
     body = new_content.strip()
-    content_md = f"{body}\n<!-- supersedes: {old_entry_id}; reason: {reason} -->"
+    provenance = entries_mod._render_supersede_provenance(
+        old_entry_id=old_entry_id,
+        reason=reason,
+    )
+    content_md = f"{body}\n{provenance}" if body else provenance
     node = _node_from_write(
         entry_id=new_id,
         ts=ts,
@@ -476,6 +480,21 @@ def mark_entry_deleted(conn: sqlite3.Connection, *, name: str, entry_id: str) ->
     ts = entries_mod._now_iso_minute()
     with files_mod.file_lock(path):
         engine.commit_retire(entry_id, valid_until=ts)
+        retired = engine.store.get(entry_id)
+        if retired is not None:
+            from ..store import projector
+
+            file_nodes = _load_file_nodes(conn, path.name)
+            ts_by_id = {n.node_id: projector._heading_ts(n) for n in file_nodes}
+            rendered_tags = projector._render_tags(
+                retired,
+                prefix=prefix,
+                ts_by_id=ts_by_id,
+            )
+            conn.execute(
+                "UPDATE entries SET tags=? WHERE id=?",
+                (" ".join(rendered_tags), entry_id),
+            )
         entries_mod.derived_retire_rows(conn, entry_id=entry_id, ts=ts)
         if was_active:
             # Repeated retirement is idempotent and does not rewrite the file.

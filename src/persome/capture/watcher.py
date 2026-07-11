@@ -69,6 +69,31 @@ def _resolve_watcher_path() -> Path | None:
     return None
 
 
+def request_accessibility_permission() -> bool:
+    """Ask macOS for the Accessibility grant used by the Runtime.
+
+    The long-running watcher is the native AX principal already shipped with
+    Persome.  Its one-shot request mode triggers the system prompt without
+    leaving a watcher process behind.  The caller still rechecks the grant:
+    macOS normally returns ``False`` until the user approves it in Settings.
+    """
+    watcher_path = _resolve_watcher_path()
+    if watcher_path is None:
+        return False
+    try:
+        result = subprocess.run(
+            [str(watcher_path), "--request-accessibility"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Accessibility permission request failed: %s", exc)
+        return False
+    return result.returncode == 0
+
+
 class AXWatcherProcess:
     """Owns the mac-ax-watcher subprocess and a reader thread.
 

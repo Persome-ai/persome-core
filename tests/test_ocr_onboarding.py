@@ -133,9 +133,9 @@ def test_disable_preserves_tier(ac_root: Path) -> None:
     assert capture.ocr_tier == "small"
 
 
-def test_install_runs_ocr_onboarding_without_an_opt_in_prompt() -> None:
+def test_install_routes_ocr_through_the_complete_onboarding_gate() -> None:
     script = (Path(__file__).resolve().parents[1] / "install.sh").read_text(encoding="utf-8")
 
-    assert "configure_ocr()" in script
-    assert 'persome" ocr setup --tier tiny' in script
-    assert "configure_ocr\n  print_summary" in script
+    assert "run_onboarding()" in script
+    assert 'persome" onboard --tier tiny' in script
+    assert "run_onboarding\n  print_summary" in script

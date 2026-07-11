@@ -707,6 +707,13 @@ func observerCallback(
 // MARK: - Main
 
 func main() {
+    if CommandLine.arguments.contains("--request-accessibility") {
+        let trusted = AXIsProcessTrustedWithOptions(
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        )
+        exit(trusted ? 0 : 2)
+    }
+
     // Check accessibility permission
     let trusted = AXIsProcessTrustedWithOptions(
         [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary

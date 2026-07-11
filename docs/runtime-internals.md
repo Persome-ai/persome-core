@@ -32,11 +32,10 @@ persome stop
 ```
 
 `start` double-forks and writes `<PERSOME_ROOT>/.pid`. The HTTP/MCP server
-is restricted to loopback and defaults to `127.0.0.1:8742`; the same app serves `/model` and Chat
+is restricted to loopback and defaults to `127.0.0.1:8742`; the same app serves `/model` and the
 REST routes. Except for canonical `GET /health`, the outer app requires the
 dedicated bearer provisioned in the owner-only env file. `persome model open`
-uses the one-time browser exchange; `persome chat` is the bundled interactive
-client.
+uses the one-time browser exchange.
 
 Optional launchd ownership:
 
