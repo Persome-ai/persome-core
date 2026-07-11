@@ -31,6 +31,28 @@ def test_ensure_dirs_repairs_private_directory_modes(ac_root: Path) -> None:
         assert _mode(directory) == 0o700
 
 
+def test_ensure_dirs_hardens_existing_legacy_chat_era_trees(ac_root: Path) -> None:
+    """Legacy chat-history/ and skills/ trees from Chat-era installs are never
+    created, but when present they must come out of ensure_dirs owner-only."""
+    legacy_trees = (ac_root / "chat-history", ac_root / "skills")
+    for tree in legacy_trees:
+        tree.mkdir()
+        (tree / "leftover.md").write_text("legacy")
+        tree.chmod(0o755)
+
+    paths.ensure_dirs()
+
+    for tree in legacy_trees:
+        assert _mode(tree) == 0o700
+
+
+def test_ensure_dirs_does_not_create_legacy_chat_era_trees(ac_root: Path) -> None:
+    paths.ensure_dirs()
+
+    assert not (ac_root / "chat-history").exists()
+    assert not (ac_root / "skills").exists()
+
+
 def test_permission_marker_symlink_cannot_overwrite_target(ac_root: Path) -> None:
     marker = ac_root / ".permissions-v1"
     marker.unlink()

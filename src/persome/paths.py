@@ -318,7 +318,7 @@ def _migrate_existing_permissions() -> None:
                             f"permission migration refuses hard-linked data file: {item}"
                         )
                     # Restore owner read/write and preserve only the owner's
-                    # execute bit (custom skill tools may be executable).
+                    # execute bit (legacy Chat-era skill tools may be executable).
                     item.chmod(_PRIVATE_FILE_MODE | (metadata.st_mode & 0o100))
 
     # Root-level databases, state, locks, config and quarantine copies are also

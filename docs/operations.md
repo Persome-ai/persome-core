@@ -45,7 +45,7 @@ use `persome ocr disable` for an explicit OCR opt-out.
 | `capture-buffer/` | AX text and optional encrypted screenshot payloads |
 | `memory/` | readable Markdown memory |
 | `index.db` | FTS, canonical evomem nodes, relations, sessions, and geometry |
-| `chat-history/`, `skills/` | legacy Chat-era data from older releases; purged by `persome clean all` |
+| `chat-history/`, `skills/` | legacy Chat-era data from older releases; purged by `persome clean all` (stale Chat-era `logs/chat.log*` files are removed at startup) |
 | `exports/` | redacted model exports by default; mode `0600` |
 | `backup/` | SQLite safety snapshots containing personal model state |
 | `logs/` | daemon and launchd logs; may contain operational context |

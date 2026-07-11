@@ -5,14 +5,15 @@ breaks long-lived streaming responses: a client disconnect
 surfaces as ``RuntimeError("No response returned")`` and uvicorn logs a spurious HTTP
 500. These tests pin the transport behavior without depending on a product event route.
 These tests pin the fix: (1) the API app carries no ``BaseHTTPMiddleware``, and (2) a
-streaming response passes cleanly *through* the three pure-ASGI middleware. The
-middleware's actual behaviour (trace id, access log, origin/host guard) stays covered
-by ``test_trace_middleware.py`` and ``test_api_origin_guard.py``.
+streaming response passes cleanly *through* the three pure-ASGI middleware. Trace-id
+and origin/host-guard behaviour stays covered by ``test_trace_middleware.py`` and
+``test_api_origin_guard.py``; the access-log 4xx WARNING trail is covered here.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -68,3 +69,43 @@ def test_sse_streams_through_all_three_middleware() -> None:
     body = resp.text
     assert '{"n": 1}' in body
     assert '{"n": 2}' in body
+
+
+def test_access_log_middleware_warns_on_4xx_and_skips_2xx() -> None:
+    """The surviving access trail: 4xx/5xx log a WARNING on ``persome.api.access``;
+    2xx/3xx responses are skipped entirely (eg. /health polling noise)."""
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    # Attach directly to the named logger: daemon logging init sets
+    # propagate=False on sink-backed loggers, so root-level capture is not
+    # reliable across test ordering.
+    access_logger = logging.getLogger("persome.api.access")
+    handler = _Capture()
+    access_logger.addHandler(handler)
+    previous_level = access_logger.level
+    access_logger.setLevel(logging.INFO)
+    try:
+        app = FastAPI()
+        app.add_middleware(_AccessLogMiddleware)
+
+        @app.get("/ok")
+        async def _ok() -> dict[str, bool]:
+            return {"ok": True}
+
+        client = TestClient(app, headers={"host": "127.0.0.1"})
+        assert client.get("/ok").status_code == 200
+        assert client.get("/missing").status_code == 404
+    finally:
+        access_logger.removeHandler(handler)
+        access_logger.setLevel(previous_level)
+
+    messages = [(r.levelno, r.getMessage()) for r in records]
+    assert any(
+        level == logging.WARNING and "/missing" in message and "404" in message
+        for level, message in messages
+    ), messages
+    assert not any("/ok" in message for _, message in messages), messages
