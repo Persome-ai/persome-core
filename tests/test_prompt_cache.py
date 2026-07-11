@@ -198,7 +198,7 @@ def test_system_prompt_template_has_no_current_time_placeholder() -> None:
 # ─── run_turn tool-list assembly: sorted by name, last has cache_control ────
 
 
-def test_run_turn_tools_are_sorted_and_last_has_cache_control() -> None:
+def test_run_turn_tools_are_sorted_and_last_has_cache_control(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """End-to-end shape check on ChatAgent.run_turn's combined_tools.
 
     Mocks the SDK at the boundary so we can inspect the kwargs passed to
@@ -260,6 +260,7 @@ def test_run_turn_tools_are_sorted_and_last_has_cache_control() -> None:
         async def close(self) -> None:
             pass
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "synthetic")
     cfg = ChatConfig(model="deepseek-chat")
     agent = ChatAgent(cfg, schemas, handlers)
     agent.client = _FakeClient()  # type: ignore[assignment]

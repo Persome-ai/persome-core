@@ -44,7 +44,7 @@ def probe_profile(profile: ResolvedLLMProfile, *, timeout: float = 20.0) -> Prob
             import anthropic
 
             client = anthropic.Anthropic(
-                api_key=profile.api_key,
+                api_key=profile.client_api_key(),
                 base_url=profile.base_url or None,
                 timeout=timeout,
             )
@@ -57,7 +57,7 @@ def probe_profile(profile: ResolvedLLMProfile, *, timeout: float = 20.0) -> Prob
             from openai import OpenAI
 
             client = OpenAI(
-                api_key=profile.api_key or "local-no-key",
+                api_key=profile.client_api_key(),
                 base_url=profile.base_url,
                 timeout=timeout,
             )

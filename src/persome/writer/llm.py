@@ -169,8 +169,6 @@ def _to_openai_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             normalized["tool_calls"] = message["tool_calls"]
         if role == "tool":
             normalized["tool_call_id"] = message.get("tool_call_id")
-            if message.get("name"):
-                normalized["name"] = message["name"]
         out.append(normalized)
     return out
 
@@ -262,11 +260,11 @@ def _make_openai_client(api_key: str, base_url: str) -> Any:
 
 
 def _anthropic_client(profile: ResolvedLLMProfile) -> Any:
-    return _make_anthropic_client(profile.api_key, profile.base_url or None)
+    return _make_anthropic_client(profile.client_api_key(), profile.base_url or None)
 
 
 def _openai_client(profile: ResolvedLLMProfile) -> Any:
-    return _make_openai_client(profile.api_key or "local-no-key", profile.base_url)
+    return _make_openai_client(profile.client_api_key(), profile.base_url)
 
 
 def call_llm(
@@ -409,7 +407,7 @@ def ping_stage(cfg: Config, stage: str, *, timeout: float = 5.0) -> PingResult:
             import anthropic
 
             client = anthropic.Anthropic(
-                api_key=profile.api_key,
+                api_key=profile.client_api_key(),
                 base_url=profile.base_url or None,
                 timeout=timeout,
             )
@@ -422,7 +420,7 @@ def ping_stage(cfg: Config, stage: str, *, timeout: float = 5.0) -> PingResult:
             from openai import OpenAI
 
             client = OpenAI(
-                api_key=profile.api_key or "local-no-key",
+                api_key=profile.client_api_key(),
                 base_url=profile.base_url,
                 timeout=timeout,
             )

@@ -61,6 +61,7 @@ class _FakeRunner:
 
 
 def _make_agent(monkeypatch, runner: _FakeRunner) -> ChatAgent:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "synthetic")
     agent = ChatAgent(ChatConfig(), all_schemas=[], all_handlers={})
 
     def fake_tool_runner(**_kw: Any) -> _FakeRunner:

@@ -76,9 +76,10 @@ Ollama, LM Studio, and vLLM. Presets describe endpoint defaults, not a blanket
 capability guarantee for every model. Use `custom-openai` or
 `custom-anthropic` for another compatible gateway.
 
-For migration, a config without `provider`, `protocol`, and `api_key_env`
-retains the former `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` route exactly.
-Running `persome llm setup` tests and converts that route to explicit fields.
+For migration, a config without `provider` and `protocol` retains the former
+`ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` route exactly, even if an older file
+contains an ignored `api_key_env`. Running `persome llm setup` tests and
+converts that route to explicit fields.
 
 ## Capture
 

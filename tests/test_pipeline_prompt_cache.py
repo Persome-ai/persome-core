@@ -20,6 +20,7 @@ import pytest
 from persome.writer.llm import (
     _to_anthropic_messages,
     _to_anthropic_tools,
+    _to_openai_messages,
 )
 
 _EPHEMERAL = {"type": "ephemeral"}
@@ -88,6 +89,20 @@ def test_to_anthropic_messages_folds_tool_calls_and_results() -> None:
     assert (
         tr["type"] == "tool_result" and tr["tool_use_id"] == "c1" and tr["content"] == "result-text"
     )
+
+
+def test_to_openai_messages_omits_nonstandard_tool_name() -> None:
+    messages = [
+        {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "name": "search_memory",
+            "content": "result",
+        }
+    ]
+    assert _to_openai_messages(messages) == [
+        {"role": "tool", "tool_call_id": "c1", "content": "result"}
+    ]
 
 
 # ─── call_llm end-to-end (stubbed Anthropic client) ──────────────────────────

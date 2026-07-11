@@ -528,16 +528,26 @@ def _build_dataclass(cls, raw: dict):  # type: ignore[no-untyped-def]
 def _build_chat(raw: dict, default_model: ModelConfig) -> ChatConfig:
     # The LLM route inherits from [models.default]. Chat-only controls remain
     # independent. Explicit [chat] values override only their matching fields.
-    inherited = {
-        "model": default_model.model,
-        "provider": default_model.provider,
-        "protocol": default_model.protocol,
-        "api_key_env": default_model.api_key_env,
-        "base_url": default_model.base_url,
-    }
+    default_is_explicit = bool(default_model.provider or default_model.protocol)
+    inherited = (
+        {
+            "model": default_model.model,
+            "provider": default_model.provider,
+            "protocol": default_model.protocol,
+            "api_key_env": default_model.api_key_env,
+            "base_url": default_model.base_url,
+        }
+        if default_is_explicit
+        else {}
+    )
     scalar_fields = {
         k: v for k, v in raw.items() if k in ChatConfig.__dataclass_fields__ and k != "mcp_servers"
     }
+    if not raw.get("provider") and not raw.get("protocol"):
+        # Old ChatConfig ignored these keys. Do not let stale TOML silently
+        # override a newly selected default route during migration.
+        scalar_fields.pop("api_key_env", None)
+        scalar_fields.pop("base_url", None)
     cfg = ChatConfig(**{**inherited, **scalar_fields})
     # Parse [[chat.mcp_servers]] array-of-tables
     raw_servers = raw.get("mcp_servers", [])

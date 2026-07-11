@@ -51,7 +51,7 @@ def complete_sync(
         extra["X-Trace-Id"] = tid
     if profile.protocol == "anthropic":
         client = anthropic.Anthropic(
-            api_key=profile.api_key,
+            api_key=profile.client_api_key(),
             base_url=profile.base_url or None,
         )
         msg = client.messages.create(
@@ -68,7 +68,7 @@ def complete_sync(
     from openai import OpenAI
 
     client = OpenAI(
-        api_key=profile.api_key or "local-no-key",
+        api_key=profile.client_api_key(),
         base_url=profile.base_url,
     )
     response = client.chat.completions.create(
@@ -345,14 +345,14 @@ class ChatAgent:
         self._profile: ResolvedLLMProfile = resolve_profile(cfg)
         if self._profile.protocol == "anthropic":
             self.client = AsyncAnthropic(
-                api_key=self._profile.api_key,
+                api_key=self._profile.client_api_key(),
                 base_url=self._profile.base_url or None,
             )
         else:
             from openai import AsyncOpenAI
 
             self.client = AsyncOpenAI(
-                api_key=self._profile.api_key or "local-no-key",
+                api_key=self._profile.client_api_key(),
                 base_url=self._profile.base_url,
             )
         self.model = self._profile.wire_model

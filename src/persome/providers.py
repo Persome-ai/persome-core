@@ -292,6 +292,14 @@ class ResolvedLLMProfile:
     def credential_ready(self) -> bool:
         return bool(self.api_key) or not self.key_required
 
+    def client_api_key(self) -> str:
+        """Return an SDK-safe key or raise before any hosted network call."""
+        if self.api_key:
+            return self.api_key
+        if not self.key_required:
+            return "persome-local"
+        raise RuntimeError(f"{self.api_key_env} is not set for {self.provider_label}")
+
 
 def provider_spec(provider: str) -> ProviderSpec | None:
     return _BY_ID.get(provider.lower())
@@ -339,9 +347,9 @@ def _legacy_anthropic_profile(model_cfg: Any) -> ResolvedLLMProfile | None:
     regardless of the model name. When no new routing fields are explicit,
     retain those exact semantics, including a missing credential.
     """
-    explicit = any(
-        str(getattr(model_cfg, name, "") or "") for name in ("provider", "protocol", "api_key_env")
-    )
+    # ``api_key_env`` appeared in older TOMLs while the runtime still ignored
+    # it. Only an explicit provider/protocol opts into the new routing contract.
+    explicit = any(str(getattr(model_cfg, name, "") or "") for name in ("provider", "protocol"))
     if explicit:
         return None
     key = os.environ.get("ANTHROPIC_API_KEY")

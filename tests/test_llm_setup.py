@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from persome import config, paths
 from persome.cli import app
-from persome.llm_setup import probe_profile, save_profile
+from persome.llm_setup import ProbeResult, probe_profile, save_profile
 from persome.providers import make_profile
 
 
@@ -180,3 +180,20 @@ def test_status_describes_keyless_local_provider(ac_root: Path) -> None:
     assert status.exit_code == 0
     assert "not required" in status.output
     assert "set via OLLAMA_API_KEY" not in status.output
+
+
+def test_status_check_fails_when_tool_calling_is_unconfirmed(ac_root: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    setup = CliRunner().invoke(
+        app,
+        ["llm", "setup", "--provider", "ollama", "--yes", "--skip-check"],
+    )
+    assert setup.exit_code == 0, setup.output
+    monkeypatch.setattr(
+        "persome.llm_setup.probe_profile",
+        lambda profile: ProbeResult(True, False, 12, "tool choice unsupported"),
+    )
+
+    status = CliRunner().invoke(app, ["llm", "status", "--check"])
+
+    assert status.exit_code == 1
+    assert "not confirmed" in status.output

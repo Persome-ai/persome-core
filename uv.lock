@@ -1260,7 +1260,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.0" },
     { name = "mss", specifier = ">=9.0" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "openai", specifier = ">=1.75" },
+    { name = "openai", specifier = ">=1.75,<3" },
     { name = "paddleocr", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "==3.7.0" },
     { name = "paddlepaddle", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "==3.3.1" },
     { name = "pillow", specifier = ">=10.0" },
@@ -1269,7 +1269,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7" },
     { name = "sse-starlette", specifier = ">=2.1" },
     { name = "starlette", specifier = ">=0.40" },
-    { name = "tomlkit", specifier = ">=0.13" },
+    { name = "tomlkit", specifier = ">=0.13,<1" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]

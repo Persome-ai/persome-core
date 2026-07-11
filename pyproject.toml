@@ -40,8 +40,8 @@ dependencies = [
     "certifi>=2024.2",
     "cryptography>=42.0",
     "anthropic>=0.50",
-    "openai>=1.75",
-    "tomlkit>=0.13",
+    "openai>=1.75,<3",
+    "tomlkit>=0.13,<1",
     # On-device OCR for AX-poor apps (WeChat/Feishu). PP-OCRv6 via paddleocr on the
     # paddlepaddle CPU runtime; weights are vendored in ocr_models/ and loaded from a
     # local dir (no network). Paddle's macOS wheel is arm64-only; Intel installs

@@ -1146,6 +1146,9 @@ def llm_status(
             console.print("[green]✓ Tool calling works[/green]")
         else:
             console.print("[yellow]⚠ Tool calling was not confirmed for this model.[/yellow]")
+            if result.error:
+                console.print(f"[dim]{result.error}[/dim]")
+            raise typer.Exit(1)
 
 
 @llm_app.command("setup")

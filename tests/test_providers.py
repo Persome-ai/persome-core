@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from persome.config import ModelConfig
 from persome.providers import PROVIDERS, detected_providers, resolve_profile
 
@@ -78,6 +80,21 @@ def test_local_provider_does_not_require_a_key(monkeypatch) -> None:
     )
     assert profile.api_key is None
     assert profile.credential_ready is True
+    assert profile.client_api_key() == "persome-local"
+
+
+def test_hosted_profile_fails_before_network_when_key_is_missing(monkeypatch) -> None:
+    _clear_provider_env(monkeypatch)
+    profile = resolve_profile(
+        ModelConfig(
+            provider="openai",
+            protocol="openai",
+            model="gpt-4.1-mini",
+            api_key_env="OPENAI_API_KEY",
+        )
+    )
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        profile.client_api_key()
 
 
 def test_detected_providers_keeps_region_choices_for_shared_credential(monkeypatch) -> None:

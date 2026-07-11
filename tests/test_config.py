@@ -69,8 +69,8 @@ capture_actionable_retention_days = 2
     assert capture.actionable_retention_days == 2
 
 
-def test_inline_api_key_is_ignored_but_route_fields_load(tmp_path: Path) -> None:
-    """Secrets in TOML are ignored; non-secret route fields are supported."""
+def test_legacy_route_fields_do_not_silently_change_protocol(tmp_path: Path) -> None:
+    """Old inline secrets/routes stay ignored until provider/protocol is explicit."""
     path = tmp_path / "config.toml"
     path.write_text(
         """
@@ -90,8 +90,15 @@ base_url = "https://api.example/anthropic"
     assert not hasattr(default, "api_key")
     assert default.api_key_env == "OPENAI_API_KEY"
     assert not hasattr(cfg.chat, "api_key")
-    assert cfg.chat.api_key_env == "ANTHROPIC_API_KEY"
-    assert cfg.chat.base_url == "https://api.example/anthropic"
+    assert cfg.chat.model == "deepseek-v4-flash"
+    assert cfg.chat.api_key_env == ""
+    assert cfg.chat.base_url == ""
+
+    from persome.providers import resolve_profile
+
+    assert resolve_profile(default).legacy is True
+    assert resolve_profile(default).protocol == "anthropic"
+    assert resolve_profile(cfg.chat).legacy is True
 
 
 def test_write_default_creates_file(tmp_path: Path) -> None:
