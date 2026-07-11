@@ -92,10 +92,12 @@ when enabling OCR fallback or screenshot retention; it supplies pixels to the
 local OCR worker. Persome does not require Full Disk Access.
 
 An LLM is optional for collection and BM25 recall, but required for semantic
-modeling. During installation, the provider wizard discovers existing keys,
-lets you edit the endpoint and model, tests completion and tool calling, and
-only then saves the route. API keys go to the owner-only `~/.persome/env` file;
-the non-secret route goes to `~/.persome/config.toml`. Nothing ships with a key.
+modeling. During installation, the provider wizard asks you to choose a service
+and enter its API key. Persome supplies that provider's endpoint and default
+model, tests completion and tool calling, and only then saves the route. Existing
+keys are detected automatically. API keys go to the owner-only
+`~/.persome/env` file; the non-secret route goes to `~/.persome/config.toml`.
+Nothing ships with a key.
 
 ```bash
 # If provider setup was skipped during installation:
@@ -113,8 +115,9 @@ OpenAI-compatible Chat Completions. Presets cover Anthropic, OpenAI, DeepSeek,
 OpenRouter, Gemini, Groq, Mistral, xAI, Qwen, Moonshot/Kimi, Zhipu GLM,
 SiliconFlow, Together, Fireworks, Cerebras, Azure OpenAI, Ollama, LM Studio, and
 vLLM. `custom-openai` and `custom-anthropic` accept another compatible endpoint.
-A preset means the route is configured, not that every model has the necessary
-capabilities; Persome warns when the selected model cannot call tools.
+Azure and custom endpoints use a clearly marked advanced setup path. A preset
+means the route is configured, not that every model has the necessary
+capabilities; Persome warns when the default model cannot call tools.
 
 Active work is reduced every five minutes by default. A first useful recall is
 therefore expected within ten minutes of valid capture plus a working semantic
@@ -130,8 +133,8 @@ or degraded states instead of inventing geometry.
 - AX is the default signal. Optional PP-OCRv6 runs locally in an isolated
   subprocess with bundled weights.
 - The HTTP/MCP server binds to `127.0.0.1` by default, and there is no telemetry.
-- Only configured semantic stages send derived text to the LLM or embedding
-  endpoint you choose.
+- Only configured semantic stages send derived text to the selected provider's
+  LLM or embedding endpoint.
 
 ### Cross-app
 

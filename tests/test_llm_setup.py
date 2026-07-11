@@ -103,7 +103,7 @@ def test_probe_retries_auto_when_forced_tool_choice_is_rejected(monkeypatch) -> 
     assert calls == 3
 
 
-def test_setup_cli_detects_exported_key_and_persists_profile(ac_root: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_setup_cli_uses_provider_defaults_and_persists_profile(ac_root: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("OPENAI_API_KEY", "synthetic-secret")
     runner = CliRunner()
 
@@ -114,10 +114,6 @@ def test_setup_cli_detects_exported_key_and_persists_profile(ac_root: Path, monk
             "setup",
             "--provider",
             "openai",
-            "--model",
-            "gpt-test",
-            "--base-url",
-            "https://gateway.example/v1",
             "--yes",
             "--skip-check",
         ],
@@ -127,8 +123,99 @@ def test_setup_cli_detects_exported_key_and_persists_profile(ac_root: Path, monk
     assert "synthetic-secret" not in result.output
     selected = config.load().model_for("default")
     assert selected.provider == "openai"
-    assert selected.model == "gpt-test"
+    assert selected.model == "gpt-4.1-mini"
+    assert selected.base_url == "https://api.openai.com/v1"
     assert paths.env_file().read_text().count("OPENAI_API_KEY=") == 1
+
+
+def test_interactive_preset_setup_only_asks_for_provider_key(ac_root: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("persome.cli._interactive_terminal", lambda: True)
+
+    result = CliRunner().invoke(
+        app,
+        ["llm", "setup", "--provider", "openai", "--skip-check"],
+        input="synthetic-secret\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "OpenAI API key" in result.output
+    assert "OPENAI_API_KEY" not in result.output
+    assert "API endpoint" not in result.output
+    assert "Model id" not in result.output
+    selected = config.load().model_for("default")
+    assert selected.model == "gpt-4.1-mini"
+    assert selected.base_url == "https://api.openai.com/v1"
+    assert paths.env_file().read_text() == "OPENAI_API_KEY=synthetic-secret\n"
+
+
+def test_interactive_custom_setup_is_explicitly_advanced(ac_root: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("PERSOME_LLM_API_KEY", raising=False)
+    monkeypatch.setattr("persome.cli._interactive_terminal", lambda: True)
+
+    result = CliRunner().invoke(
+        app,
+        ["llm", "setup", "--provider", "custom-openai", "--skip-check"],
+        input="https://gateway.example/v1\nmodel-x\nsynthetic-secret\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Advanced setup" in result.output
+    assert "API endpoint" in result.output
+    assert "Model id" in result.output
+    selected = config.load().model_for("default")
+    assert selected.base_url == "https://gateway.example/v1"
+    assert selected.model == "model-x"
+
+
+def test_rerun_keeps_advanced_route_without_reasking_for_routing(
+    ac_root: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("PERSOME_LLM_API_KEY", "synthetic-secret")
+    first = CliRunner().invoke(
+        app,
+        [
+            "llm",
+            "setup",
+            "--provider",
+            "custom-openai",
+            "--base-url",
+            "https://gateway.example/v1",
+            "--model",
+            "model-x",
+            "--yes",
+            "--skip-check",
+        ],
+    )
+    assert first.exit_code == 0, first.output
+    monkeypatch.setattr("persome.cli._interactive_terminal", lambda: True)
+
+    rerun = CliRunner().invoke(
+        app,
+        ["llm", "setup", "--skip-check"],
+        input="\n",
+    )
+
+    assert rerun.exit_code == 0, rerun.output
+    assert "Use and verify this provider?" in rerun.output
+    assert "Advanced setup" not in rerun.output
+    assert "API endpoint" not in rerun.output
+    assert "Model id" not in rerun.output
+
+
+def test_provider_list_hides_routing_details_by_default(ac_root: Path) -> None:
+    runner = CliRunner()
+
+    simple = runner.invoke(app, ["llm", "providers"])
+    detailed = runner.invoke(app, ["llm", "providers", "--details"])
+
+    assert simple.exit_code == 0
+    assert "Endpoint:" not in simple.output
+    assert "Default model:" not in simple.output
+    assert "providers --details" in simple.output
+    assert detailed.exit_code == 0
+    assert "Endpoint:" in detailed.output
+    assert "Default model:" in detailed.output
 
 
 def test_setup_cli_does_not_save_failed_probe(ac_root: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -146,10 +233,6 @@ def test_setup_cli_does_not_save_failed_probe(ac_root: Path, monkeypatch) -> Non
             "setup",
             "--provider",
             "openai",
-            "--model",
-            "gpt-test",
-            "--base-url",
-            "https://bad.example/v1",
             "--yes",
         ],
     )

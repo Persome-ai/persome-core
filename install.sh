@@ -347,9 +347,9 @@ write_default_if_missing()
   echo "  LLM Provider Setup (bring your own key or local model)"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
-  echo "Persome can discover existing provider credentials or configure an"
-  echo "Anthropic Messages / OpenAI-compatible endpoint. It verifies both"
-  echo "completion and tool calling before saving anything."
+  echo "Choose your LLM provider and enter its API key. Persome selects the"
+  echo "endpoint and default model, then verifies completion and tool calling"
+  echo "before saving anything. Existing keys are detected automatically."
   echo ""
   if ! prompt_yes_no "Configure and test the Runtime LLM now?"; then
     echo "Skipped. Run 'persome llm setup' at any time."

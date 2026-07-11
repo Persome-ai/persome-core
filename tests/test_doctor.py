@@ -76,7 +76,7 @@ def test_env_file_owner_only_stricter_than_0600_ok(ac_root: Path) -> None:
 # ── API key ───────────────────────────────────────────────────────────────────
 
 
-def test_api_key_set_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_key_set_ok(ac_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-synthetic")
     c = doctor.check_api_key()
     assert c.status == "ok"
@@ -104,7 +104,9 @@ def test_screenshot_key_missing_warns(clean_llm_env: None) -> None:
 # ── base URL (warn-only) ──────────────────────────────────────────────────────
 
 
-def test_base_url_reachable_ok(monkeypatch: pytest.MonkeyPatch, clean_llm_env: None) -> None:
+def test_base_url_reachable_ok(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch, clean_llm_env: None
+) -> None:
     import httpx
 
     def fake_head(url: str, **kw: object) -> object:
@@ -118,7 +120,7 @@ def test_base_url_reachable_ok(monkeypatch: pytest.MonkeyPatch, clean_llm_env: N
 
 
 def test_base_url_unreachable_warns_never_fails(
-    monkeypatch: pytest.MonkeyPatch, clean_llm_env: None
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch, clean_llm_env: None
 ) -> None:
     import httpx
 

@@ -19,16 +19,24 @@ Messages and OpenAI-compatible Chat Completions. Use the guided path instead of
 editing secrets by hand:
 
 ```bash
-persome llm providers       # presets and locally detected key names
-persome llm setup           # select, edit, probe, then save
+persome llm providers       # provider names and locally detected keys
+persome llm setup           # choose provider, enter key, probe, then save
 persome llm status --check  # inspect the effective route and retest it
 ```
 
 `setup` checks the current profile first, auto-selects when exactly one known
 credential is found, prompts when several are available, and accepts keyless
-local endpoints. It makes a small completion call and a forced tool call before
-saving. A failed connectivity/authentication probe writes nothing. A model that
-completes but cannot call tools requires an explicit degraded-mode confirmation.
+local providers. For a normal hosted provider, the only inputs are the provider
+and its API key; Persome owns the endpoint and default model. It then makes a
+small completion call and a forced tool call before saving. A failed
+connectivity/authentication probe writes nothing. A model that completes but
+cannot call tools requires an explicit degraded-mode confirmation.
+
+Azure deployments and `custom-openai` / `custom-anthropic` are explicitly
+advanced because their endpoint and model or deployment name are user-specific.
+Automation can also override a preset with `--base-url`, `--model`, and
+`--api-key-env`. Run `persome llm providers --details` to inspect those routing
+defaults; they are not part of regular onboarding.
 
 The resulting non-secret configuration has this shape:
 

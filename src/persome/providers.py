@@ -27,6 +27,7 @@ class ProviderSpec:
     base_url_env: str = ""
     key_required: bool = True
     local: bool = False
+    advanced: bool = False
 
     @property
     def resolved_base_url_env(self) -> str:
@@ -238,6 +239,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         "deployment-name",
         "Azure OpenAI v1 endpoint; model is the deployment name",
         base_url_env="AZURE_OPENAI_BASE_URL",
+        advanced=True,
     ),
     ProviderSpec(
         "custom-openai",
@@ -248,6 +250,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         "model-id",
         "Any OpenAI-compatible Chat Completions endpoint",
         base_url_env="PERSOME_LLM_BASE_URL",
+        advanced=True,
     ),
     ProviderSpec(
         "custom-anthropic",
@@ -258,6 +261,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         "model-id",
         "Any Anthropic-compatible Messages endpoint",
         base_url_env="PERSOME_LLM_BASE_URL",
+        advanced=True,
     ),
 )
 

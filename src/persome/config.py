@@ -619,15 +619,16 @@ def load(path: Path | None = None) -> Config:
 DEFAULT_CONFIG_TEMPLATE = """# Persome configuration
 # One verified profile powers timeline reduction, personal modeling, and Chat.
 # Persome supports Anthropic Messages and OpenAI-compatible Chat Completions.
-# Run `persome llm setup` to detect an existing key, choose/edit the endpoint and
-# model, test completion + tool calling, and write the fields below. Every stage
-# inherits [models.default] unless its own section overrides a field.
+# Run `persome llm setup` to choose a provider and enter its key. Provider presets
+# supply the endpoint and default model, then Persome tests completion + tool
+# calling before writing the fields below. Every stage inherits [models.default]
+# unless its own section overrides a field.
 #
 # API keys never belong in this file. `api_key_env` stores only the variable
 # name; the secret itself lives in ~/.persome/env (mode 0600). Endpoints are not
 # secrets and are stored here so Chat and daemon subprocesses use the same route.
-# `persome llm providers` lists hosted/local presets. Custom compatible gateways
-# use provider="custom-openai" or provider="custom-anthropic".
+# `persome llm providers` lists hosted/local presets. Azure and custom compatible
+# gateways use the clearly separated advanced setup path.
 
 # Cross-cutting runtime/model switches.
 api_require_local_origin = true
