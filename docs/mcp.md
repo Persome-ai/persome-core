@@ -69,7 +69,9 @@ port = 8742
 
 - `streamable-http` is the daemon default at `/mcp`.
 - `sse` is a legacy transport.
-- `stdio` is started explicitly with `persome mcp`.
+- `stdio` is started explicitly with `persome mcp`. It exits on stdin EOF, and
+  a parent-death watchdog also exits it within seconds when the spawning
+  client dies without closing the pipe (no orphaned server accumulation).
 
 ## Security and privacy
 
