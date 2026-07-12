@@ -21,6 +21,14 @@ Stdio runs one server process for the client:
 persome mcp
 ```
 
+## Official MCP Registry
+
+The committed [`server.json`](server.json) publishes the stdio server as
+`io.github.Intuition-Lab/personal-model` and points Registry clients to the
+public `personal-model` PyPI package. A successful GitHub `Release` workflow
+automatically publishes the matching version through GitHub Actions OIDC; the
+`Publish MCP Registry` workflow can also be dispatched manually for recovery.
+
 The stdio server lives exactly as long as its client: it exits on stdin EOF,
 and a parent-death watchdog also exits it within seconds if the spawning
 client dies without closing the pipe, so orphaned servers never accumulate.
