@@ -1,16 +1,16 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
-import { computeClusterLayout } from "./layout.mjs";
+import { computeClusterLayout, zoomMath } from "./layout.mjs";
 
 const COLORS = {
-  points: 0x25c2a0,
-  lines: 0xf0b44d,
-  faces: 0xd76adf,
-  volumes: 0x5ca7ff,
-  root: 0xff6b76,
-  context: 0x8b939e,
-  hierarchy: 0x59616d,
+  points: 0x4ef0c3,
+  lines: 0xffc45e,
+  faces: 0xff64d6,
+  volumes: 0x7798ff,
+  root: 0xff6b8a,
+  context: 0xa5a0b5,
+  hierarchy: 0x6e6688,
 };
 
 const canvasHost = document.getElementById("canvas");
@@ -23,22 +23,28 @@ const detailMetaEl = document.getElementById("detail-meta");
 const detailReceiptsEl = document.getElementById("detail-receipts");
 const emptyEl = document.getElementById("empty");
 const errorEl = document.getElementById("error");
+const modelIdentityEl = document.getElementById("model-identity");
 const slider = document.getElementById("as-of");
 const sliderLabel = document.getElementById("as-of-label");
+const zoomOutButton = document.getElementById("zoom-out");
+const zoomResetButton = document.getElementById("zoom-reset");
+const zoomInButton = document.getElementById("zoom-in");
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0b0d10);
-scene.fog = new THREE.FogExp2(0x0b0d10, 0.026);
+scene.fog = new THREE.FogExp2(0x070610, 0.026);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
-  alpha: false,
+  alpha: true,
   preserveDrawingBuffer: true,
 });
+renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18;
 renderer.domElement.setAttribute("aria-hidden", "true");
 canvasHost.appendChild(renderer.domElement);
 
@@ -52,19 +58,28 @@ canvasHost.appendChild(labelRenderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
+controls.zoomSpeed = 0.62;
+controls.zoomToCursor = true;
 controls.minDistance = 5;
 controls.maxDistance = 32;
 controls.target.set(0, 2.2, 0);
 
-scene.add(new THREE.HemisphereLight(0xf3f5ff, 0x16181c, 2.1));
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
-keyLight.position.set(4, 10, 7);
+scene.add(new THREE.HemisphereLight(0xdad6ff, 0x080710, 2.25));
+const keyLight = new THREE.DirectionalLight(0xffeafa, 2.65);
+keyLight.position.set(5, 11, 8);
 scene.add(keyLight);
+const cyanLight = new THREE.PointLight(COLORS.points, 12, 22, 2);
+cyanLight.position.set(-5, -1, 3);
+scene.add(cyanLight);
+const violetLight = new THREE.PointLight(COLORS.volumes, 13, 24, 2);
+violetLight.position.set(5, 4, -4);
+scene.add(violetLight);
 
 let graph = new THREE.Group();
 scene.add(graph);
 let model = { points: [], lines: [], faces: [], volumes: [], root: null, stats: {} };
 let modelFingerprint = "";
+let modelGeneratedAt = "";
 let cutoff = new Date();
 let minTime = new Date();
 let maxTime = new Date();
@@ -83,10 +98,20 @@ let layerObjects = freshLayerObjects();
 let currentLayout = null;
 let layoutRadius = 6;
 let framedRadius = 0;
+let pulseGlows = [];
+let fitDistance = 12;
+let zoomGoalDistance = null;
+let lastZoomPercent = null;
+let lastFrameTime = performance.now();
 const layerVisible = { points: true, lines: true, faces: true, volumes: true, root: true };
 const kindLayers = { point: "points", context: "points", face: "faces", volume: "volumes", root: "root" };
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const zoomDirection = new THREE.Vector3();
+const ZOOM_MIN_PERCENT = 50;
+const ZOOM_MAX_PERCENT = 400;
+const ZOOM_STEP_PERCENT = 25;
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function freshLayerObjects() {
   return { points: [], lines: [], faces: [], volumes: [], root: [] };
@@ -100,6 +125,80 @@ function hash(text) {
   }
   return (value >>> 0) / 4294967296;
 }
+
+function addAtmosphere() {
+  const count = 420;
+  const positions = new Float32Array(count * 3);
+  for (let index = 0; index < count; index += 1) {
+    const radius = 10 + hash(`star:${index}:radius`) * 22;
+    const theta = hash(`star:${index}:theta`) * Math.PI * 2;
+    const phi = Math.acos(2 * hash(`star:${index}:phi`) - 1);
+    positions[index * 3] = radius * Math.sin(phi) * Math.cos(theta);
+    positions[index * 3 + 1] = radius * Math.cos(phi);
+    positions[index * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const stars = new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      color: 0xc9c2ff,
+      size: 0.035,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+      sizeAttenuation: true,
+    })
+  );
+  stars.rotation.z = 0.18;
+  scene.add(stars);
+}
+
+const glowTextures = new Map();
+
+function glowTexture(color) {
+  if (glowTextures.has(color)) return glowTextures.get(color);
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const cssColor = `#${color.toString(16).padStart(6, "0")}`;
+  const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gradient.addColorStop(0, `${cssColor}e6`);
+  gradient.addColorStop(0.16, `${cssColor}7a`);
+  gradient.addColorStop(0.5, `${cssColor}20`);
+  gradient.addColorStop(1, `${cssColor}00`);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 128, 128);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  glowTextures.set(color, texture);
+  return texture;
+}
+
+function addGlow(position, color, size, opacity, layer, pulse = 0.06) {
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: glowTexture(color),
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  sprite.position.copy(position);
+  sprite.scale.setScalar(size);
+  sprite.renderOrder = -1;
+  sprite.userData.glowBase = size;
+  sprite.userData.glowPhase = hash(`${position.x}:${position.y}:${position.z}`) * Math.PI * 2;
+  sprite.userData.glowPulse = pulse;
+  register(sprite, layer);
+  pulseGlows.push(sprite);
+  return sprite;
+}
+
+addAtmosphere();
 
 function shortLabel(text, max = 34) {
   const value = String(text || "Untitled").replace(/\s+/g, " ").trim();
@@ -203,6 +302,7 @@ function disposeGraph() {
   positions = new Map();
   items = new Map();
   layerObjects = freshLayerObjects();
+  pulseGlows = [];
 }
 
 function addPoint(point, position, baseRadius, showLabel, promoted) {
@@ -213,13 +313,16 @@ function addPoint(point, position, baseRadius, showLabel, promoted) {
   const material = new THREE.MeshStandardMaterial({
     color: COLORS.points,
     emissive: COLORS.points,
-    emissiveIntensity: active ? (promoted ? 0.42 : 0.15) : 0.05,
+    emissiveIntensity: active ? (promoted ? 0.62 : 0.24) : 0.06,
     transparent: true,
-    opacity: active ? (promoted ? 0.96 : 0.46) : (promoted ? 0.2 : 0.09),
-    roughness: 0.35,
+    opacity: active ? (promoted ? 0.98 : 0.56) : (promoted ? 0.22 : 0.08),
+    roughness: 0.26,
   });
   const mesh = registerPickable(new THREE.Mesh(geometry, material), "points", "point", point);
   mesh.position.copy(position);
+  if (active && promoted && hash(`${point.id}:glow`) < 0.08) {
+    addGlow(position, COLORS.points, radius * 5.4, 0.2, "points", 0.08);
+  }
   if (showLabel) {
     addLabel(
       point.content,
@@ -286,14 +389,15 @@ function addFace(face, showLabel) {
   const memberIds = currentLayout?.facePointIds.get(face.id) || [];
   const memberPositions = memberIds.map((id) => positions.get(id)).filter(Boolean);
   addClusterHalo(memberPositions, position);
+  addGlow(position, COLORS.faces, 1.55, 0.22, "faces", 0.07);
   const node = registerPickable(
     new THREE.Mesh(
       new THREE.OctahedronGeometry(0.28, 0),
       new THREE.MeshStandardMaterial({
         color: COLORS.faces,
         emissive: COLORS.faces,
-        emissiveIntensity: 0.24,
-        roughness: 0.4,
+        emissiveIntensity: 0.58,
+        roughness: 0.26,
       })
     ),
     "faces",
@@ -317,15 +421,16 @@ function addFace(face, showLabel) {
 function addVolume(volume, showLabel) {
   const position = positions.get(volume.id);
   if (!position) return;
+  addGlow(position, COLORS.volumes, 2.35, 0.25, "volumes", 0.06);
   const mesh = registerPickable(
     new THREE.Mesh(
       new THREE.IcosahedronGeometry(0.48, 1),
       new THREE.MeshStandardMaterial({
         color: COLORS.volumes,
         emissive: COLORS.volumes,
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.42,
         transparent: true,
-        opacity: 0.34,
+        opacity: 0.52,
         wireframe: true,
       })
     ),
@@ -334,6 +439,14 @@ function addVolume(volume, showLabel) {
     volume
   );
   mesh.position.copy(position);
+  const core = register(
+    new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.17, 1),
+      new THREE.MeshBasicMaterial({ color: COLORS.volumes, transparent: true, opacity: 0.68 })
+    ),
+    "volumes"
+  );
+  core.position.copy(position);
   if (showLabel) {
     addLabel(
       volume.signature,
@@ -352,14 +465,18 @@ function addVolume(volume, showLabel) {
 function addRoot(root) {
   const position = positions.get(root.id);
   if (!position) return;
+  addGlow(position, COLORS.root, 4.2, 0.42, "root", 0.075);
   const mesh = registerPickable(
     new THREE.Mesh(
       new THREE.DodecahedronGeometry(0.62, 0),
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: COLORS.root,
         emissive: COLORS.root,
-        emissiveIntensity: 0.52,
-        roughness: 0.3,
+        emissiveIntensity: 0.72,
+        roughness: 0.18,
+        metalness: 0.08,
+        clearcoat: 1,
+        clearcoatRoughness: 0.22,
       })
     ),
     "root",
@@ -393,17 +510,33 @@ function addModelLine(line) {
   addLine(start, end, evolution ? COLORS.lines : 0x6ebf8e, opacity, !evolution);
 }
 
-function addGround() {
-  const size = Math.max(12, layoutRadius * 2.4);
-  const divisions = Math.max(10, Math.min(24, Math.round(size / 1.2)));
-  const grid = new THREE.GridHelper(size, divisions, 0x30353d, 0x1b1f24);
-  grid.position.y = (currentLayout?.diagnostics.bounds.min[1] || -3) - 0.8;
-  const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
-  materials.forEach((material) => {
-    material.transparent = true;
-    material.opacity = 0.2;
+function addOrbitRing(radius, color, opacity, rotation, layer) {
+  const points = Array.from({ length: 129 }, (_, index) => {
+    const angle = (index / 128) * Math.PI * 2;
+    return new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
   });
-  graph.add(grid);
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
+  );
+  line.rotation.set(...rotation);
+  line.renderOrder = -2;
+  register(line, layer);
+}
+
+function addGround() {
+  const ringLayer = model.root ? "root" : (model.volumes.length ? "volumes" : "points");
+  const radius = Math.max(5, layoutRadius);
+  [0.34, 0.58, 0.84, 1.08].forEach((factor, index) => {
+    addOrbitRing(
+      radius * factor,
+      index % 2 ? COLORS.volumes : COLORS.faces,
+      Math.max(0.025, 0.075 - index * 0.012),
+      [0.12 + index * 0.035, index * 0.18, 0.05 - index * 0.02],
+      ringLayer
+    );
+  });
+  addOrbitRing(radius * 0.72, COLORS.root, 0.055, [Math.PI / 2.8, 0.42, 0.18], ringLayer);
 }
 
 function buildScene() {
@@ -451,6 +584,7 @@ function buildScene() {
   const renderedLines = visibleLines.filter((line) => positions.has(line.source) && positions.has(line.target)).length;
   window.__persomeViewerState = {
     schemaVersion: model.schema_version,
+    generatedAt: modelGeneratedAt || null,
     commit: model.build?.core_commit || null,
     stats: model.stats,
     rendered: {
@@ -479,21 +613,33 @@ function renderStatus() {
   const stats = model.stats || {};
   statusEl.replaceChildren();
   const parts = [
-    ["Points", stats.points || 0],
-    ["Lines", (stats.evolution_lines || 0) + (stats.relation_lines || 0)],
-    ["Faces", stats.faces || 0],
-    ["Volumes", stats.volumes || 0],
-    ["Root", stats.roots || 0],
+    ["points", "Points", stats.points || 0],
+    ["lines", "Lines", (stats.evolution_lines || 0) + (stats.relation_lines || 0)],
+    ["faces", "Faces", stats.faces || 0],
+    ["volumes", "Volumes", stats.volumes || 0],
+    ["root", "Root", stats.roots || 0],
   ];
-  parts.forEach(([label, value], index) => {
-    if (index) statusEl.append("  ·  ");
-    const name = document.createElement("span");
-    name.textContent = `${label} `;
+  parts.forEach(([kind, label, value]) => {
+    const stat = document.createElement("span");
+    stat.className = "stat";
+    stat.dataset.kind = kind;
     const count = document.createElement("b");
     count.textContent = String(value);
-    statusEl.append(name, count);
+    const name = document.createElement("small");
+    name.textContent = label;
+    stat.append(count, name);
+    statusEl.append(stat);
   });
-  if (model.build?.status) statusEl.append(`  ·  Build ${model.build.status}`);
+  if (model.build?.status) {
+    const build = document.createElement("span");
+    build.className = "build-state";
+    const signal = document.createElement("i");
+    signal.setAttribute("aria-hidden", "true");
+    build.append(signal, `Build ${model.build.status}`);
+    statusEl.append(build);
+  }
+  modelIdentityEl.textContent = model.root?.signature
+    || "A living map of what you notice, repeat, and become.";
 }
 
 function pauseAutoRotate() {
@@ -525,6 +671,7 @@ function syncSelectionState() {
 function clearSelection() {
   selected = null;
   detailEl.hidden = true;
+  delete detailEl.dataset.kind;
   syncSelectionState();
 }
 
@@ -572,6 +719,7 @@ function showDetails(kind, item) {
   selected = { kind, id: item.id };
   pauseAutoRotate();
   syncSelectionState();
+  detailEl.dataset.kind = kind;
   detailKindEl.textContent = kind;
   detailTitleEl.textContent = item.content || item.signature || item.label || item.id;
   detailMetaEl.replaceChildren();
@@ -664,6 +812,7 @@ async function loadModel(force = false) {
     const nextFingerprint = fingerprint(payload.model);
     if (!force && nextFingerprint === modelFingerprint) return;
     model = payload.model;
+    modelGeneratedAt = payload.generated_at || "";
     modelFingerprint = nextFingerprint;
     updateTimelineBounds();
     buildScene();
@@ -681,20 +830,107 @@ function frameLayout(force) {
   if (!force && framedRadius > 0 && radius <= framedRadius * 1.16) return;
   const direction = new THREE.Vector3(portrait ? 0.58 : 0.72, portrait ? 1.25 : 1.05, 1).normalize();
   const distance = Math.max(portrait ? 15 : 12, radius * (portrait ? 3.0 : 2.55));
+  fitDistance = distance;
+  zoomGoalDistance = null;
   camera.position.copy(direction.multiplyScalar(distance));
   controls.target.set(0, 0, 0);
-  controls.minDistance = Math.max(2.8, radius * 0.3);
-  controls.maxDistance = Math.max(32, radius * 5);
+  controls.minDistance = distance * 100 / ZOOM_MAX_PERCENT;
+  controls.maxDistance = distance * 100 / ZOOM_MIN_PERCENT;
   framedRadius = radius;
   controls.update();
+  syncZoomUI();
 }
 
 function resetCamera() {
   frameLayout(true);
 }
 
+function clampZoomPercent(value) {
+  return zoomMath.clampPercent(value, ZOOM_MIN_PERCENT, ZOOM_MAX_PERCENT);
+}
+
+function currentZoomPercent() {
+  const distance = camera.position.distanceTo(controls.target);
+  return zoomMath.percentForDistance(
+    fitDistance,
+    distance,
+    ZOOM_MIN_PERCENT,
+    ZOOM_MAX_PERCENT,
+  );
+}
+
+function syncZoomUI() {
+  const distance = camera.position.distanceTo(controls.target);
+  const percent = currentZoomPercent();
+  if (percent !== lastZoomPercent) {
+    zoomResetButton.textContent = `${percent}%`;
+    zoomResetButton.setAttribute(
+      "aria-label",
+      `Reset zoom to 100 percent (currently ${percent} percent)`,
+    );
+    lastZoomPercent = percent;
+  }
+  zoomOutButton.disabled = percent <= ZOOM_MIN_PERCENT;
+  zoomInButton.disabled = percent >= ZOOM_MAX_PERCENT;
+  window.__persomeZoomState = {
+    percent,
+    distance: Number(distance.toFixed(3)),
+    fitDistance: Number(fitDistance.toFixed(3)),
+    minPercent: ZOOM_MIN_PERCENT,
+    maxPercent: ZOOM_MAX_PERCENT,
+    animating: zoomGoalDistance !== null,
+  };
+}
+
+function requestZoom(percent) {
+  const clamped = clampZoomPercent(percent);
+  zoomGoalDistance = THREE.MathUtils.clamp(
+    fitDistance * 100 / clamped,
+    controls.minDistance,
+    controls.maxDistance,
+  );
+}
+
+function stepZoom(direction) {
+  const current = zoomGoalDistance === null
+    ? currentZoomPercent()
+    : zoomMath.percentForDistance(
+      fitDistance,
+      zoomGoalDistance,
+      ZOOM_MIN_PERCENT,
+      ZOOM_MAX_PERCENT,
+    );
+  requestZoom(zoomMath.nextPercent(
+    current,
+    direction,
+    ZOOM_STEP_PERCENT,
+    ZOOM_MIN_PERCENT,
+    ZOOM_MAX_PERCENT,
+  ));
+}
+
+function applyZoomAnimation(deltaSeconds) {
+  if (zoomGoalDistance === null) return;
+  const currentDistance = camera.position.distanceTo(controls.target);
+  const nextDistance = REDUCED_MOTION
+    ? zoomGoalDistance
+    : THREE.MathUtils.damp(currentDistance, zoomGoalDistance, 12, deltaSeconds);
+  zoomDirection.copy(camera.position).sub(controls.target);
+  if (zoomDirection.lengthSq() < 1e-8) zoomDirection.set(0, 0, 1);
+  zoomDirection.setLength(nextDistance);
+  camera.position.copy(controls.target).add(zoomDirection);
+  if (Math.abs(nextDistance - zoomGoalDistance) < 0.01) {
+    zoomDirection.setLength(zoomGoalDistance);
+    camera.position.copy(controls.target).add(zoomDirection);
+    zoomGoalDistance = null;
+  }
+}
+
 function cullLabels() {
-  const occupied = [];
+  const occupied = [...document.querySelectorAll(".story, .legend, .status, .timeline, .detail:not([hidden])")]
+    .map((element) => element.getBoundingClientRect())
+    .filter((box) => box.width > 0 && box.height > 0)
+    .map((box) => ({ x0: box.left - 6, x1: box.right + 6, y0: box.top - 6, y1: box.bottom + 6 }));
   const mobile = window.innerWidth < 760;
   const maxLabels = mobile ? 8 : 20;
   const safeArea = {
@@ -769,6 +1005,12 @@ document.getElementById("rotate").addEventListener("click", (event) => {
   controls.autoRotate = !controls.autoRotate;
   controls.autoRotateSpeed = 0.7;
   event.currentTarget.setAttribute("aria-pressed", String(controls.autoRotate));
+});
+zoomOutButton.addEventListener("click", () => stepZoom(-1));
+zoomResetButton.addEventListener("click", () => requestZoom(100));
+zoomInButton.addEventListener("click", () => stepZoom(1));
+controls.addEventListener("start", () => {
+  zoomGoalDistance = null;
 });
 document.getElementById("reset").addEventListener("click", resetCamera);
 document.getElementById("close-detail").addEventListener("click", clearSelection);
@@ -849,7 +1091,30 @@ renderer.domElement.addEventListener("pointerup", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && selected) clearSelection();
+  if (event.key === "Escape" && selected) {
+    clearSelection();
+    return;
+  }
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target?.isContentEditable
+    || event.metaKey
+    || event.ctrlKey
+    || event.altKey
+  ) return;
+  if (event.key === "+" || event.key === "=") {
+    event.preventDefault();
+    stepZoom(1);
+  } else if (event.key === "-" || event.key === "_") {
+    event.preventDefault();
+    stepZoom(-1);
+  } else if (event.key === "0") {
+    event.preventDefault();
+    requestZoom(100);
+  }
 });
 
 window.addEventListener("resize", () => {
@@ -870,8 +1135,19 @@ window.addEventListener("unhandledrejection", (event) => {
   errorEl.hidden = false;
 });
 
-function animate() {
+function animate(frameTime = performance.now()) {
+  const deltaSeconds = Math.min(Math.max((frameTime - lastFrameTime) / 1000, 0), 0.5);
+  lastFrameTime = frameTime;
+  applyZoomAnimation(deltaSeconds);
   controls.update();
+  syncZoomUI();
+  const time = performance.now() * 0.001;
+  if (!REDUCED_MOTION) {
+    pulseGlows.forEach((glow) => {
+      const pulse = 1 + Math.sin(time * 1.2 + glow.userData.glowPhase) * glow.userData.glowPulse;
+      glow.scale.setScalar(glow.userData.glowBase * pulse);
+    });
+  }
   if (hoverDirty && hoverPointer && !pointerDown) {
     renderer.domElement.style.cursor = pickAt(hoverPointer) ? "pointer" : "grab";
     hoverDirty = false;

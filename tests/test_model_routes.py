@@ -63,6 +63,13 @@ class TestViewPage:
         assert "cdn.jsdelivr.net" not in body
         assert "Personal Model" in body
         assert "Points" in body and "Volumes" in body and "Root" in body
+        assert "The shape" in body and "of you." in body
+        assert "Local only" in body
+        assert 'aria-label="Zoom controls"' in body
+        assert 'id="zoom-out"' in body
+        assert 'id="zoom-reset"' in body
+        assert 'id="zoom-in"' in body
+        assert "Scroll or pinch to zoom" in body
 
     def test_bundled_viewer_assets_are_served(self, ac_root):
         three = routes.model_asset("three.module.js")
@@ -82,6 +89,18 @@ class TestViewPage:
         assert b'fetch("./graph"' in viewer.body
         assert b"fetch(`./node" in viewer.body
         assert b'fetch("/model' not in viewer.body
+        assert b"ACESFilmicToneMapping" in viewer.body
+        assert b"model.root?.signature" in viewer.body
+        assert b"controls.zoomToCursor = true" in viewer.body
+        assert b"window.__persomeZoomState" in viewer.body
+        assert b"if (!REDUCED_MOTION)" in viewer.body
+        assert b'event.key === "+"' in viewer.body
+        assert b'event.key === "-"' in viewer.body
+        assert b'event.key === "0"' in viewer.body
+        assert b".zoom-controls" in css.body
+        assert b"(min-width: 1181px) and (max-width: 1360px)" in css.body
+        assert b"top: 116px" in css.body
+        assert b"prefers-reduced-motion" in css.body
         assert viewer.media_type == "text/javascript"
         assert layout.media_type == "text/javascript"
         assert css.media_type == "text/css"
