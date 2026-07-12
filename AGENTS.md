@@ -44,6 +44,7 @@ persome llm status --check
 persome start
 persome status
 persome stop
+persome update
 persome mcp
 persome model build
 persome model status

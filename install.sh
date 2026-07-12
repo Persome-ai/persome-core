@@ -9,6 +9,7 @@ VENV_DIR="${INSTALL_HOME}/venv"
 PYTHON_SPEC="${PERSOME_PYTHON:-3.12}"
 BIN_DIR_OVERRIDE=""
 INJECT_MODE="prompt"  # prompt | all | none
+UPDATE_MODE=0
 
 UV_BIN=""
 PERSOME_BIN=""
@@ -67,6 +68,7 @@ Options:
   --bin-dir <path>         Directory to place the `persome` shim in
   --yes                    Auto-inject all detected MCP client configs
   --no-client-config       Skip MCP client config prompts entirely
+  --update                 Preserve existing setup and run the update verification path
   -h, --help               Show this help
 EOF
 }
@@ -115,6 +117,11 @@ parse_args() {
         shift
         ;;
       --no-client-config)
+        INJECT_MODE="none"
+        shift
+        ;;
+      --update)
+        UPDATE_MODE=1
         INJECT_MODE="none"
         shift
         ;;
@@ -489,6 +496,11 @@ PY
     fi
   fi
 
+  if [[ ${UPDATE_MODE} -eq 1 ]]; then
+    log "update mode: preserving the existing LLM profile and credentials"
+    return 0
+  fi
+
   if [[ ! -t 0 ]]; then
     log "non-interactive install: run 'persome llm setup' to configure a provider"
     return 0
@@ -522,6 +534,14 @@ PY
 
 run_onboarding() {
   if [[ ! -t 0 ]]; then
+    if [[ ${UPDATE_MODE} -eq 1 ]]; then
+      log "non-interactive update: verifying existing permissions and Runtime health"
+      if ! PERSOME_ROOT="${INSTALL_HOME}" "${INSTALL_BIN_DIR}/persome" onboard --tier tiny --no-gui; then
+        die "update installed, but non-interactive Runtime verification failed; rerun 'persome onboard'"
+      fi
+      ONBOARDING_COMPLETED=1
+      return 0
+    fi
     log "non-interactive install: run 'persome onboard' from a logged-in macOS session"
     return 0
   fi

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -138,7 +140,7 @@ def test_rest_requires_the_exact_bearer_token(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_browser_bootstrap_is_single_use_and_cookie_is_model_only(
-    monkeypatch: pytest.MonkeyPatch,
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(LOCAL_API_TOKEN_ENV, _TOKEN)
     client = TestClient(build_api_app(), headers={"host": "127.0.0.1:8742"})
