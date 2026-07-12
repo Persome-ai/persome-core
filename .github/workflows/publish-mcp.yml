@@ -1,0 +1,54 @@
+name: Publish MCP Registry
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify the PyPI package is public
+        run: |
+          version="$(jq -r '.version' server.json)"
+          package="$(jq -r '.packages[0].identifier' server.json)"
+          marker="$(jq -r '.name' server.json)"
+          metadata="$(curl --fail --silent --show-error \
+            "https://pypi.org/pypi/${package}/${version}/json")"
+          test "$(jq -r '.info.version' <<<"$metadata")" = "$version"
+          grep --fixed-strings --quiet \
+            "<!-- mcp-name: ${marker} -->" <<<"$(jq -r '.info.description' <<<"$metadata")"
+
+      - name: Install pinned MCP publisher
+        run: |
+          curl --fail --location \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.7.9/mcp-publisher_linux_amd64.tar.gz \
+            --output mcp-publisher.tar.gz
+          echo "ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac  mcp-publisher.tar.gz" \
+            | sha256sum --check --strict
+          tar --extract --gzip --file mcp-publisher.tar.gz mcp-publisher
+
+      - name: Validate Registry metadata
+        run: ./mcp-publisher validate
+
+      - name: Authenticate with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish Persome to the Official MCP Registry
+        run: ./mcp-publisher publish
