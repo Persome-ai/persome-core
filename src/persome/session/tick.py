@@ -633,7 +633,7 @@ def _run_evomem_enrichment_once(
     if getattr(cfg, "person_graph_enabled", False):
         try:
             touched = PersonGraph(
-                EvoMemory(), cfg=cfg, name_source=MemoryPersonNameSource()
+                EvoMemory(), cfg=cfg, name_source=MemoryPersonNameSource(cfg=cfg)
             ).ingest()
             report["person_updates"] = len(touched)
             logger.info("evomem enrichment: person graph ingested %d update(s)", len(touched))

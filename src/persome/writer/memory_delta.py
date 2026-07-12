@@ -49,6 +49,10 @@ _HEADS = ("entities", "assertions", "relations", "events")
 _ENTITY_KINDS = frozenset({"person", "org", "project", "artifact"})
 _PREDICATES = frozenset(p.value for p in edges_store.Predicate)
 _POLARITIES = frozenset({"+", "-", "0"})
+_SELF_IDENTITY = "self"
+_LOCAL_MODEL_URL_RE = re.compile(
+    r"https?://(?:127\.0\.0\.1|localhost)(?::\d+)?/model(?:[/?#]|\b)", re.IGNORECASE
+)
 
 
 def _norm_polarity(item: dict) -> str:
@@ -100,16 +104,30 @@ def _load_roster(cfg: Any) -> list[tuple[str, list[str]]]:
     Fail-open: any read error → empty roster (the delta then only carries
     ``new_entity`` items; nothing breaks).
     """
+    owner_aliases = [
+        str(alias).strip()
+        for alias in getattr(cfg.memory_delta, "owner_aliases", [])
+        if str(alias).strip()
+    ]
+    owner_keys = {identity_mod.norm(alias) for alias in owner_aliases}
     try:
         from ..evomem.engine import EvoMemory
         from ..evomem.person_graph import PersonGraph
 
         persons = PersonGraph(EvoMemory(), cfg=cfg).list_persons()
         limit = int(getattr(cfg.memory_delta, "roster_max", 60))
-        return [(p.canonical, list(getattr(p, "aliases", []))) for p in persons[:limit]]
+        known: list[tuple[str, list[str]]] = []
+        for person in persons:
+            aliases = list(getattr(person, "aliases", []))
+            if any(identity_mod.norm(name) in owner_keys for name in [person.canonical, *aliases]):
+                continue
+            known.append((person.canonical, aliases))
+            if len(known) >= limit:
+                break
+        return [(_SELF_IDENTITY, owner_aliases), *known]
     except Exception:  # noqa: BLE001 — roster is best-effort
         logger.debug("memory_delta: roster load failed, empty", exc_info=True)
-        return []
+        return [(_SELF_IDENTITY, owner_aliases)]
 
 
 def _render_roster(roster: list[tuple[str, list[str]]]) -> str:
@@ -118,8 +136,19 @@ def _render_roster(roster: list[tuple[str, list[str]]]) -> str:
     lines = []
     for canonical, aliases in roster:
         alias_part = f" (aliases: {', '.join(aliases)})" if aliases else ""
-        lines.append(f"- {canonical}{alias_part}")
+        owner_part = (
+            " (memory owner; relation endpoint only)" if canonical == _SELF_IDENTITY else ""
+        )
+        lines.append(f"- {canonical}{alias_part}{owner_part}")
     return "\n".join(lines)
+
+
+def _is_local_model_output(entry: str) -> bool:
+    """Match Persome's rendered model, not a typed mention of its URL."""
+    text = str(entry or "")
+    return bool(_LOCAL_MODEL_URL_RE.search(text)) and (
+        "Persome Personal Model" in text or "[Google Chrome]" in text or "[Chrome]" in text
+    )
 
 
 def _render_blocks(blocks: list[tl_store.TimelineBlock]) -> str:
@@ -132,11 +161,15 @@ def _render_blocks(blocks: list[tl_store.TimelineBlock]) -> str:
     """
     parts: list[str] = []
     for b in blocks:
+        raw_entries = list(b.entries or [])
+        entries = [entry for entry in raw_entries if not _is_local_model_output(entry)]
+        if not entries:
+            continue
         window = f"[{b.start_time:%H:%M}-{b.end_time:%H:%M}] apps: {', '.join(b.apps_used)}"
         lines = [window]
-        lines.extend(f"  - {e}" for e in b.entries)
+        lines.extend(f"  - {e}" for e in entries)
         focus = (b.focus_structured or b.focus_excerpt or "").strip()
-        if focus:
+        if focus and len(entries) == len(raw_entries):
             lines.append("  focus:")
             lines.extend(f"    {ln}" for ln in focus.splitlines())
         parts.append("\n".join(lines))
@@ -221,6 +254,7 @@ def gate_delta(
             isinstance(item, dict)
             and item.get("kind") in _ENTITY_KINDS
             and who is not None
+            and who.get("ref") != _SELF_IDENTITY
             and _quote_ok(item, text_norm)
             and conf_ok(item)
         ):
@@ -363,6 +397,9 @@ def run_after_session(
     roster_entries = _load_roster(cfg)
     roster = identity_mod.Roster.build(roster_entries)
     session_text = _render_blocks(blocks)
+    if not session_text.strip():
+        result.skipped_reason = "model_output_only"
+        return result
 
     _cache = {"type": "ephemeral"}
     messages: list[dict[str, Any]] = [

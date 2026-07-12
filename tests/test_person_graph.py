@@ -124,6 +124,23 @@ def test_distinct_people_stay_separate(ac_root):
     assert len(graph.list_persons()) == 2
 
 
+def test_same_source_event_is_idempotent_across_enrichment_ticks(ac_root):
+    graph = PersonGraph(_mem(), cfg=_on(), name_source=_StaticSource([]))
+    event = PersonEvent(
+        name="Kevin",
+        summary="Kevin reviewed the launch plan.",
+        occurred_at=_ts(18),
+        source_id="entity:entry:event-1:person:kevin",
+    )
+
+    graph.record(event)
+    graph.record(event)
+
+    person = graph.list_persons()[0]
+    assert person.sightings == 1
+    assert len(graph.person_timeline("Kevin")) == 1
+
+
 def test_shared_alias_distinct_people_do_not_merge(ac_root):
     graph = PersonGraph(_mem(), cfg=_on(), name_source=_StaticSource([]))
     graph.record(PersonEvent(name="Alex Chen", aliases=["Alex"], occurred_at=_ts(18), summary="a"))

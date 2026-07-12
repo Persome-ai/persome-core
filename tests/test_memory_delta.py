@@ -105,6 +105,80 @@ def test_delta_persisted_shadow_with_counts(ac_root, fake_llm) -> None:
     assert blocks[0].get("cache_control") == {"type": "ephemeral"}
 
 
+def test_roster_reserves_self_and_owner_aliases(ac_root) -> None:
+    cfg = _cfg()
+    cfg.memory_delta.owner_aliases = [
+        "Tianyi Zhang",
+        "\u5f20\u5929\u7fca",
+        "Singularity-tian",
+    ]
+
+    roster = delta_mod._load_roster(cfg)
+
+    assert roster[0] == (
+        "self",
+        ["Tianyi Zhang", "\u5f20\u5929\u7fca", "Singularity-tian"],
+    )
+    rendered = delta_mod._render_roster(roster)
+    assert "self" in rendered and "memory owner" in rendered
+
+
+def test_owner_alias_canonicalizes_to_self_but_never_mints_person(ac_root) -> None:
+    from persome.evomem import identity as identity_mod
+
+    roster = identity_mod.Roster.build([("self", ["Singularity-tian"]), ("Kevin", [])])
+    quote = "Singularity-tian reviewed the launch plan with Kevin"
+    raw = {
+        "entities": [
+            {"ref": "Singularity-tian", "kind": "person", "quote": quote, "confidence": 0.9},
+            {"ref": "Kevin", "kind": "person", "quote": quote, "confidence": 0.9},
+        ],
+        "assertions": [],
+        "relations": [
+            {
+                "src": {"ref": "Singularity-tian"},
+                "dst": {"ref": "Kevin"},
+                "predicate": "knows",
+                "label": "teammates",
+                "quote": quote,
+                "confidence": 0.9,
+            }
+        ],
+        "events": [],
+    }
+
+    clean, dropped = delta_mod.gate_delta(
+        raw, roster=roster, session_text=quote, min_confidence=0.5
+    )
+
+    assert dropped == 1
+    assert [entity["ref"] for entity in clean["entities"]] == ["Kevin"]
+    assert clean["relations"][0]["src"] == {"ref": "self"}
+    assert clean["relations"][0]["dst"] == {"ref": "Kevin"}
+
+
+def test_render_blocks_excludes_local_model_output_and_mixed_focus(ac_root) -> None:
+    start = datetime(2026, 7, 12, 9, 0).astimezone()
+    block = TimelineBlock(
+        start_time=start,
+        end_time=start + timedelta(minutes=1),
+        entries=[
+            "[Google Chrome] Persome Personal Model (http://127.0.0.1:8742/model): "
+            "read Root claiming Kevin is the owner.",
+            "[Feishu] Project chat: Kevin said the release is ready.",
+        ],
+        apps_used=["Google Chrome", "Feishu"],
+        capture_count=2,
+        focus_excerpt="Root: Kevin is the owner",
+    )
+
+    rendered = delta_mod._render_blocks([block])
+
+    assert "release is ready" in rendered
+    assert "127.0.0.1:8742/model" not in rendered
+    assert "Root: Kevin is the owner" not in rendered
+
+
 def test_quote_evidence_gate_drops_unquoted_items(ac_root, fake_llm) -> None:
     """No verbatim quote from the session text → the item never lands (§4.1)."""
     start, end = _seed_session_blocks([SESSION_ENTRY])

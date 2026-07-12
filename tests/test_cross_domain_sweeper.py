@@ -523,3 +523,16 @@ def test_xdomain_schemas_are_not_re_fused(ac_root):
         names = {s.name for s in bases}
         assert "schema-project-a.md" in names
         assert "schema-xdomain-x__y.md" not in names
+
+
+def test_person_schemas_are_not_cross_domain_inputs(ac_root):
+    """Collaborator schemas cannot be fused into the owner's project model."""
+    from persome.store import fts
+
+    with fts.cursor() as conn:
+        _seed_schema(conn, "schema-person-kevin.md", "Kevin iterates with a fixed prompt", ["x"])
+        _seed_schema(conn, "schema-project-persome.md", "The owner iterates on Persome", ["y"])
+
+        bases = sweeper._load_stable_schemas(conn)
+
+    assert [schema.name for schema in bases] == ["schema-project-persome.md"]

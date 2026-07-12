@@ -22,6 +22,8 @@ predictive, and falsifiable schema that explains both source observations.
 
 When uncertain, return `detected: false`.
 
+Both schemas must describe the same modeled subject. Never fuse schemas about two different people, or a collaborator's person schema with the memory owner's project/tool/topic schema.
+
 ## Output
 
 Return strict JSON with no other text:

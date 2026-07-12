@@ -160,6 +160,8 @@ def collect_fact_bundles(
             rows = conn.execute(
                 f"SELECT file_name AS path, content FROM evo_nodes "
                 f"WHERE is_latest = 1 AND status = 'active' AND ({like}) "
+                "AND tags NOT LIKE '%person-event%' "
+                "AND tags NOT LIKE '%person-entity%' "
                 f"ORDER BY file_name, gmt_created"
             ).fetchall()
         except Exception:  # noqa: BLE001 — evo_nodes

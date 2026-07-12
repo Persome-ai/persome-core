@@ -13,6 +13,7 @@ The fake-llm injection mirrors ``tests/test_evomem/test_schema_miner.py``.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from persome import config as config_mod
@@ -326,3 +327,26 @@ def test_collect_fact_bundles_from_evomem_reads_evo_nodes(ac_root):
 
     assert "person-\u674e\u56db.md" in legacy and "person-\u5f20\u4f1f.md" not in legacy
     assert "person-\u5f20\u4f1f.md" in evo and "person-\u674e\u56db.md" not in evo
+
+
+def test_evomem_schema_miner_excludes_derived_person_graph_nodes(ac_root):
+    from persome.evomem.models import MemoryLayer, MemoryNode
+    from persome.evomem.store import NodeStore
+
+    store = NodeStore()
+    for i in range(4):
+        store.save(
+            MemoryNode(
+                node_id=f"person-event-{i}",
+                content=f"Mixed session summary {i} mentioning Kevin and the owner",
+                layer=MemoryLayer.L5_KNOWLEDGE,
+                file_name="person-kevin.md",
+                tags="person-event",
+                memory_at=datetime(2026, 7, 12, 9, i, tzinfo=UTC),
+            )
+        )
+
+    with fts.cursor() as conn:
+        bundles = stage.collect_fact_bundles(conn, from_evomem=True, min_facts=1)
+
+    assert all(bundle.source_path != "person-kevin.md" for bundle in bundles)

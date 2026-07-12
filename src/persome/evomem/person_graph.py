@@ -55,6 +55,7 @@ class PersonEvent:
     category: str | None = None
     aliases: Sequence[str] = field(default_factory=tuple)
     confidence: float = 1.0
+    source_id: str | None = None
 
 
 @dataclass
@@ -146,6 +147,13 @@ class PersonGraph:
             return None
 
         existing = self._find_entity(norm, event.aliases)
+
+        if (
+            existing is not None
+            and event.source_id
+            and self._has_source_event(existing.canonical, event.source_id)
+        ):
+            return existing.canonical
 
         if existing is None and event.confidence < self._min_confidence:
             _log.debug("person_graph: skip low-confidence first sighting %r", event.name)
@@ -248,9 +256,24 @@ class PersonGraph:
             file_name=f"person-{_slug(entity_canonical)}.md",
             tags=_TAG_EVENT,
             occurred_at=(event.occurred_at or now).isoformat(),
-            schema_summary=json.dumps({_META_CANONICAL: entity_canonical}, ensure_ascii=False),
+            schema_summary=json.dumps(
+                {_META_CANONICAL: entity_canonical, "source_id": event.source_id},
+                ensure_ascii=False,
+            ),
         )
         return self._mem.commit_node(node)
+
+    def _has_source_event(self, canonical: str, source_id: str) -> bool:
+        wanted = _norm(canonical)
+        for node in self._mem.store.all_latest():
+            if _TAG_EVENT not in (node.tags or "").split():
+                continue
+            meta = _meta_of(node)
+            if _norm(str(meta.get(_META_CANONICAL, ""))) != wanted:
+                continue
+            if str(meta.get("source_id") or "") == source_id:
+                return True
+        return False
 
     def _entity_nodes(self) -> list[MemoryNode]:
 

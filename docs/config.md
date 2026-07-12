@@ -216,6 +216,7 @@ incremental personal-model writes.
 enabled = true
 max_blocks = 120
 roster_max = 60
+owner_aliases = []
 min_confidence = 0.5
 apply_enabled = true
 apply_assertions = true
@@ -235,6 +236,12 @@ only catches the remaining tail. Disabling `apply_enabled` keeps the audit row
 but stops it from changing the model and reactivates the classifier's legacy
 terminal write role. This switch is for diagnosis/migration, not a second
 normal operating mode.
+
+`owner_aliases` lists the local owner's names and handles (for example a full
+name and a GitHub handle). The runtime reserves them as aliases of `self`;
+they are excluded from the person roster and cannot become collaborator
+Points. This is especially important when those handles appear in repository,
+meeting, or chat UI.
 
 The pattern detector requires repeated evidence and writes observed behavioral
 memory under `memory/skills/skill-*.md`. It does not propose or execute

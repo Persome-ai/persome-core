@@ -259,6 +259,12 @@ def _load_stable_schemas(conn: sqlite3.Connection) -> list[_StableSchema]:
         name = r["path"]
         if name.startswith("schema-xdomain-"):
             continue
+        source_path = _source_of(name)
+        # person-* schemas describe collaborators. Cross-domain synthesis is
+        # owner-scoped; fusing across subjects turns another person's behavior
+        # into an owner belief.
+        if source_path.startswith("person-"):
+            continue
         tags = (r["tags"] or "").split()
         if "stable" not in tags:
             continue
@@ -269,7 +275,7 @@ def _load_stable_schemas(conn: sqlite3.Connection) -> list[_StableSchema]:
         out.append(
             _StableSchema(
                 name=name,
-                source_path=_source_of(name),
+                source_path=source_path,
                 central=central,
                 inferences=stage.parse_expected_inferences(body),
                 confidence=_confidence_of(tags),

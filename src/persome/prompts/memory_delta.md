@@ -14,6 +14,8 @@ An entity must denote ONE concrete individual (a specific person, a specific gro
 
 The **memory owner** — the first-person speaker whose screen and activity this is — is NEVER an entity. This applies to first-person pronouns in every language. Never emit the owner, their own login name, or their handle as a person. Reference the owner as `self` (the roster's own identity) when they are one endpoint of a relation.
 
+Persome's own localhost `/model` viewer, including its Point/Line/Face/Volume/Root prose, is a model output rather than independent evidence. Never use a claim merely because that viewer displayed it; it requires separate non-model evidence in the session.
+
 **Kind discipline.** A `person` is a human being. Coding assistants and CLI agents the owner operates (claude, codex, cc, opencode, cursor, or "the agent" in any language), and apps, files, repos, branches, builds, DMGs, and documents, are `artifact` — never `person`. An organization, team, company, or group is `org`. A named body of ongoing work is `project`. When unsure between `artifact` and `project`, a shippable named undertaking is a `project`; a concrete file, tool, or build is an `artifact`.
 
 ## Evidence rule (critical)

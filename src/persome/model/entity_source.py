@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ..capture.timestamps import parse_capture_timestamp
+from ..evomem.identity import norm as norm_identity
 
 _ENTITY_PREFIXES = {"person-": "person", "org-": "org", "project-": "project"}
 _DERIVED_PERSON_TAGS = ("person-entity", "person-event")
@@ -135,7 +136,7 @@ class EntitySource:
                         display_name=display_name,
                         kind=kind,
                         occurred_at=str(row[2]) if row[2] else None,
-                        summary=content,
+                        summary=_mention_excerpt(content, display_name, entity_id),
                         confidence=0.85,
                         source_kind="entry",
                         source_id=entry_id,
@@ -143,6 +144,17 @@ class EntitySource:
                     )
                 )
         return out
+
+
+def _mention_excerpt(content: str, *names: str) -> str:
+    """Keep person-specific lines instead of cloning an entire mixed session."""
+    keys = {name.casefold() for name in names if name}
+    lines = [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and any(key in line.casefold() for key in keys)
+    ]
+    return "\n".join(lines[:8]) or content[:500]
 
 
 class MemoryPersonNameSource:
@@ -153,9 +165,11 @@ class MemoryPersonNameSource:
         *,
         conn_factory: Callable[[], object] | None = None,
         limit: int = 500,
+        cfg: object | None = None,
     ) -> None:
         self._conn_factory = conn_factory
         self._limit = limit
+        self._cfg = cfg
 
     def events(self):  # type: ignore[no-untyped-def]
         from ..evomem.person_graph import PersonEvent, _parse_ts
@@ -172,13 +186,21 @@ class MemoryPersonNameSource:
                 events = EntitySource(conn, limit=self._limit).events()
         except Exception:  # noqa: BLE001 — model enrichment is fail-safe
             return []
+        owner_aliases = {
+            norm_identity(str(alias))
+            for alias in getattr(getattr(self._cfg, "memory_delta", None), "owner_aliases", [])
+            if str(alias).strip()
+        }
         return [
             PersonEvent(
                 name=event.display_name,
                 summary=event.summary,
                 occurred_at=_parse_ts(event.occurred_at),
                 confidence=event.confidence,
+                source_id=event.stable_id,
             )
             for event in events
             if event.kind == "person"
+            and norm_identity(event.display_name) not in owner_aliases
+            and norm_identity(event.entity_id) not in owner_aliases
         ]

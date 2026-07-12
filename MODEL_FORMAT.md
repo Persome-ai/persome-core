@@ -70,7 +70,9 @@ receipts. Promotion requires stable repeated support.
 ### Volume
 
 A Volume is one active level-2 cross-domain schema. It relates behavior across
-otherwise separate topics and carries the same audit fields as a Face.
+otherwise separate owner-scoped topics and carries the same audit fields as a
+Face. Person schemas are excluded so evidence about a collaborator cannot be
+fused into the memory owner's behavior.
 
 ### Root
 

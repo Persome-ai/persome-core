@@ -58,6 +58,11 @@ through the identity roster or appear explicitly in the session. Relations use
 a closed predicate set. Low-confidence or unsupported items are dropped and
 counted.
 
+The roster always includes the reserved `self` endpoint. Configured
+`memory_delta.owner_aliases` resolve to `self` and are never minted as people.
+Persome's own localhost `/model` output is removed from the delta evidence so a
+rendered Face, Volume, or Root cannot train the next model window on itself.
+
 The deterministic `self engaged_with <entity>` attention floor is direct
 observational evidence, so it becomes an active Line on the first applied
 window. LLM semantic relations remain shadow candidates. Repeated deterministic
@@ -110,14 +115,18 @@ minted. Cards enter the public deterministic evomem write entrance.
 domain. Bundles smaller than four facts are skipped. A schema contains a central
 proposition, support summary, expected inferences, confidence, and source
 receipts. Low-confidence output is `forming` and excluded from the active model;
-stable output contributes a Face. Re-mining supersedes the prior schema in place.
+stable output contributes a Face. Derived PersonGraph entity/event nodes are
+excluded from schema mining; only durable person facts can support a person
+Face. Re-mining supersedes the prior schema in place.
 
 ### Volumes
 
 `cross_domain_sweeper` compares stable, topic-distinct schemas using a
 deterministic behavior signature before an LLM judge. Confirmed repeated
-cross-domain structure becomes a Volume. Forming candidates stay outside active
-snapshots. The LLM stage has a hard per-build probe budget (8 by default), with
+cross-domain structure becomes a Volume. Person schemas are not eligible inputs:
+collaborator behavior cannot be fused into the owner's project/tool/topic model.
+Forming candidates stay outside active snapshots. The LLM stage has a hard
+per-build probe budget (8 by default), with
 live shadow Volumes whose latest result is still stable/promotable ordered before
 unseen pairs so bounded builds can satisfy the unchanged two-observation
 promotion gate. A negative, failed, or low-confidence retry immediately lowers
