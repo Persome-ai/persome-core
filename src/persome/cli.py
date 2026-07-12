@@ -23,6 +23,7 @@ import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import typer
@@ -517,6 +518,47 @@ def onboard(
     console.print("[green]✓ Local OCR and Screen Recording ready[/green]")
     console.print(f"[green]✓ Persome running and healthy[/green] (pid {proof.pid})")
     console.print(f"[green]✓ Fresh capture verified[/green] ({proof.capture_path})")
+
+
+@app.command()
+def update(
+    source: Annotated[
+        Path | None,
+        typer.Option("--source", help="Use a local checkout instead of official main."),
+    ] = None,
+) -> None:
+    """Update the installed Persome Runtime and prove it is healthy."""
+    from . import updater
+
+    launchagent_was_loaded = False
+    runtime_may_have_changed = False
+    try:
+        with updater.acquire_source(source) as update_source:
+            label = "official main" if update_source.official else str(update_source.path)
+            console.print(
+                f"[bold]Updating Persome from {label}[/bold] "
+                f"([dim]{update_source.revision[:12]}[/dim])"
+            )
+            launchagent_was_loaded = updater.launchagent_is_loaded()
+            runtime_may_have_changed = True
+            updater.stop_runtime(launchagent_was_loaded=launchagent_was_loaded)
+            console.print("[green]✓ Previous Runtime stopped[/green]")
+            updater.run_installer(update_source)
+            updater.restore_launchagent(launchagent_was_loaded)
+    except updater.UpdateError as exc:
+        recovery = ""
+        if runtime_may_have_changed:
+            try:
+                updater.recover_runtime(launchagent_was_loaded)
+            except updater.UpdateError as recovery_exc:
+                recovery = f" Recovery also failed: {recovery_exc}"
+        console.print(f"[red]Update failed: {exc}.{recovery}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        "[green]✓ Persome update complete[/green] — configuration, credentials, and personal "
+        "data were preserved."
+    )
 
 
 def _ping_stages(cfg: config_mod.Config, stages: tuple[str, ...]) -> dict:

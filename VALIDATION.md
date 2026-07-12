@@ -136,6 +136,17 @@ command later from a logged-in macOS session.
 `persome ocr-selftest <image>` remains available for a known-image inference
 check.
 
+The update orchestrator is covered without network access or mutation of the
+real data root:
+
+```bash
+uv run pytest tests/test_updater.py -q
+```
+
+These tests pin the official shallow-clone arguments, local-source validation,
+daemon/LaunchAgent stop and recovery behavior, `install.sh --update` handoff,
+and the public CLI result.
+
 For a GitHub Release produced by the current workflow (older releases are not
 retroactively attested), also download `SHA256SUMS`, verify it from the
 artifact directory, and constrain GitHub provenance to the release workflow,

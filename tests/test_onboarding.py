@@ -192,5 +192,7 @@ def test_installer_runs_strict_onboarding_gate() -> None:
 
     assert "run_onboarding()" in script
     assert 'persome" onboard --tier tiny' in script
-    assert "run_onboarding\n  print_summary" in script
+    assert script.index("run_onboarding\n") < script.index(
+        "print_summary\n", script.index("main()")
+    )
     assert 'die "onboarding is incomplete' in script

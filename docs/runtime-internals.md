@@ -31,6 +31,16 @@ persome status
 persome stop
 ```
 
+`persome update` fetches official `main` into a temporary checkout, stops the
+current lifecycle owner, invokes `install.sh --update`, and lets onboarding
+prove the replacement Runtime before completion. A prior LaunchAgent is
+restored with the new executable after installation. The updater pins both
+`PERSOME_ROOT` and the installer's `PERSOME_INSTALL_HOME` to the active data
+root so isolated/custom profiles cannot be redirected to `~/.persome`.
+Unlike a fresh install, update mode keeps the previous virtualenv backup through
+onboarding. Only a successful OCR/health/capture proof commits the replacement;
+the installer stops a failed replacement daemon before restoring the backup.
+
 `start` double-forks and writes `<PERSOME_ROOT>/.pid`. The HTTP/MCP server
 is restricted to loopback and defaults to `127.0.0.1:8742`; the same app serves `/model` and the
 REST routes. Except for canonical `GET /health`, the outer app requires the

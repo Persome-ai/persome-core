@@ -38,6 +38,24 @@ Read the console output. Common culprits:
   `config.toml`.
 - `mac-ax-helper` / `mac-ax-watcher` binary missing → run `bash install.sh`.
 
+## Update fails
+
+`persome update` downloads official `main` before stopping the current Runtime,
+so a network or Git failure leaves the daemon untouched. If installation fails
+after shutdown, the updater attempts to restart the surviving installation (or
+restore prior LaunchAgent ownership) and preserves `PERSOME_ROOT` data and
+secrets. Fix the reported installer or permission error, then rerun:
+
+```bash
+persome update
+```
+
+For a reviewed local checkout or an offline repair:
+
+```bash
+persome update --source /path/to/personal-model
+```
+
 ## Captures are empty / tree has no content
 
 Most common cause: **Accessibility permission not granted** to the terminal you launched from.

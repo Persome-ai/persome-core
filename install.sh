@@ -9,6 +9,7 @@ VENV_DIR="${INSTALL_HOME}/venv"
 PYTHON_SPEC="${PERSOME_PYTHON:-3.12}"
 BIN_DIR_OVERRIDE=""
 INJECT_MODE="prompt"  # prompt | all | none
+UPDATE_MODE=0
 
 UV_BIN=""
 PERSOME_BIN=""
@@ -23,6 +24,21 @@ rollback_uncommitted_install() {
   trap - EXIT
   if [[ ${status} -ne 0 && ${INSTALL_TRANSACTION_ACTIVE} -eq 1 ]]; then
     warn "installation failed; restoring the previous virtualenv"
+    # Update-mode onboarding can start the replacement daemon before its final
+    # capture proof. Stop that process before replacing its on-disk virtualenv;
+    # the outer `persome update` command restarts the restored Runtime.
+    if [[ ${UPDATE_MODE} -eq 1 && -f "${INSTALL_HOME}/.pid" ]]; then
+      local update_pid=""
+      update_pid="$(tr -d '[:space:]' < "${INSTALL_HOME}/.pid" 2>/dev/null || true)"
+      if [[ "${update_pid}" =~ ^[0-9]+$ ]] && kill -0 "${update_pid}" 2>/dev/null; then
+        kill -TERM "${update_pid}" 2>/dev/null || true
+        local attempts=50
+        while (( attempts > 0 )) && kill -0 "${update_pid}" 2>/dev/null; do
+          sleep 0.1
+          attempts=$((attempts - 1))
+        done
+      fi
+    fi
     rm -rf "${VENV_DIR}"
     if [[ -n "${OLD_VENV_BACKUP}" && -d "${OLD_VENV_BACKUP}" ]]; then
       mv "${OLD_VENV_BACKUP}" "${VENV_DIR}"
@@ -67,6 +83,7 @@ Options:
   --bin-dir <path>         Directory to place the `persome` shim in
   --yes                    Auto-inject all detected MCP client configs
   --no-client-config       Skip MCP client config prompts entirely
+  --update                 Preserve existing setup and run the update verification path
   -h, --help               Show this help
 EOF
 }
@@ -115,6 +132,11 @@ parse_args() {
         shift
         ;;
       --no-client-config)
+        INJECT_MODE="none"
+        shift
+        ;;
+      --update)
+        UPDATE_MODE=1
         INJECT_MODE="none"
         shift
         ;;
@@ -489,6 +511,11 @@ PY
     fi
   fi
 
+  if [[ ${UPDATE_MODE} -eq 1 ]]; then
+    log "update mode: preserving the existing LLM profile and credentials"
+    return 0
+  fi
+
   if [[ ! -t 0 ]]; then
     log "non-interactive install: run 'persome llm setup' to configure a provider"
     return 0
@@ -522,6 +549,14 @@ PY
 
 run_onboarding() {
   if [[ ! -t 0 ]]; then
+    if [[ ${UPDATE_MODE} -eq 1 ]]; then
+      log "non-interactive update: verifying existing permissions and Runtime health"
+      if ! PERSOME_ROOT="${INSTALL_HOME}" "${INSTALL_BIN_DIR}/persome" onboard --tier tiny --no-gui; then
+        die "update installed, but non-interactive Runtime verification failed; rerun 'persome onboard'"
+      fi
+      ONBOARDING_COMPLETED=1
+      return 0
+    fi
     log "non-interactive install: run 'persome onboard' from a logged-in macOS session"
     return 0
   fi
@@ -671,11 +706,19 @@ main() {
   ensure_local_api_token
   compile_bundled_binaries
   verify_install
-  commit_install
+  # Fresh installs keep the established commit point. Updates remain
+  # transactional through onboarding so a failed health/capture proof can
+  # restore the previous venv.
+  if [[ ${UPDATE_MODE} -eq 0 ]]; then
+    commit_install
+  fi
   install_shim
   inject_detected_clients
   maybe_configure_llm
   run_onboarding
+  if [[ ${UPDATE_MODE} -eq 1 ]]; then
+    commit_install
+  fi
   print_summary
 }
 

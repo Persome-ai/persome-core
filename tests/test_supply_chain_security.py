@@ -25,7 +25,14 @@ def test_installer_uses_verified_uv_and_locked_sync() -> None:
     assert " pip install " in script and "--no-deps" in script
     assert "trap rollback_uncommitted_install EXIT" in script
     assert script.index("verify_install\n") < script.index("commit_install\n")
-    assert script.index("commit_install\n") < script.index("install_shim\n", script.index("main()"))
+    main = script.index("main()")
+    fresh_commit = script.index("commit_install\n", main)
+    install_shim = script.index("install_shim\n", main)
+    onboarding = script.index("run_onboarding\n", main)
+    update_commit = script.index("commit_install\n", fresh_commit + 1)
+    assert fresh_commit < install_shim < onboarding < update_commit
+    assert "if [[ ${UPDATE_MODE} -eq 0 ]]" in script
+    assert "if [[ ${UPDATE_MODE} -eq 1 ]]" in script
     assert "printf -v quoted_bin '%q'" in script
     assert 'if [[ -z "${PERSOME_ROOT:-}" ]]' in script
     assert "sqlite3.sqlite_version_info < (3, 42, 0)" in script

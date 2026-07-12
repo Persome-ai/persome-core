@@ -99,6 +99,24 @@ isolated OCR worker, leaves the daemon running, polls `GET /health`, and forces
 one fresh capture. OCR supplies text for AX-poor apps such as WeChat and Feishu;
 pixels never enter an LLM prompt. Persome does not require Full Disk Access.
 
+### Update an existing installation
+
+Run the updater from any directory; no Git checkout is required:
+
+```bash
+persome update
+```
+
+The command downloads a fresh shallow checkout of the official `main` branch,
+stops the old Runtime, runs the locked installer in update mode, preserves
+`~/.persome` configuration, credentials, and personal data, then repeats the
+permission/OCR/health/fresh-capture onboarding proof. It does not modify a
+developer checkout. To test or install an already-reviewed local tree instead:
+
+```bash
+persome update --source /path/to/personal-model
+```
+
 ```bash
 # Recheck or repair OCR onboarding; disable is always explicit and reversible.
 persome onboard

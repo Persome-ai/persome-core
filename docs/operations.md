@@ -83,6 +83,25 @@ persome resume
 persome stop
 ```
 
+## Update the Runtime
+
+```bash
+persome update
+```
+
+The updater fetches a fresh shallow copy of the official `main` branch instead
+of editing a user's source checkout. It stops either the background daemon or
+the owner LaunchAgent, invokes the same locked wheel installer with existing
+LLM/MCP setup preserved, reruns onboarding and its fresh-capture proof, and
+restores prior LaunchAgent ownership. Configuration, secrets, capture history,
+memory, model state, and logs under `PERSOME_ROOT` are not replaced.
+Update-mode installation keeps the previous virtualenv until onboarding passes;
+a failed proof stops the replacement daemon and restores the prior Runtime.
+
+`persome update --source /path/to/checkout` is the explicit developer/offline
+path. The supplied tree must have the complete Persome source layout; the
+updater never pulls or rewrites it.
+
 The default active-session flush is five minutes. Timeline closure and model
 processing add bounded local work, so the operational target for first useful
 recall is at most ten minutes after valid AX capture and provider availability.

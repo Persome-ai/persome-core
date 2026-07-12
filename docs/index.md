@@ -37,6 +37,10 @@ persome start
 persome model open
 ```
 
+Update an existing installation from any directory with `persome update`. The
+command preserves local configuration and personal data, then repeats the
+permission, OCR, health, and fresh-capture proof.
+
 Persome keeps data under `~/.persome`, uses local AX capture by default, offers
 optional on-device OCR, and serves streamable HTTP MCP at
 `http://127.0.0.1:8742/mcp` behind an owner-local bearer. Normal client
