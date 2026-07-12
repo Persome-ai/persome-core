@@ -324,10 +324,10 @@ button {
 .story h1 {
   margin: 0;
   color: rgba(249, 247, 255, 0.97);
-  font-size: clamp(54px, 6.5vw, 94px);
+  font-size: clamp(36px, 4.2vw, 60px);
   font-weight: 660;
-  letter-spacing: -0.075em;
-  line-height: 0.78;
+  letter-spacing: -0.065em;
+  line-height: 0.84;
   text-wrap: balance;
 }
 
@@ -341,12 +341,16 @@ button {
 }
 
 .model-identity {
+  display: -webkit-box;
   max-width: 310px;
   margin: 26px 0 0;
+  overflow: hidden;
   color: rgba(218, 213, 229, 0.78);
   font-size: 13px;
   line-height: 1.7;
   text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
 }
 
 .model-flow {
@@ -859,7 +863,7 @@ button {
   }
 
   .story h1 {
-    font-size: 44px;
+    font-size: 32px;
   }
 
   .model-identity {
@@ -951,7 +955,7 @@ button {
   }
 
   .story h1 {
-    font-size: 37px;
+    font-size: 29px;
   }
 
   .model-identity {
