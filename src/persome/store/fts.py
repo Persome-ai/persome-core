@@ -906,10 +906,6 @@ def _apply_recency(
     return [eid for _s, _r, eid in scored]
 
 
-def hybrid_enabled() -> bool:
-    return bool(_HYBRID["enabled"])
-
-
 def wire_read_path(cfg: Any) -> None:
     from ..writer import embeddings_client  # lazy: avoid an import cycle at module load
     from . import vectors as vectors_mod
