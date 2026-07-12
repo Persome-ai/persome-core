@@ -69,6 +69,8 @@ def render_contributors(config: dict[str, object]) -> str:
         if not isinstance(contributions, list):
             raise ValueError("contributions must be a list")
         labels = " &nbsp;·&nbsp; ".join(_label(str(item)) for item in contributions)
+        if not labels:
+            labels = "✨&nbsp;Contributor"
         cards.append(
             "\n".join(
                 (

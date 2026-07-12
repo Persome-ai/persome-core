@@ -440,6 +440,72 @@ Persome is shaped by people across engineering, design, research, and community.
   &nbsp;&nbsp;<sub>💻&nbsp;Code &nbsp;·&nbsp; 🚧&nbsp;Maintenance</sub>
 </p>
 <br clear="left" />
+<p>
+  <a href="https://github.com/AMTso7aw"><img src="https://avatars.githubusercontent.com/u/113247039?v=4&amp;size=112" width="56" align="left" alt="Zhiheng Chen" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/AMTso7aw">Zhiheng Chen</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/Carri1Sun"><img src="https://avatars.githubusercontent.com/u/169393340?v=4&amp;size=112" width="56" align="left" alt="Kaiyi" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/Carri1Sun">Kaiyi</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/doubleBlack2"><img src="https://avatars.githubusercontent.com/u/108928143?v=4&amp;size=112" width="56" align="left" alt="doubleBlack2" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/doubleBlack2">doubleBlack2</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/GouBuliya"><img src="https://avatars.githubusercontent.com/u/163627234?v=4&amp;size=112" width="56" align="left" alt="Li_Xufeng" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/GouBuliya">Li_Xufeng</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/huachenjie238-oss"><img src="https://avatars.githubusercontent.com/u/261379605?v=4&amp;size=112" width="56" align="left" alt="huachenjie238-oss" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/huachenjie238-oss">huachenjie238-oss</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/JingYangGit"><img src="https://avatars.githubusercontent.com/u/169429757?v=4&amp;size=112" width="56" align="left" alt="Jing@Meowy" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/JingYangGit">Jing@Meowy</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/kevinaimonster"><img src="https://avatars.githubusercontent.com/u/172621334?v=4&amp;size=112" width="56" align="left" alt="kevinaimonster" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/kevinaimonster">kevinaimonster</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/marukowanzi"><img src="https://avatars.githubusercontent.com/u/126929595?v=4&amp;size=112" width="56" align="left" alt="marukowanzi" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/marukowanzi">marukowanzi</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/realGuantum"><img src="https://avatars.githubusercontent.com/u/42232104?v=4&amp;size=112" width="56" align="left" alt="Guantum" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/realGuantum">Guantum</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/SiyiZhu1"><img src="https://avatars.githubusercontent.com/u/132850441?v=4&amp;size=112" width="56" align="left" alt="SiyiZhu1" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/SiyiZhu1">SiyiZhu1</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
+<p>
+  <a href="https://github.com/syleemanet"><img src="https://avatars.githubusercontent.com/u/150102494?v=4&amp;size=112" width="56" align="left" alt="syleemanet" /></a>
+  &nbsp;&nbsp;<strong><a href="https://github.com/syleemanet">syleemanet</a></strong><br />
+  &nbsp;&nbsp;<sub>✨&nbsp;Contributor</sub>
+</p>
+<br clear="left" />
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
 <sub>Contribution labels follow the

@@ -38,3 +38,22 @@ def test_compact_cards_escape_profile_data_and_wrap_rows() -> None:
     assert "version=1&amp;size=112" in rendered
     assert "💻&nbsp;Code" in rendered
     assert "🤔&nbsp;Ideas and feedback" in rendered
+
+
+def test_contributor_without_assigned_types_gets_neutral_label() -> None:
+    rendered = render_contributors(
+        {
+            "contributors": [
+                {
+                    "login": "example",
+                    "name": "Example",
+                    "avatar_url": "https://example.com/avatar.png",
+                    "profile": "https://example.com/",
+                    "contributions": [],
+                }
+            ],
+            "imageSize": 56,
+        }
+    )
+
+    assert "✨&nbsp;Contributor" in rendered
