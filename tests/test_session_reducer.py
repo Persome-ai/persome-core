@@ -111,6 +111,57 @@ def test_reducer_happy_path_writes_event_daily(ac_root: Path, fake_llm) -> None:
     assert row.status == "reduced"
 
 
+def test_reducer_prompt_does_not_replay_earlier_same_day_tasks(ac_root: Path, fake_llm) -> None:
+    day = datetime(2026, 4, 21, 9, 0, tzinfo=_TZ)
+    with fts.cursor() as conn:
+        session_reducer._append_event_entry(
+            conn,
+            session_id="sess_old_task",
+            start_time=day,
+            end_time=day + timedelta(minutes=30),
+            summary="Prepared the launch campaign in Feishu.",
+            sub_tasks=["[09:00-09:30, Feishu] drafted launch copy, involving campaign"],
+            heuristic=False,
+            is_final=True,
+        )
+
+    current = day + timedelta(hours=5)
+    blocks = [
+        timeline_store.TimelineBlock(
+            start_time=current,
+            end_time=current + timedelta(minutes=5),
+            timezone="+08:00",
+            entries=["[Cursor] fixed an MCP startup test, involving server.py"],
+            apps_used=["Cursor"],
+            capture_count=3,
+        )
+    ]
+    fake_llm.set_default(
+        "reducer",
+        json.dumps(
+            {
+                "summary": "Fixed an MCP startup test.",
+                "sub_tasks": ["[14:00-14:05, Cursor] fixed test, involving server.py"],
+            }
+        ),
+    )
+
+    cfg = config_mod.load(ac_root / "config.toml")
+    payload = session_reducer._call_reducer_llm(
+        cfg,
+        blocks,
+        current,
+        current + timedelta(minutes=5),
+    )
+
+    assert payload is not None
+    user_content = fake_llm.calls[-1]["messages"][1]["content"]
+    rendered = "\n".join(block["text"] for block in user_content)
+    assert "fixed an MCP startup test" in rendered
+    assert "Prepared the launch campaign" not in rendered
+    assert "drafted launch copy" not in rendered
+
+
 def test_reducer_no_blocks_marks_reduced_no_write(ac_root: Path) -> None:
     start = datetime(2026, 4, 21, 11, 0, tzinfo=_TZ)
     end = start + timedelta(minutes=5)

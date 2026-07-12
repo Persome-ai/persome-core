@@ -42,12 +42,6 @@ from ..timeline import store as timeline_store
 from ..timeline.attention_trajectory import build_attention_trajectory
 from . import llm as llm_mod
 
-# Number of preceding entries from the same event-YYYY-MM-DD.md file to show
-# the reducer as context. Lets a new session summary align with / avoid
-# duplicating entries that earlier sessions (or earlier flushes of this same
-# session) already wrote for the same day.
-_PRECEDING_ENTRY_LIMIT = 6
-
 logger = get("persome.writer")
 
 # Matches Einsia. The index into this tuple is the attempt counter
@@ -223,13 +217,11 @@ def _reduce_window_locked(
             is_final=is_final,
         )
 
-    event_daily_name = _event_daily_name(session_start)
     payload = _call_reducer_llm(
         cfg,
         blocks,
         window_start,
         window_end,
-        event_daily_name=event_daily_name,
     )
 
     if payload is None:
@@ -530,43 +522,12 @@ def _attach_drill_down_breadcrumb(sub_task: str) -> str:
     return sub_task.rstrip() + breadcrumb
 
 
-def _load_preceding_entries(file_name: str, limit: int) -> str:
-    """Return the last ``limit`` entries of ``file_name`` as a single string.
-
-    Used to give the reducer context about what's already been written to
-    today's event-daily file — both from earlier sessions and from earlier
-    flushes of the current session — so the new summary can align with or
-    explicitly supersede them instead of silently duplicating.
-    """
-    path = files_mod.memory_path(file_name)
-    if not path.exists():
-        return "(no prior entries today)"
-    try:
-        parsed = files_mod.read_file(path)
-    except Exception:  # noqa: BLE001
-        return "(prior entries unavailable)"
-    if not parsed.entries:
-        return "(no prior entries today)"
-    tail = parsed.entries[-limit:]
-    out: list[str] = []
-    for e in tail:
-        out.append(f"### [{e.timestamp}] {{id: {e.id}}}")
-        body = e.body.strip()
-        if body:
-            out.append(body)
-        out.append("")
-    return "\n".join(out).strip()
-
-
 def _call_reducer_llm(
     cfg: Config,
     blocks: list[timeline_store.TimelineBlock],
     start_time: datetime,
     end_time: datetime,
-    *,
-    event_daily_name: str,
 ) -> dict[str, Any] | None:
-    preceding_text = _load_preceding_entries(event_daily_name, _PRECEDING_ENTRY_LIMIT)
     system_text = load_prompt("session_reduce.system.md")
     window_text = load_prompt("session_reduce.window.md").format(
         start_time=_format_time(start_time),
@@ -576,21 +537,6 @@ def _call_reducer_llm(
         blocks_text=_format_blocks(blocks),
         attention_text=_format_attention_trajectory(blocks),
     )
-
-    user_blocks: list[dict[str, Any]] = []
-    if preceding_text.strip():
-        # The preceding entries section is a prefix-growth corpus across flush
-        # ticks — call N+1's preceding_text starts with call N's content plus
-        # a few new entries. Marking it with cache_control yields high hit
-        # rates across same-day flush invocations.
-        preceding = load_prompt("session_reduce.preceding.md").format(
-            preceding_text=preceding_text,
-            event_daily_name=event_daily_name,
-        )
-        user_blocks.append(
-            {"type": "text", "text": preceding, "cache_control": {"type": "ephemeral"}}
-        )
-    user_blocks.append({"type": "text", "text": window_text})
 
     try:
         resp = llm_mod.call_llm(
@@ -607,7 +553,7 @@ def _call_reducer_llm(
                         }
                     ],
                 },
-                {"role": "user", "content": user_blocks},
+                {"role": "user", "content": [{"type": "text", "text": window_text}]},
             ],
             json_mode=True,
         )

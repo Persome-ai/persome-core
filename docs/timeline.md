@@ -111,7 +111,7 @@ SELECT * FROM timeline_blocks
  ORDER BY start_time ASC
 ```
 
-Where `:start_bound` is `flush_end` (or `session.start` on the first flush) and `:end_bound` is `now` (flush) or `session.end` (terminal). All overlapping blocks are fed to the reducer LLM along with the window's wall-clock range. The reducer emits per-window-range sub_tasks like `[13:25-13:30, Cursor] edited tick.py; "fixed _stem_to_dt for negative offsets"; involving persome/timeline/aggregator.py`.
+Where `:start_bound` is `flush_end` (or `session.start` on the first flush) and `:end_bound` is `now` (flush) or `session.end` (terminal). All overlapping blocks are fed to the reducer LLM along with the window's wall-clock range. Earlier entries from the same daily file are deliberately not included: `flush_end` already prevents overlap, while replaying old task bodies biases later same-day summaries toward stale work. The reducer emits per-window-range sub_tasks like `[13:25-13:30, Cursor] edited tick.py; "fixed _stem_to_dt for negative offsets"; involving persome/timeline/aggregator.py`.
 
 ## Tuning
 
