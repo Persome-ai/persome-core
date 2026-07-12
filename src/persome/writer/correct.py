@@ -143,7 +143,12 @@ def _plan(supersede: list[dict], entity_op: dict | None) -> list[str]:
 
 
 def _apply_entity_op(
-    entity_op: dict, cfg: Any, conn: sqlite3.Connection, *, signal: str
+    entity_op: dict,
+    cfg: Any,
+    conn: sqlite3.Connection,
+    *,
+    signal: str,
+    source: str,
 ) -> list[str]:
     from ..evomem import retype as retype_mod
 
@@ -156,10 +161,16 @@ def _apply_entity_op(
             from ..evomem import owner_identity
 
             if op == "reject_owner_alias":
-                state = owner_identity.reject_alias(conn, ent)
+                state = owner_identity.reject_alias(conn, ent, decision_source=source)
                 return [f"rejected owner alias {ent}"] if state is not None else []
             source_id = "correction:" + hashlib.sha1(signal.encode()).hexdigest()[:16]  # noqa: S324
-            state = owner_identity.accept_alias(conn, ent, source_id=source_id, quote=signal or ent)
+            state = owner_identity.accept_alias(
+                conn,
+                ent,
+                source_id=source_id,
+                quote=signal or ent,
+                decision_source=source,
+            )
             return [f"merged {ent} → self"] if state is not None else []
         if op == "retype":
             retype_mod.retype_entity(ent, str(entity_op.get("kind", "")).strip())
@@ -261,7 +272,7 @@ def update_memory(
             if r.errors:
                 applied.append(f"errors: {r.errors}")
         if entity_op and entity_op.get("op") in _ENTITY_OPS:  # entity layer → retype verbs
-            applied += _apply_entity_op(entity_op, cfg, conn, signal=signal)
+            applied += _apply_entity_op(entity_op, cfg, conn, signal=signal, source=source)
             kind = "entity_update" if not supersede else "update"
 
         # Closed loop: weight update (backward) → re-run the forward pass on the affected path so

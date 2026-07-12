@@ -200,8 +200,9 @@ def accept_alias(
     *,
     source_id: str,
     quote: str,
+    decision_source: str = "user",
 ) -> alias_store.OwnerAliasState | None:
-    return record_candidate(
+    state = record_candidate(
         conn,
         alias=alias,
         session_id=source_id,
@@ -209,7 +210,15 @@ def accept_alias(
         quote=quote or alias,
         confidence=1.0,
     )
+    if state is not None:
+        conn.execute(
+            "UPDATE owner_aliases SET decision_source=? WHERE alias_key=?",
+            (decision_source, state.alias_key),
+        )
+    return state
 
 
-def reject_alias(conn: sqlite3.Connection, alias: str) -> alias_store.OwnerAliasState | None:
-    return alias_store.reject(conn, alias, source="user")
+def reject_alias(
+    conn: sqlite3.Connection, alias: str, *, decision_source: str = "user"
+) -> alias_store.OwnerAliasState | None:
+    return alias_store.reject(conn, alias, source=decision_source)

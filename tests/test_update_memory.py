@@ -180,6 +180,28 @@ def test_entity_op_can_reject_false_owner_alias(ac_root):
     assert res.ok and status == "rejected"
 
 
+def test_owner_alias_correction_preserves_agent_provenance(ac_root):
+    with fts.cursor() as conn:
+        res = C.update_memory(
+            _cfg(),
+            conn,
+            "Singularity-tian is the owner's GitHub handle",
+            source="agent",
+            llm_call=_llm(
+                {
+                    "supersede": [],
+                    "entity_op": {"op": "merge_into_self", "entity": "Singularity-tian"},
+                    "reason": "owner handle",
+                }
+            ),
+        )
+        source = conn.execute(
+            "SELECT decision_source FROM owner_aliases WHERE alias_key='singularity-tian'"
+        ).fetchone()[0]
+
+    assert res.ok and source == "agent"
+
+
 def test_noop_when_nothing_to_update(ac_root):
     with fts.cursor() as conn:
         res = C.update_memory(
