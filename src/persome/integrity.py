@@ -45,6 +45,11 @@ _DERIVED_FTS_INTEGRITY_ERRORS = {
     "malformed inverted index for FTS5 table main.captures_fts": "captures_fts",
 }
 _DERIVED_FTS_TABLES = frozenset(_DERIVED_FTS_INTEGRITY_ERRORS.values())
+# SQLite >= 3.50 reports FTS5 damage per finding instead of one summary line,
+# e.g. 'fts5: corruption found reading blob 10 from table "captures_fts"'.
+_DERIVED_FTS_INTEGRITY_RE = re.compile(
+    r'^fts5: .* table "(' + "|".join(sorted(_DERIVED_FTS_TABLES)) + r')"$'
+)
 _GENERIC_MALFORMED_DB_ERROR = "database disk image is malformed"
 _SNAPSHOT_NAME_RE = re.compile(r"^evo-\d{8}\.db$")
 _PERSOME_SNAPSHOT_COLUMNS = {
@@ -243,9 +248,13 @@ def _derived_fts_damage(results: list[str]) -> set[str] | None:
         return None
     damaged: set[str] = set()
     for result in results:
-        table = _DERIVED_FTS_INTEGRITY_ERRORS.get(result.strip())
+        stripped = result.strip()
+        table = _DERIVED_FTS_INTEGRITY_ERRORS.get(stripped)
         if table is None:
-            return None
+            match = _DERIVED_FTS_INTEGRITY_RE.match(stripped)
+            if match is None:
+                return None
+            table = match.group(1)
         damaged.add(table)
     return damaged
 

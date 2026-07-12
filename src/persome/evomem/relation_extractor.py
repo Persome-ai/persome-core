@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import combinations
@@ -163,6 +164,23 @@ def _load_typed_entities(conn) -> dict[str, tuple[str, str]]:
     return out
 
 
+def _alias_mentioned(alias: str, text: str) -> bool:
+    """Evidence-grade mention check for a normalized alias in normalized text.
+
+    Plain substring containment fabricates participants — "amy" is inside
+    "family" and a one-character given name is inside almost any sentence —
+    and a fabricated participant becomes a relation edge. An ASCII alias must
+    therefore match on word boundaries, and every alias must be at least two
+    characters long.
+    """
+    if not alias or len(alias) < 2 or not text or alias not in text:
+        return False
+    if alias.isascii():
+        pattern = rf"(?<![0-9a-z]){re.escape(alias)}(?![0-9a-z])"
+        return re.search(pattern, text) is not None
+    return True
+
+
 def _load_terminal_activities(conn, people: _People) -> list[_Activity]:
     """Load durable activities plus the read-only legacy terminal-intent fallback.
 
@@ -180,7 +198,7 @@ def _load_terminal_activities(conn, people: _People) -> list[_Activity]:
         candidates = {_norm(name) for name in raw_names if _norm(name)}
         normalized_summary = _norm(summary)
         candidates.update(
-            alias for alias in people.aliases if alias and alias in normalized_summary
+            alias for alias in people.aliases if _alias_mentioned(alias, normalized_summary)
         )
         resolved: list[str] = []
         for alias in candidates:
@@ -199,7 +217,7 @@ def _load_terminal_activities(conn, people: _People) -> list[_Activity]:
     ).events():
         summary_norm = _norm(event.summary)
         typed_mentions = [
-            typed for alias, typed in typed_roster.items() if alias and alias in summary_norm
+            typed for alias, typed in typed_roster.items() if _alias_mentioned(alias, summary_norm)
         ]
         participants: list[str] = []
         for participant in event.participant_ids:

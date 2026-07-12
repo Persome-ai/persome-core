@@ -157,6 +157,11 @@ def scrub_database_copies(
 
     Corrupt/unreadable copies are deleted rather than silently retained. This
     helper also handles integrity-quarantine databases outside ``backup/``.
+
+    Returns the number of copies whose erasure verifiably completed (scrubbed
+    in place, or removed entirely). A copy that can be neither scrubbed nor
+    removed does not count and never blocks the rest of the sweep; the sweep
+    finishes first and then raises ``RuntimeError`` naming every leftover.
     """
     requested = _validated_scrub_tables(tables)
     candidates = tuple(dict.fromkeys(Path(item) for item in artifacts))
@@ -164,6 +169,7 @@ def scrub_database_copies(
         return 0
 
     scrubbed = 0
+    leftovers: list[str] = []
     for snapshot in sorted(candidates):
         conn: sqlite3.Connection | None = None
         try:
@@ -229,8 +235,16 @@ def scrub_database_copies(
             if conn is not None:
                 conn.close()
             _log.warning("snapshot scrub failed for %s; removing snapshot: %s", snapshot.name, exc)
-            _remove_sqlite_copy(snapshot)
+            try:
+                _remove_sqlite_copy(snapshot)
+            except RuntimeError as removal_exc:
+                # A stuck copy must not shield the remaining copies from
+                # erasure: record it, finish the sweep, and fail loud at the end.
+                leftovers.append(f"{snapshot.name}: {removal_exc}")
+                continue
         scrubbed += 1
+    if leftovers:
+        raise RuntimeError("snapshot erasure incomplete: " + "; ".join(sorted(leftovers)))
     return scrubbed
 
 

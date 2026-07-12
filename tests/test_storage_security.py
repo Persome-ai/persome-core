@@ -630,3 +630,38 @@ def test_memory_rebuild_prunes_vectors_for_superseded_entries(ac_root: Path) -> 
         assert conn.execute("SELECT superseded FROM entries WHERE id=?", (entry_id,)).fetchone()[0]
         assert conn.execute("SELECT COUNT(*) FROM entry_vectors").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM vector_queue").fetchone()[0] == 0
+
+
+def test_stuck_copy_does_not_shield_later_snapshots_from_erasure(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "zzzzlatersnapshotsecretzzzz"
+    paths.backup_dir().mkdir(parents=True, exist_ok=True)
+    stuck = paths.backup_dir() / "evo-20200101.db"
+    stuck.write_bytes(b"this is not a sqlite database")
+    later = paths.backup_dir() / "evo-20260711.db"
+    with sqlite3.connect(later) as conn:
+        conn.executescript(fts.SCHEMA)
+        conn.execute(
+            "INSERT INTO captures(id,timestamp,visible_text) VALUES('later','2026',?)",
+            (secret,),
+        )
+        conn.commit()
+    assert secret.encode() in later.read_bytes()
+
+    real_remove = backup._remove_sqlite_copy
+
+    def flaky_remove(main: Path) -> None:
+        if main.name == stuck.name:
+            raise RuntimeError(f"cannot remove unsanitized SQLite artifact {main}: stuck inode")
+        real_remove(main)
+
+    monkeypatch.setattr(backup, "_remove_sqlite_copy", flaky_remove)
+
+    with pytest.raises(RuntimeError, match="erasure incomplete.*evo-20200101"):
+        backup.scrub_database_copies(("captures",), (stuck, later))
+
+    # The sweep completed past the stuck copy: the later snapshot was scrubbed.
+    assert secret.encode() not in later.read_bytes()
+    with sqlite3.connect(later) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM captures").fetchone()[0] == 0

@@ -710,3 +710,65 @@ def test_org_has_no_deterministic_self_leg(ac_root):
         if r[1] == "\u817e\u8baf\u6df7\u5143\u5927\u8bed\u8a00\u6a21\u578b\u90e8"
         or r[0] == "\u817e\u8baf\u6df7\u5143\u5927\u8bed\u8a00\u6a21\u578b\u90e8"
     ]
+
+
+def test_alias_mention_requires_word_boundaries_and_length(ac_root):
+    # ASCII aliases must not match inside other words; CJK needs >= 2 chars.
+    wang_fang = "\u738b\u82b3"
+    wang = "\u738b"
+    assert not rx._alias_mentioned("amy", "spent the evening with family")
+    assert rx._alias_mentioned("amy", "sync with amy about the roadmap")
+    assert rx._alias_mentioned("amy", "amy: roadmap sync")
+    assert not rx._alias_mentioned(wang, f"{wang_fang} joined the review")
+    assert rx._alias_mentioned(wang_fang, f"{wang_fang} joined the review")
+    assert not rx._alias_mentioned("", "anything")
+    assert not rx._alias_mentioned("amy", "")
+
+
+def test_summary_substring_does_not_fabricate_participants(ac_root):
+    mem = _mem()
+    _ingest(
+        mem,
+        [PersonEvent(name="Amy", summary="quarterly review", occurred_at=_ts(20), confidence=0.9)],
+    )
+    with fts.cursor() as conn:
+        entries_store.create_file(
+            conn,
+            name="event-2026-07-11.md",
+            description="Synthetic activity",
+            tags=["event"],
+        )
+        entries_store.append_entry(
+            conn,
+            name="event-2026-07-11.md",
+            content="Organized the family photo archive.",
+            tags=["home"],
+        )
+    rx.run_relation_extraction(_on(), memory=mem, llm_call=_empty_llm, conn_factory=fts.cursor)
+    part = [r for r in _all_edges() if r[2] == "participates_in"]
+    # self participates in the activity, but "amy" inside "family" must not.
+    assert all(r[0] == "self" for r in part), part
+
+
+def test_summary_word_mention_still_links_participant(ac_root):
+    mem = _mem()
+    _ingest(
+        mem,
+        [PersonEvent(name="Amy", summary="quarterly review", occurred_at=_ts(20), confidence=0.9)],
+    )
+    with fts.cursor() as conn:
+        entries_store.create_file(
+            conn,
+            name="event-2026-07-12.md",
+            description="Synthetic activity",
+            tags=["event"],
+        )
+        entries_store.append_entry(
+            conn,
+            name="event-2026-07-12.md",
+            content="Roadmap sync with Amy before the release.",
+            tags=["work"],
+        )
+    rx.run_relation_extraction(_on(), memory=mem, llm_call=_empty_llm, conn_factory=fts.cursor)
+    part = [r for r in _all_edges() if r[2] == "participates_in"]
+    assert any(r[0] == "Amy" for r in part), part

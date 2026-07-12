@@ -1915,6 +1915,27 @@ def test_derived_fts_vtable_constructor_error_is_rebuildable() -> None:
     )
 
 
+def test_derived_fts_damage_recognizes_modern_sqlite_messages() -> None:
+    # SQLite >= 3.50 reports per-finding fts5 lines instead of one summary line.
+    assert integrity._derived_fts_damage(
+        ['fts5: corruption found reading blob 10 from table "captures_fts"']
+    ) == {"captures_fts"}
+    assert integrity._derived_fts_damage(
+        [
+            'fts5: missing row 7 from table "entries"',
+            "malformed inverted index for FTS5 table main.captures_fts",
+        ]
+    ) == {"entries", "captures_fts"}
+    # Damage naming any other table is still core damage, never a derived repair.
+    assert (
+        integrity._derived_fts_damage(['fts5: corruption found reading blob 3 from table "other"'])
+        is None
+    )
+    assert integrity._derived_fts_damage(["row 1 missing from index sqlite_autoindex_files_1"]) is (
+        None
+    )
+
+
 def test_generic_malformed_error_requires_readable_canonical_tables(
     ac_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

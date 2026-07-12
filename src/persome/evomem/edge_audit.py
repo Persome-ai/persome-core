@@ -16,12 +16,25 @@ logger = get("persome.evomem.edge_audit")
 
 _ENTITY_PREFIXES = ("person-", "org-", "project-", "tool-")
 
-# the extractor's honest synthetic fallbacks (constructions, not excerpts)
+# The extractor's honest synthetic fallbacks (constructions, not excerpts).
+# Edges written by pre-0.3.0 releases carry the same constructions in their
+# original Chinese wording; preserved data must keep auditing as synthetic, so
+# both generations are recognized (escaped to satisfy the language gate).
 _SYNTHETIC_PATTERNS = (
     re.compile(r"^Interaction history with .+$"),
     re.compile(r"^.+ and .+ appeared in the same context$"),
     re.compile(r"^Completed .+$"),
     re.compile(r"^.+ project memory contains \d+ durable facts$"),
+    re.compile("^\u4e0e .+ \u7684\u4ea4\u4e92\u8bb0\u5f55$"),
+    re.compile("^.+ \u4e0e .+ \u66fe\u5728\u540c\u4e00\u573a\u666f\u51fa\u73b0$"),
+    re.compile("^\u5df2\u5b8c\u6210\u7684 .+ \u4e8b\u9879$"),
+    re.compile("^.+ \u9879\u76ee\u8bb0\u5fc6 \\d+ \u6761\u6301\u4e45\u4e8b\u5b9e$"),
+)
+
+# Markers identifying the co-occurrence construction across both generations.
+_COOCCUR_MARKERS = (
+    "appeared in the same context",
+    "\u66fe\u5728\u540c\u4e00\u573a\u666f\u51fa\u73b0",
 )
 
 
@@ -31,6 +44,10 @@ def _norm_ws(text: str) -> str:
 
 def _is_synthetic(quote: str) -> bool:
     return any(p.match(quote or "") for p in _SYNTHETIC_PATTERNS)
+
+
+def _is_cooccur_quote(quote: str) -> bool:
+    return _is_synthetic(quote) and any(marker in quote for marker in _COOCCUR_MARKERS)
 
 
 def _activity_source(identity: str) -> tuple[str, str] | None:
@@ -224,7 +241,7 @@ def audit_edge(conn, row: Any, *, llm_call: Any | None = None) -> EdgeVerdict:
             v.notes.append("legacy_source_unavailable")
         if source_ok and quote and not _is_synthetic(quote):
             trace_ok = any(_norm_ws(quote) in _norm_ws(text) for text in source_texts)
-    elif _is_synthetic(quote) and "appeared in the same context" in quote:
+    elif _is_cooccur_quote(quote):
         # co-occurrence: re-derive the shared minute bucket instead of text trace
         trace_ok = _shared_bucket(conn, src, dst)
         source_ok = trace_ok
