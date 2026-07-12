@@ -1,0 +1,80 @@
+{
+  "projectName": "personal-model",
+  "projectOwner": "Intuition-Lab",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "badge": false,
+  "imageSize": 56,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "Singularity-tian",
+      "name": "Singularity",
+      "avatar_url": "https://avatars.githubusercontent.com/u/113085728?v=4",
+      "profile": "https://github.com/Singularity-tian",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "GouBuliya",
+      "name": "Li_Xufeng",
+      "avatar_url": "https://avatars.githubusercontent.com/u/163627234?v=4",
+      "profile": "https://github.com/GouBuliya",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "SiyiZhu1",
+      "name": "Siyi",
+      "avatar_url": "https://avatars.githubusercontent.com/u/132850441?v=4",
+      "profile": "https://github.com/SiyiZhu1",
+      "contributions": [
+        "design"
+      ]
+    },
+    {
+      "login": "kevinaimonster",
+      "name": "Kevin",
+      "avatar_url": "https://avatars.githubusercontent.com/u/172621334?v=4",
+      "profile": "https://github.com/kevinaimonster",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "huachenjie238-oss",
+      "name": "huachenjie238-oss",
+      "avatar_url": "https://avatars.githubusercontent.com/u/261379605?v=4",
+      "profile": "https://github.com/huachenjie238-oss",
+      "contributions": [
+        "growth"
+      ]
+    },
+    {
+      "login": "JingYangGit",
+      "name": "Jing@Meowy",
+      "avatar_url": "https://avatars.githubusercontent.com/u/169429757?v=4",
+      "profile": "https://github.com/JingYangGit",
+      "contributions": [
+        "growth"
+      ]
+    },
+    {
+      "login": "AMTso7aw",
+      "name": "Zhiheng Chen",
+      "avatar_url": "https://avatars.githubusercontent.com/u/113247039?v=4",
+      "profile": "https://github.com/AMTso7aw",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 3,
+  "linkToUsage": false
+}

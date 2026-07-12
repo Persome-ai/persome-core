@@ -16,6 +16,11 @@ depending on `[mcp] transport`. Exposes:
 from __future__ import annotations
 
 import json
+import os
+import signal
+import threading
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -1442,8 +1447,71 @@ def build_server(
     return server
 
 
+def _watch_parent_loop(
+    initial_ppid: int,
+    *,
+    poll_seconds: float,
+    grace_seconds: float,
+    _getppid: Callable[[], int] = os.getppid,
+    _sleep: Callable[[float], None] = time.sleep,
+    _kill: Callable[[int, int], None] = os.kill,
+    _exit: Callable[[int], None] = os._exit,
+) -> None:
+    """Poll until the spawning client dies, then shut the whole process down.
+
+    Structured like ``cli._watch_parent_death`` (SIGTERM, grace, ``os._exit``
+    backstop). On this stdio path no SIGTERM handler is installed — FastMCP's
+    stdio transport registers none — so the default disposition terminates the
+    process at the SIGTERM, which is safe: the client is gone, no request is
+    in flight, and the store is WAL SQLite. The grace window and hard-exit
+    backstop only engage if a handler is ever added (e.g. a future FastMCP),
+    where they stop a hung shutdown from stranding an orphan whose non-daemon
+    readline thread never unblocks. The keyword-only callables are test seams.
+    """
+    while True:
+        _sleep(poll_seconds)
+        if _getppid() != initial_ppid:
+            logger.info("stdio client (pid %d) exited — shutting down", initial_ppid)
+            _kill(os.getpid(), signal.SIGTERM)
+            _sleep(grace_seconds)
+            _exit(0)
+
+
+def _start_parent_watchdog(
+    poll_seconds: float = 3.0,
+    grace_seconds: float = 5.0,
+    _getppid: Callable[[], int] = os.getppid,
+) -> None:
+    """Exit the stdio server once the MCP client that spawned it is gone.
+
+    Stdio servers normally end when stdin reaches EOF, but a client killed
+    without closing the pipe (write end inherited by a still-alive session
+    leader) never delivers EOF, and orphaned ``persome mcp`` processes
+    accumulate silently. Reparenting (``os.getppid()`` changing, to launchd on
+    macOS or init/subreaper on Linux) is the reliable death signal. A server
+    already running with ppid 1 has nothing to watch: either launchd spawned
+    it deliberately, or the client died before we armed — callers narrow that
+    race by arming first, before any other startup work.
+    """
+    initial = _getppid()
+    if initial == 1:
+        return
+    threading.Thread(
+        target=_watch_parent_loop,
+        args=(initial,),
+        kwargs={"poll_seconds": poll_seconds, "grace_seconds": grace_seconds},
+        name="mcp-parent-watchdog",
+        daemon=True,
+    ).start()
+
+
 def run_stdio() -> None:
     """Run the server on stdio. Blocks until the client disconnects."""
+    # Belt and braces for clients that die without closing the pipe: without
+    # this, orphaned stdio servers pile up and can race integrity recovery.
+    # Armed before build_server so a client death during startup still gets
+    # caught (ppid is captured while the client is most likely alive).
+    _start_parent_watchdog()
     # Stdio has no HTTP request surface and therefore no bearer header.  Keep it
     # explicitly outside the local HTTP authentication boundary.
     server = build_server(auth_enabled=False)

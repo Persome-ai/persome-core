@@ -75,6 +75,29 @@ is allowlisted because changing it would break local OCR.
    verified).
 4. CI must be green: offline test gate + PII scan on ubuntu and macos runners.
 
+## Contributor acknowledgements
+
+The contributor cards in `README.md` follow the
+[All Contributors](https://allcontributors.org/) specification. They recognize
+code and non-code work and are maintained separately from GitHub's automatic
+commit-author contributor graph.
+
+Maintainers can add or update a GitHub profile with the CLI:
+
+```bash
+npx all-contributors-cli add <github-login> <contribution-type[,contribution-type]>
+uv run python scripts/render_contributors.py
+```
+
+For example, `code`, `doc`, `design`, `ideas`, `maintenance`, `projectManagement`,
+and `review` are useful contribution types for this project. The second command
+restores Persome's compact card layout after the CLI updates the contributor
+data. Verify the generated cards with
+`uv run python scripts/render_contributors.py --check`, then commit both
+`README.md` and `.all-contributorsrc`. Organization membership can make a
+profile easier to find, but acknowledgement should reflect a real contribution
+rather than membership alone.
+
 ## DCO — sign your commits
 
 This project uses the [Developer Certificate of Origin](https://developercertificate.org/).

@@ -21,6 +21,10 @@ Stdio runs one server process for the client:
 persome mcp
 ```
 
+The stdio server lives exactly as long as its client: it exits on stdin EOF,
+and a parent-death watchdog also exits it within seconds if the spawning
+client dies without closing the pipe, so orphaned servers never accumulate.
+
 Example client configuration:
 
 ```json

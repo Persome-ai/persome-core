@@ -472,6 +472,62 @@ secrets, personal data, non-English source text, contract drift, lint failures,
 and offline regressions. Third-party Actions are pinned to reviewed commit SHAs
 and workflow permissions default to read-only.
 
+## Contributors
+
+Persome is shaped by people across engineering, design, research, and community.
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<table>
+  <tbody>
+    <tr>
+      <td valign="middle">
+        <a href="https://github.com/Singularity-tian"><img src="https://avatars.githubusercontent.com/u/113085728?v=4&amp;size=112" width="56" align="left" alt="Singularity" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/Singularity-tian">Singularity</a></strong><br />
+        &nbsp;&nbsp;<sub>💻&nbsp;Code</sub>
+      </td>
+      <td valign="middle">
+        <a href="https://github.com/GouBuliya"><img src="https://avatars.githubusercontent.com/u/163627234?v=4&amp;size=112" width="56" align="left" alt="Li_Xufeng" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/GouBuliya">Li_Xufeng</a></strong><br />
+        &nbsp;&nbsp;<sub>💻&nbsp;Code</sub>
+      </td>
+      <td valign="middle">
+        <a href="https://github.com/SiyiZhu1"><img src="https://avatars.githubusercontent.com/u/132850441?v=4&amp;size=112" width="56" align="left" alt="Siyi" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/SiyiZhu1">Siyi</a></strong><br />
+        &nbsp;&nbsp;<sub>🎨&nbsp;Design</sub>
+      </td>
+    </tr>
+    <tr>
+      <td valign="middle">
+        <a href="https://github.com/kevinaimonster"><img src="https://avatars.githubusercontent.com/u/172621334?v=4&amp;size=112" width="56" align="left" alt="Kevin" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/kevinaimonster">Kevin</a></strong><br />
+        &nbsp;&nbsp;<sub>💻&nbsp;Code</sub>
+      </td>
+      <td valign="middle">
+        <a href="https://github.com/huachenjie238-oss"><img src="https://avatars.githubusercontent.com/u/261379605?v=4&amp;size=112" width="56" align="left" alt="huachenjie238-oss" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/huachenjie238-oss">huachenjie238-oss</a></strong><br />
+        &nbsp;&nbsp;<sub>📈&nbsp;Growth</sub>
+      </td>
+      <td valign="middle">
+        <a href="https://github.com/JingYangGit"><img src="https://avatars.githubusercontent.com/u/169429757?v=4&amp;size=112" width="56" align="left" alt="Jing@Meowy" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/JingYangGit">Jing@Meowy</a></strong><br />
+        &nbsp;&nbsp;<sub>📈&nbsp;Growth</sub>
+      </td>
+    </tr>
+    <tr>
+      <td valign="middle">
+        <a href="https://github.com/AMTso7aw"><img src="https://avatars.githubusercontent.com/u/113247039?v=4&amp;size=112" width="56" align="left" alt="Zhiheng Chen" /></a>
+        &nbsp;&nbsp;<strong><a href="https://github.com/AMTso7aw">Zhiheng Chen</a></strong><br />
+        &nbsp;&nbsp;<sub>💻&nbsp;Code</sub>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+<sub>Contribution labels follow the
+[All Contributors](https://allcontributors.org/docs/en/emoji-key) convention.
+Contributions of every kind are welcome.</sub>
+
 ### Support Persome
 
 If an inspectable, user-owned personal model is useful to your agents,

@@ -19,6 +19,22 @@ def isolate_runtime_llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PERSOME_LLM_BASE_URL", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _sandbox_persome_root(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Point every test at a throwaway ``PERSOME_ROOT`` by default.
+
+    Isolation used to be opt-in via ``ac_root``; a test that forgot to request
+    it resolved ``paths.root()`` to the developer's real ``~/.persome`` and, in
+    one incident, opened a corrupt personal index.db (test_local_api_auth).
+    Tests that request ``ac_root`` still win: that fixture runs after this one
+    and re-sets ``PERSOME_ROOT`` to its own per-test directory.
+    """
+    root = tmp_path_factory.mktemp("persome-sandbox")
+    monkeypatch.setenv("PERSOME_ROOT", str(root))
+
+
 @pytest.fixture
 def ac_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "persome"
