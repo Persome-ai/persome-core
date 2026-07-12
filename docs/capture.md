@@ -179,6 +179,21 @@ Ported from Einsia-Partner's `s1_collector`. These are what downstream LLM stage
 - **`visible_text`** — a length-capped markdown rendering of the AX tree (up to ~10 k chars). What the user is currently reading on screen.
 - **`url`** — regex-extracted from `visible_text` when present; `null` otherwise.
 
+Editable values are placeholder-cleaned before they enter S1. The native AX
+helper's focused-element projection first uses `AXPlaceholderValue`, then a
+bounded fallback for Chromium's exact `.placeholder` descendant shape. The raw
+tree retains that evidence; the Python S1 projection applies the same structural
+check to the tree, older helpers, watcher triggers, and trusted-ingest
+producers. An exact placeholder descendant is removed only inside its owning
+editable subtree and only when its text is locally paired with that control.
+Matching text is then cleared from the parent projection. Ordinary page text
+and broad CSS classes that merely contain the word `placeholder` remain intact.
+Historical timeline/MCP
+reads and `rebuild-captures-index` apply the same sanitizer, so replaying an old
+buffer cannot turn input hints into authored text; index rebuilds also preserve
+DB-only OCR backfills. Explicit `--raw` native captures retain the diagnostic AX
+structure.
+
 Persisted screenshots are **not** passed to timeline, reducer, memory-delta, or
 schema prompts. They support optional local provenance drill-down and debugging.
 When `encrypt_screenshots=true`, `PERSOME_SCREENSHOT_KEY` seals them with

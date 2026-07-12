@@ -94,6 +94,20 @@ def test_editing_with_same_target_no_peripheral() -> None:
     assert loc.peripheral == ""
 
 
+def test_user_text_input_element_does_not_select_cursor_rung() -> None:
+    cap = _cap(
+        focused_element={"role": "", "is_editable": False},
+        trigger={
+            "event_type": "UserTextInput",
+            "details": {"element": {"role": "AXTextArea", "value": "typed text"}},
+        },
+        visible_text="ordinary window content",
+    )
+    loc = resolve_locus(cap, visible_text=cap["visible_text"])
+    assert loc.rung != "cursor"
+    assert loc.peripheral == ""
+
+
 # --- cmux resolver: narrow to the pane, drop chrome ------------------------
 
 

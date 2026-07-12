@@ -135,6 +135,42 @@ def test_ingest_readable_via_recent(ac_root) -> None:
     assert rec["app_name"] == payload["window_meta"]["app_name"]
 
 
+def test_ingest_filters_empty_composer_placeholder(ac_root) -> None:
+    phrase = "Ask for follow-up changes"
+    _, payload = _payload()
+    payload["trigger"] = {
+        "event_type": "UserMouseClick",
+        "details": {"element": {"role": "AXStaticText", "value": phrase}},
+    }
+    app = payload["ax_tree"]["apps"][0]
+    app["focused_element"] = {
+        "role": "AXTextArea",
+        "value": phrase,
+        "is_editable": True,
+    }
+    app["windows"][0]["elements"] = [
+        {
+            "role": "AXTextArea",
+            "value": phrase,
+            "children": [
+                {
+                    "role": "AXGroup",
+                    "domClassList": ["placeholder"],
+                    "children": [{"role": "AXStaticText", "value": phrase}],
+                }
+            ],
+        }
+    ]
+
+    response = _client().post("/captures/ingest", json=payload)
+
+    assert response.status_code == 200, response.text
+    out = json.loads(next(paths.capture_buffer_dir().glob("*.json")).read_text())
+    assert out["focused_element"]["value"] == ""
+    assert phrase not in out["visible_text"]
+    assert out["trigger"]["details"]["element"].get("value", "") == ""
+
+
 def test_ingest_through_runner_fires_session_hook_and_dedups(ac_root) -> None:
     from persome.capture import scheduler
 

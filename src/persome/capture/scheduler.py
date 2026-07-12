@@ -521,21 +521,25 @@ def _index_capture(file_stem: str, out: dict[str, Any]) -> bool:
     ``persome rebuild-captures-index``; killing the capture worker
     over an indexing hiccup would lose the JSON too.
     """
-    meta = out.get("window_meta") or {}
-    focused = out.get("focused_element") or {}
+    # Rollback/recovery paths can feed historical JSON that predates native
+    # placeholder filtering. Index the repaired S1 projection without
+    # rewriting the forensic raw AX tree on disk.
+    indexed_out = s1_parser.sanitize_capture(out)
+    meta = indexed_out.get("window_meta") or {}
+    focused = indexed_out.get("focused_element") or {}
     try:
         with fts_store.cursor() as conn:
             fts_store.insert_capture(
                 conn,
                 id=file_stem,
-                timestamp=out.get("timestamp", ""),
+                timestamp=indexed_out.get("timestamp", ""),
                 app_name=meta.get("app_name") or "",
                 bundle_id=meta.get("bundle_id") or "",
                 window_title=meta.get("title") or "",
                 focused_role=focused.get("role") or "",
                 focused_value=focused.get("value") or "",
-                visible_text=out.get("visible_text") or "",
-                url=out.get("url") or "",
+                visible_text=indexed_out.get("visible_text") or "",
+                url=indexed_out.get("url") or "",
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("captures FTS insert failed for %s: %s", file_stem, exc)

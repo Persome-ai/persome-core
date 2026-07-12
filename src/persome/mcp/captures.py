@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import paths
-from ..capture import screenshot_crypto
+from ..capture import s1_parser, screenshot_crypto
 from ..capture.timestamps import (
     parse_capture_path_timestamp,
     parse_capture_timestamp,
@@ -62,11 +62,23 @@ def _matches(
     return not (window_title_substring and window_title_substring.lower() not in title)
 
 
-def _load_capture(path: Path) -> dict[str, Any] | None:
+def _load_capture_projection(path: Path) -> dict[str, Any] | None:
+    """Return the safe S1 projection for one raw capture file."""
     try:
-        return json.loads(path.read_text())  # type: ignore[no-any-return]
+        data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
+    return s1_parser.sanitize_capture(data)
+
+
+def _load_capture(path: Path) -> dict[str, Any] | None:
+    return _load_capture_projection(path)
+
+
+def _buffer_projection(file_stem: str) -> dict[str, Any] | None:
+    return _load_capture_projection(paths.capture_buffer_dir() / f"{file_stem}.json")
 
 
 def _count_ax_nodes(ax_tree: Any) -> int:
@@ -308,22 +320,43 @@ def search_captures(
             app_name=app_name,
             limit=limit,
         )
-    return [
-        {
-            "provenance": CAPTURE_PROVENANCE,
-            "timestamp": h.timestamp,
-            "app_name": h.app_name,
-            "bundle_id": h.bundle_id,
-            "window_title": h.window_title,
-            "url": h.url,
-            "snippet": h.snippet,
-            "rank": h.rank,
-            "file_stem": h.id,
-            "focused_role": h.focused_role,
-            "focused_value_preview": (h.focused_value or "")[:200],
-        }
-        for h in hits
-    ]
+        indexed_text = {hit.id: fts_store.get_capture_visible_text(conn, hit.id) for hit in hits}
+    out: list[dict[str, Any]] = []
+    for h in hits:
+        projection = _buffer_projection(h.id)
+        data = projection or {}
+        meta = data.get("window_meta") or {}
+        focused = data.get("focused_element") or {}
+        safe_visible = str(data.get("visible_text") or "")
+        db_ocr_authoritative = bool(data.get("ocr_submitted")) and not safe_visible
+        stale_text = projection is not None and (
+            not db_ocr_authoritative and safe_visible != indexed_text.get(h.id, "")
+        )
+        # Preserve FTS highlighting for clean rows. A pre-upgrade row whose S1
+        # projection repairs differently is rendered only from the safe JSON
+        # projection so a stale index cannot echo placeholder text.
+        safe_snippet = h.snippet
+        if stale_text:
+            safe_snippet = " ".join(safe_visible.split())[:300]
+        out.append(
+            {
+                "provenance": CAPTURE_PROVENANCE,
+                "timestamp": h.timestamp,
+                "app_name": meta.get("app_name") or h.app_name,
+                "bundle_id": meta.get("bundle_id") or h.bundle_id,
+                "window_title": meta.get("title") or h.window_title,
+                "url": (data.get("url") if projection is not None else h.url) or "",
+                "snippet": safe_snippet,
+                "rank": h.rank,
+                "file_stem": h.id,
+                "focused_role": (focused.get("role") if projection is not None else h.focused_role)
+                or "",
+                "focused_value_preview": (
+                    (focused.get("value") if projection is not None else h.focused_value) or ""
+                )[:200],
+            }
+        )
+    return out
 
 
 def _dedupe_recent_captures(
@@ -407,15 +440,30 @@ def current_context(
         full_rows = _dedupe_recent_captures(rows, limit=fulltext_limit)
         full: list[dict[str, Any]] = []
         for r in full_rows:
-            visible = fts_store.get_capture_visible_text(conn, r.id)
+            projection = _buffer_projection(r.id)
+            data = projection or {}
+            focused = data.get("focused_element") or {}
+            safe_visible = str(data.get("visible_text") or "")
+            db_ocr_authoritative = bool(data.get("ocr_submitted")) and not safe_visible
+            visible = (
+                safe_visible
+                if projection is not None and not db_ocr_authoritative
+                else fts_store.get_capture_visible_text(conn, r.id)
+            )
             full.append(
                 {
                     "timestamp": r.timestamp,
                     "app_name": r.app_name,
                     "window_title": r.window_title,
-                    "url": r.url,
-                    "focused_role": r.focused_role,
-                    "focused_value": r.focused_value,
+                    "url": (data.get("url") if projection is not None else r.url) or "",
+                    "focused_role": (
+                        focused.get("role") if projection is not None else r.focused_role
+                    )
+                    or "",
+                    "focused_value": (
+                        focused.get("value") if projection is not None else r.focused_value
+                    )
+                    or "",
                     "visible_text": visible,
                     "file_stem": r.id,
                 }
@@ -424,10 +472,23 @@ def current_context(
         # Lightweight per-headline preview so a context list shows content
         # (incl. OCR-backfilled WeChat text) at a glance. One indexed SELECT per
         # headline (≤ headline_limit) — cheap; no JSON reads on this hot path.
-        head_text: dict[str, str] = {
-            r.id: (fts_store.get_capture_visible_text(conn, r.id) or "")
-            for r in rows[:headline_limit]
-        }
+        head_text: dict[str, str] = {}
+        headline_focus: dict[str, str] = {}
+        for r in rows[:headline_limit]:
+            projection = _buffer_projection(r.id)
+            data = projection or {}
+            safe_visible = str(data.get("visible_text") or "")
+            db_ocr_authoritative = bool(data.get("ocr_submitted")) and not safe_visible
+            if projection is not None and not db_ocr_authoritative:
+                head_text[r.id] = safe_visible
+                headline_focus[r.id] = str((data.get("focused_element") or {}).get("role") or "")
+            else:
+                head_text[r.id] = fts_store.get_capture_visible_text(conn, r.id) or ""
+                headline_focus[r.id] = (
+                    str((data.get("focused_element") or {}).get("role") or "")
+                    if projection is not None
+                    else r.focused_role
+                )
 
     headlines: list[dict[str, Any]] = []
     for r in rows[:headline_limit]:
@@ -444,7 +505,7 @@ def current_context(
                 "time": ts_short,
                 "app_name": r.app_name,
                 "window_title": r.window_title,
-                "focused_role": r.focused_role,
+                "focused_role": headline_focus.get(r.id, r.focused_role),
                 "file_stem": r.id,
                 "preview": preview,
                 "text_chars": len(vt),

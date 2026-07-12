@@ -118,6 +118,76 @@ func axChildren(_ element: AXUIElement) -> [AXUIElement] {
     return children
 }
 
+private let editableTextRoles: Set<String> = [
+    "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField",
+]
+private let placeholderScanNodeLimit = 256
+private let placeholderScanDepthLimit = 12
+
+func normalizedAXText(_ value: String?) -> String {
+    return (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// Exact DOM class token only. CSS utilities such as
+/// `placeholder:text-token-input-placeholder-foreground` are ordinary style
+/// classes and must not make real content disappear.
+func hasPlaceholderDOMClass(_ element: AXUIElement) -> Bool {
+    return axStringList(element, "AXDOMClassList").contains {
+        $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "placeholder"
+    }
+}
+
+/// Text exposed by a `.placeholder` descendant of this editable element.
+/// Chromium sometimes advertises `AXPlaceholderValue` but returns nil, so the
+/// bounded structural fallback is required for Codex and other Electron apps.
+func placeholderDescendantTexts(_ element: AXUIElement) -> Set<String> {
+    var result: Set<String> = []
+    var pending: [(AXUIElement, Int, Bool)] = axChildren(element).reversed().map {
+        ($0, 1, false)
+    }
+    var scanned = 0
+    while let (current, depth, inheritedPlaceholder) = pending.popLast() {
+        if scanned >= placeholderScanNodeLimit { break }
+        scanned += 1
+        // A nested editable owns its own placeholder semantics. Do not let
+        // its hint propagate into an outer control.
+        if editableTextRoles.contains(axString(current, kAXRoleAttribute as String) ?? "") {
+            continue
+        }
+        let inPlaceholder = inheritedPlaceholder || hasPlaceholderDOMClass(current)
+        if inPlaceholder {
+            for attribute in [
+                kAXValueAttribute as String,
+                kAXTitleAttribute as String,
+                kAXDescriptionAttribute as String,
+            ] {
+                let text = normalizedAXText(axString(current, attribute))
+                if !text.isEmpty { result.insert(text) }
+            }
+        }
+        if depth >= placeholderScanDepthLimit { continue }
+        for child in axChildren(current).reversed() {
+            pending.append((child, depth + 1, inPlaceholder))
+        }
+    }
+    return result
+}
+
+func confirmedPlaceholderTexts(
+    _ element: AXUIElement, role: String?
+) -> Set<String> {
+    guard let role, editableTextRoles.contains(role) else { return [] }
+    let standard = normalizedAXText(axString(element, "AXPlaceholderValue"))
+    var evidence = placeholderDescendantTexts(element)
+    if !standard.isEmpty { evidence.insert(standard) }
+    let ownText = Set([
+        normalizedAXText(axString(element, kAXValueAttribute as String)),
+        normalizedAXText(axString(element, kAXTitleAttribute as String)),
+        normalizedAXText(axString(element, kAXDescriptionAttribute as String)),
+    ].filter { !$0.isEmpty })
+    return Set(evidence.filter { $0 == standard || ownText.contains($0) })
+}
+
 /// Ask an app to populate its accessibility tree by setting the private `AXManualAccessibility`
 /// attribute (the same toggle VoiceOver/assistive tech use). Electron/Chromium apps gate AX behind
 /// this for performance; setting it true makes a previously-empty tree readable. Best-effort: the
@@ -402,20 +472,25 @@ func focusedUIElementDict(_ appRef: AXUIElement, config: Config) -> [String: Any
     let subrole = axString(el, kAXSubroleAttribute as String)
     let isSecure = role == "AXTextField" && subrole == "AXSecureTextField"
 
+    let placeholderTexts = config.raw ? [] : confirmedPlaceholderTexts(el, role: role)
     var value = ""
     if isSecure {
         value = "[REDACTED]"
     } else if let raw = axString(el, kAXValueAttribute as String)?
-        .trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+        !raw.isEmpty,
+        config.raw || !placeholderTexts.contains(raw)
     {
         value = raw.count > config.maxValueLength
             ? String(raw.prefix(config.maxValueLength)) + "..."
             : raw
     }
-    let title = (axString(el, kAXTitleAttribute as String) ?? "")
+    var title = (axString(el, kAXTitleAttribute as String) ?? "")
         .trimmingCharacters(in: .whitespacesAndNewlines)
-    let desc = (axString(el, kAXDescriptionAttribute as String) ?? "")
+    var desc = (axString(el, kAXDescriptionAttribute as String) ?? "")
         .trimmingCharacters(in: .whitespacesAndNewlines)
+    if !config.raw && placeholderTexts.contains(title) { title = "" }
+    if !config.raw && placeholderTexts.contains(desc) { desc = "" }
 
     // Editable = a text-entry role, OR the element exposes a selected-text range
     // (only text-editing controls do). A present range == the caret is here ==

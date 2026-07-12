@@ -191,6 +191,23 @@ def test_accessibility_request_targets_only_configured_principals(
     assert commands == [[str(helper), "--request-accessibility"]]
 
 
+def test_native_helper_filters_focused_placeholder_and_keeps_tree_evidence() -> None:
+    source = (Path(__file__).resolve().parents[1] / "resources" / "mac-ax-helper.swift").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'axString(element, "AXPlaceholderValue")' in source
+    assert 'lowercased() == "placeholder"' in source
+    assert "evidence = placeholderDescendantTexts(element)" in source
+    traverse = source.split("func traverseElement", 1)[1].split("func processWindow", 1)[0]
+    # Normal tree output retains the local pair as forensic evidence; Python
+    # S1 sanitizes its authored-text projection without mutating raw AX.
+    assert "confirmedPlaceholderTexts" not in traverse
+    focused = source.split("func focusedUIElementDict", 1)[1]
+    assert "config.raw || !placeholderTexts.contains(raw)" in focused
+    assert "placeholderTexts.contains(title)" in focused
+
+
 def test_stable_native_binary_is_reused_across_reinstall_sources(
     ac_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -76,3 +76,115 @@ def test_rebuild_captures_default_remains_exact_buffer_reconciliation(ac_root: P
     with fts.cursor() as conn:
         ids = {row[0] for row in conn.execute("SELECT id FROM captures").fetchall()}
     assert ids == {"buffer-new"}
+
+
+def test_rebuild_captures_sanitizes_historical_placeholder_projection(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    target = paths.capture_buffer_dir() / "placeholder-old.json"
+    target.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-07-12T00:00:00+00:00",
+                "window_meta": {
+                    "app_name": "Chat",
+                    "bundle_id": "com.example.chat",
+                    "title": "Conversation",
+                },
+                "focused_element": {
+                    "role": "AXTextArea",
+                    "value": phrase,
+                    "is_editable": True,
+                    "value_length": len(phrase),
+                },
+                "visible_text": f"[TextArea] {phrase}",
+                "ax_tree": {
+                    "apps": [
+                        {
+                            "name": "Chat",
+                            "bundle_id": "com.example.chat",
+                            "is_frontmost": True,
+                            "focused_element": {
+                                "role": "AXTextArea",
+                                "value": phrase,
+                                "is_editable": True,
+                            },
+                            "windows": [
+                                {
+                                    "title": "Conversation",
+                                    "focused": True,
+                                    "elements": [
+                                        {
+                                            "role": "AXTextArea",
+                                            "value": phrase,
+                                            "children": [
+                                                {
+                                                    "role": "AXGroup",
+                                                    "domClassList": ["placeholder"],
+                                                    "children": [
+                                                        {"role": "AXStaticText", "value": phrase}
+                                                    ],
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(cli.app, ["rebuild-captures-index"])
+
+    assert result.exit_code == 0, result.output
+    with fts.cursor() as conn:
+        row = conn.execute(
+            "SELECT focused_value, visible_text FROM captures WHERE id='placeholder-old'"
+        ).fetchone()
+    assert row is not None
+    assert row["focused_value"] == ""
+    assert phrase not in row["visible_text"]
+
+
+def test_rebuild_captures_preserves_db_only_ocr_backfill(ac_root: Path) -> None:
+    target = paths.capture_buffer_dir() / "ocr-only.json"
+    target.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-07-12T00:01:00+00:00",
+                "window_meta": {
+                    "app_name": "WeChat",
+                    "bundle_id": "com.tencent.xinWeChat",
+                    "title": "Conversation",
+                },
+                "focused_element": {},
+                "visible_text": "",
+                "ocr_submitted": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with fts.cursor() as conn:
+        fts.insert_capture(
+            conn,
+            id=target.stem,
+            timestamp="2026-07-12T00:01:00+00:00",
+            app_name="WeChat",
+            bundle_id="com.tencent.xinWeChat",
+            window_title="Conversation",
+            focused_role="",
+            focused_value="",
+            visible_text="recognized OCR body",
+            url="",
+        )
+
+    result = CliRunner().invoke(cli.app, ["rebuild-captures-index"])
+
+    assert result.exit_code == 0, result.output
+    with fts.cursor() as conn:
+        row = conn.execute("SELECT visible_text FROM captures WHERE id='ocr-only'").fetchone()
+    assert row is not None
+    assert row["visible_text"] == "recognized OCR body"

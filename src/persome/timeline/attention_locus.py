@@ -159,6 +159,8 @@ def focus_pane(visible_text: str) -> tuple[str, bool]:
 
 def _click_element(trigger: dict) -> dict:
     """The AX element the watcher hit-tested under the cursor, or {}."""
+    if str(trigger.get("event_type") or "") != "UserMouseClick":
+        return {}
     details = trigger.get("details") or {}
     el = details.get("element")
     return el if isinstance(el, dict) else {}
