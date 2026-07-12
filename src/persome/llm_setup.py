@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import env_file, paths
-from .providers import LLM_API_KEY_ENV, ResolvedLLMProfile
+from .providers import LLM_API_KEY_ENV, ResolvedLLMProfile, openai_token_limit_kwargs
 
 _PROBE_TOOL_NAME = "persome_setup_check"
 _PROBE_TOOL_DESCRIPTION = "Confirm that this model can call Persome memory tools."
@@ -64,7 +64,7 @@ def probe_profile(profile: ResolvedLLMProfile, *, timeout: float = 20.0) -> Prob
             client.chat.completions.create(
                 model=profile.wire_model,
                 messages=[{"role": "user", "content": "Reply with exactly: ok"}],
-                max_tokens=8,
+                **openai_token_limit_kwargs(profile, 8),
             )
     except Exception as exc:  # noqa: BLE001
         return ProbeResult(
@@ -124,9 +124,9 @@ def probe_profile(profile: ResolvedLLMProfile, *, timeout: float = 20.0) -> Prob
                 tool_response = client.chat.completions.create(
                     model=profile.wire_model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=128,
                     tools=[tool],
                     tool_choice=tool_choice,
+                    **openai_token_limit_kwargs(profile, 128),
                 )
             except Exception as exc:  # noqa: BLE001
                 tool_error = _safe_error(exc, profile.api_key)

@@ -176,6 +176,8 @@ def test_ping_stage_openai_compatible_uses_selected_endpoint(
     assert result.ok is True
     assert captured_client["base_url"] == "https://gateway.example/v1"
     assert captured_call["model"] == "gpt-4.1-mini"
+    assert captured_call["max_completion_tokens"] == 4
+    assert "max_tokens" not in captured_call
 
 
 def test_ping_stage_reports_missing_selected_credential(monkeypatch: pytest.MonkeyPatch) -> None:

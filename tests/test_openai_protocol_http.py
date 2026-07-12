@@ -8,6 +8,8 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+import pytest
+
 from persome.config import Config, ModelConfig
 from persome.llm_setup import probe_profile
 from persome.providers import make_profile
@@ -85,14 +87,15 @@ def _server() -> Iterator[tuple[str, list[dict[str, Any]]]]:
         thread.join(timeout=2)
 
 
-def test_writer_uses_real_openai_sdk_over_configured_endpoint(monkeypatch) -> None:
+@pytest.mark.parametrize("provider", ["custom-openai", "deepseek"])
+def test_compatible_writer_keeps_legacy_token_limit_parameter(monkeypatch, provider) -> None:
     monkeypatch.delenv("PERSOME_LLM_MOCK", raising=False)
     monkeypatch.setenv("PERSOME_LLM_API_KEY", "wire-secret")
     with _server() as (base_url, requests):
         cfg = Config(
             models={
                 "default": ModelConfig(
-                    provider="custom-openai",
+                    provider=provider,
                     protocol="openai",
                     model="test-model",
                     base_url=base_url,
@@ -110,6 +113,35 @@ def test_writer_uses_real_openai_sdk_over_configured_endpoint(monkeypatch) -> No
     assert extract_text(response) == "ok"
     assert requests[0]["path"] == "/v1/chat/completions"
     assert requests[0]["authorization"] == "Bearer wire-secret"
+    assert requests[0]["body"]["max_tokens"] == 8192
+    assert "max_completion_tokens" not in requests[0]["body"]
+
+
+def test_openai_writer_uses_completion_token_limit_parameter(monkeypatch) -> None:
+    monkeypatch.delenv("PERSOME_LLM_MOCK", raising=False)
+    monkeypatch.setenv("PERSOME_LLM_API_KEY", "wire-secret")
+    with _server() as (base_url, requests):
+        cfg = Config(
+            models={
+                "default": ModelConfig(
+                    provider="openai",
+                    protocol="openai",
+                    model="gpt-5.4",
+                    base_url=base_url,
+                    api_key_env="PERSOME_LLM_API_KEY",
+                )
+            }
+        )
+
+        response = call_llm(
+            cfg,
+            "timeline",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+
+    assert extract_text(response) == "ok"
+    assert requests[0]["body"]["max_completion_tokens"] == 8192
+    assert "max_tokens" not in requests[0]["body"]
 
 
 def test_onboarding_probe_uses_real_openai_sdk(monkeypatch) -> None:
@@ -130,3 +162,23 @@ def test_onboarding_probe_uses_real_openai_sdk(monkeypatch) -> None:
     assert result.tool_call_ok is True
     assert len(requests) == 2
     assert requests[1]["body"]["tool_choice"]["function"]["name"] == "persome_setup_check"
+
+
+def test_azure_onboarding_probe_uses_completion_token_limit_parameter(monkeypatch) -> None:
+    monkeypatch.setenv("PERSOME_LLM_API_KEY", "wire-secret")
+    with _server() as (base_url, requests):
+        profile = make_profile(
+            "azure-openai",
+            model="gpt-5.4",
+            base_url=base_url,
+            api_key_env="PERSOME_LLM_API_KEY",
+            api_key="wire-secret",
+            protocol="openai",
+        )
+
+        result = probe_profile(profile)
+
+    assert result.completion_ok is True
+    assert result.tool_call_ok is True
+    assert [request["body"]["max_completion_tokens"] for request in requests] == [8, 128]
+    assert all("max_tokens" not in request["body"] for request in requests)

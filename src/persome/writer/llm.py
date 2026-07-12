@@ -18,7 +18,7 @@ from typing import Any, cast
 
 from ..config import Config, ModelConfig
 from ..logger import get
-from ..providers import ResolvedLLMProfile, resolve_profile
+from ..providers import ResolvedLLMProfile, openai_token_limit_kwargs, resolve_profile
 
 logger = get("persome.writer")
 
@@ -318,8 +318,10 @@ def call_llm(
         openai_kwargs: dict[str, Any] = {
             "model": profile.wire_model,
             "messages": _to_openai_messages(messages),
-            "max_tokens": model_cfg.max_tokens or _DEFAULT_MAX_TOKENS,
         }
+        openai_kwargs.update(
+            openai_token_limit_kwargs(profile, model_cfg.max_tokens or _DEFAULT_MAX_TOKENS)
+        )
         if tools:
             openai_kwargs["tools"] = _to_openai_tools(tools)
         # ``extra`` contains Anthropic-specific controls in existing callers.
@@ -427,7 +429,7 @@ def ping_stage(cfg: Config, stage: str, *, timeout: float = 5.0) -> PingResult:
             client.chat.completions.create(
                 model=profile.wire_model,
                 messages=[{"role": "user", "content": "Reply with 'ok'."}],
-                max_tokens=4,
+                **openai_token_limit_kwargs(profile, 4),
             )
     except Exception as exc:  # noqa: BLE001
         label = type(exc).__name__

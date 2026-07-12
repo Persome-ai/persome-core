@@ -271,6 +271,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
 )
 
 _BY_ID = {provider.id: provider for provider in PROVIDERS}
+_COMPLETION_TOKEN_LIMIT_PROVIDERS = frozenset({"openai", "azure-openai"})
 
 
 @dataclass(frozen=True)
@@ -317,6 +318,16 @@ class ResolvedLLMProfile:
         if not self.key_required:
             return "persome-local"
         raise RuntimeError(f"{self.api_key_env} is not set for {self.provider_label}")
+
+
+def openai_token_limit_kwargs(profile: ResolvedLLMProfile, limit: int) -> dict[str, int]:
+    """Map Persome's provider-neutral output limit to the provider's wire parameter."""
+    parameter = (
+        "max_completion_tokens"
+        if profile.provider in _COMPLETION_TOKEN_LIMIT_PROVIDERS
+        else "max_tokens"
+    )
+    return {parameter: limit}
 
 
 def provider_spec(provider: str) -> ProviderSpec | None:
