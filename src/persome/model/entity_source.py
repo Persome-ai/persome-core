@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ..capture.timestamps import parse_capture_timestamp
+from ..evomem import owner_identity
 from ..evomem.identity import norm as norm_identity
 
 _ENTITY_PREFIXES = {"person-": "person", "org-": "org", "project-": "project"}
@@ -187,9 +188,7 @@ class MemoryPersonNameSource:
         except Exception:  # noqa: BLE001 — model enrichment is fail-safe
             return []
         owner_aliases = {
-            norm_identity(str(alias))
-            for alias in getattr(getattr(self._cfg, "memory_delta", None), "owner_aliases", [])
-            if str(alias).strip()
+            norm_identity(alias) for alias in owner_identity.reserved_aliases(self._cfg)
         }
         return [
             PersonEvent(

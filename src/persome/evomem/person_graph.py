@@ -124,10 +124,23 @@ class PersonGraph:
         self._cfg = cfg
         self._source = name_source or EmptyPersonNameSource()
         self._min_confidence = min_confidence
+        self._reserved_owner_keys: set[str] | None = None
 
     @property
     def enabled(self) -> bool:
         return bool(getattr(self._cfg, "person_graph_enabled", False))
+
+    def _owner_keys(self) -> set[str]:
+        if self._reserved_owner_keys is None:
+            try:
+                from . import owner_identity
+
+                self._reserved_owner_keys = {
+                    _norm(alias) for alias in owner_identity.reserved_aliases(self._cfg)
+                }
+            except Exception:  # noqa: BLE001 - identity protection is fail-safe
+                self._reserved_owner_keys = set()
+        return self._reserved_owner_keys
 
     def ingest(self) -> list[str]:
         if not self.enabled:
@@ -144,6 +157,10 @@ class PersonGraph:
             return None
         norm = _norm(event.name)
         if not norm:
+            return None
+        owner_keys = self._owner_keys()
+        if norm in owner_keys or any(_norm(alias) in owner_keys for alias in event.aliases):
+            _log.debug("person_graph: reserve owner identity %r", event.name)
             return None
 
         existing = self._find_entity(norm, event.aliases)
@@ -280,11 +297,22 @@ class PersonGraph:
         # the file taxonomy IS the kind axis's SSOT, so an adjudicated retype
 
         # roster (and out of knows-edge extraction) by construction.
-        return [
-            n
-            for n in self._mem.store.all_latest()
-            if _TAG_ENTITY in (n.tags or "").split() and (n.file_name or "").startswith("person-")
-        ]
+        owner_keys = self._owner_keys()
+        out: list[MemoryNode] = []
+        for node in self._mem.store.all_latest():
+            if _TAG_ENTITY not in (node.tags or "").split() or not (
+                node.file_name or ""
+            ).startswith("person-"):
+                continue
+            meta = _meta_of(node)
+            names = [
+                str(meta.get(_META_CANONICAL) or node.content),
+                *(str(alias) for alias in (meta.get(_META_ALIASES) or [])),
+            ]
+            if any(_norm(name) in owner_keys for name in names):
+                continue
+            out.append(node)
+        return out
 
     def _find_entity(self, norm_name: str, extra_aliases: Iterable[str]) -> PersonEntity | None:
         wanted = {norm_name, *(_norm(a) for a in extra_aliases)}

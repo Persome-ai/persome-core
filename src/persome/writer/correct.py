@@ -19,6 +19,7 @@ The update is logged as a feedback signal — a user's "this is wrong" is the mo
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Callable
@@ -38,7 +39,7 @@ from ..writer import llm as llm_mod
 logger = get("persome.writer.correct")
 
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "update_memory.md"
-_ENTITY_OPS = {"retype", "shadow", "merge"}
+_ENTITY_OPS = {"retype", "shadow", "merge", "merge_into_self", "reject_owner_alias"}
 
 
 @dataclass
@@ -141,7 +142,9 @@ def _plan(supersede: list[dict], entity_op: dict | None) -> list[str]:
     return out
 
 
-def _apply_entity_op(entity_op: dict, cfg: Any) -> list[str]:
+def _apply_entity_op(
+    entity_op: dict, cfg: Any, conn: sqlite3.Connection, *, signal: str
+) -> list[str]:
     from ..evomem import retype as retype_mod
 
     op = entity_op.get("op")
@@ -149,6 +152,15 @@ def _apply_entity_op(entity_op: dict, cfg: Any) -> list[str]:
     if not ent or op not in _ENTITY_OPS:
         return []
     try:
+        if op in {"merge_into_self", "reject_owner_alias"}:
+            from ..evomem import owner_identity
+
+            if op == "reject_owner_alias":
+                state = owner_identity.reject_alias(conn, ent)
+                return [f"rejected owner alias {ent}"] if state is not None else []
+            source_id = "correction:" + hashlib.sha1(signal.encode()).hexdigest()[:16]  # noqa: S324
+            state = owner_identity.accept_alias(conn, ent, source_id=source_id, quote=signal or ent)
+            return [f"merged {ent} → self"] if state is not None else []
         if op == "retype":
             retype_mod.retype_entity(ent, str(entity_op.get("kind", "")).strip())
             return [f"retyped {ent} → {entity_op.get('kind')}"]
@@ -249,7 +261,7 @@ def update_memory(
             if r.errors:
                 applied.append(f"errors: {r.errors}")
         if entity_op and entity_op.get("op") in _ENTITY_OPS:  # entity layer → retype verbs
-            applied += _apply_entity_op(entity_op, cfg)
+            applied += _apply_entity_op(entity_op, cfg, conn, signal=signal)
             kind = "entity_update" if not supersede else "update"
 
         # Closed loop: weight update (backward) → re-run the forward pass on the affected path so

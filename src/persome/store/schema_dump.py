@@ -92,6 +92,7 @@ def _index_db_steps() -> list[tuple[str, Callable[[sqlite3.Connection], None]]]:
     from . import (
         contradictions,
         memory_deltas,
+        owner_aliases,
         parser_ticks,
         relation_edges,
         schema_faces,
@@ -105,6 +106,7 @@ def _index_db_steps() -> list[tuple[str, Callable[[sqlite3.Connection], None]]]:
         ("store/relation_edges.py", relation_edges.ensure_schema),
         ("store/contradictions.py", contradictions.ensure_schema),
         ("store/memory_deltas.py", memory_deltas.ensure_schema),
+        ("store/owner_aliases.py", owner_aliases.ensure_schema),
         ("store/parser_ticks.py", parser_ticks.ensure_schema),
         ("store/schema_faces.py", schema_faces.ensure_schema),
         ("evomem/store.py", _evomem),

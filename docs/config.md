@@ -237,11 +237,17 @@ but stops it from changing the model and reactivates the classifier's legacy
 terminal write role. This switch is for diagnosis/migration, not a second
 normal operating mode.
 
-`owner_aliases` lists the local owner's names and handles (for example a full
-name and a GitHub handle). The runtime reserves them as aliases of `self`;
-they are excluded from the person roster and cannot become collaborator
-Points. This is especially important when those handles appear in repository,
-meeting, or chat UI.
+The runtime normally learns owner names and handles from evidence already
+produced by the windowed modeling pass. Explicit first-person identity evidence
+can activate an alias immediately; account-ownership evidence requires two
+independent sessions. Pending aliases enter a seven-day person-creation
+quarantine; active owner aliases remain excluded from the person roster. This
+prevents an uncertain first observation from becoming a self-reinforcing
+collaborator Point without suppressing an ordinary person forever.
+
+`owner_aliases` is an optional trusted override for deployments that already
+know the owner's identities. It is not required for ordinary onboarding or
+Day-1 modeling. Configured and learned aliases both resolve to reserved `self`.
 
 The pattern detector requires repeated evidence and writes observed behavioral
 memory under `memory/skills/skill-*.md`. It does not propose or execute

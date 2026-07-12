@@ -76,20 +76,37 @@ class Roster:
 def load_roster(cfg, *, memory=None, limit: int | None = None) -> Roster:
     """Build the roster from person_graph (the consolidated past layer).
 
-    Fail-open: any read error → empty roster (callers then mint candidates;
-    nothing breaks). ``memory`` is an injectable EvoMemory for tests — the
-    default reads the SAME default-user scope production writes.
+    The reserved owner identity is always first. Learned and configured owner
+    aliases resolve to ``self``; recent pending owner candidates are withheld
+    from the collaborator roster so one uncertain judgment cannot become
+    self-reinforcing PersonGraph evidence.
     """
+    return Roster.build(load_roster_entries(cfg, memory=memory, limit=limit))
+
+
+def load_roster_entries(
+    cfg, *, memory=None, limit: int | None = None
+) -> list[tuple[str, list[str]]]:
+    """Return the shared roster menu used by every identity consumer."""
     try:
+        from . import owner_identity
         from .engine import EvoMemory
         from .person_graph import PersonGraph
 
+        active_owner = owner_identity.active_aliases(cfg)
+        reserved_keys = {norm(alias) for alias in owner_identity.reserved_aliases(cfg)}
         persons = PersonGraph(memory or EvoMemory(), cfg=cfg).list_persons()
-        if limit is not None:
-            persons = persons[:limit]
-        return Roster.build([(p.canonical, list(getattr(p, "aliases", []))) for p in persons])
+        known: list[tuple[str, list[str]]] = []
+        for person in persons:
+            aliases = list(getattr(person, "aliases", []))
+            if any(norm(name) in reserved_keys for name in [person.canonical, *aliases]):
+                continue
+            known.append((person.canonical, aliases))
+            if limit is not None and len(known) >= limit:
+                break
+        return [("self", active_owner), *known]
     except Exception:  # noqa: BLE001 — the roster is best-effort by design
-        return Roster()
+        return [("self", [])]
 
 
 def _strip_honorific(mention: str) -> str | None:

@@ -232,6 +232,38 @@ CREATE INDEX idx_memory_deltas_created ON memory_deltas(created_at DESC);
 
 CREATE INDEX idx_memory_deltas_session ON memory_deltas(session_id);
 
+-- ---- store/owner_aliases.py ----
+
+CREATE TABLE owner_alias_evidence (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias_key   TEXT NOT NULL,
+    alias       TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    quote       TEXT NOT NULL,
+    confidence  REAL NOT NULL,
+    created_at  TEXT NOT NULL,
+    UNIQUE(alias_key, session_id),
+    FOREIGN KEY(alias_key) REFERENCES owner_aliases(alias_key)
+);
+
+CREATE TABLE owner_aliases (
+    alias_key      TEXT PRIMARY KEY,
+    alias          TEXT NOT NULL,
+    status         TEXT NOT NULL,
+    confidence     REAL NOT NULL,
+    evidence_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at  TEXT NOT NULL,
+    last_seen_at   TEXT NOT NULL,
+    activated_at   TEXT,
+    decision_source TEXT NOT NULL DEFAULT 'inferred'
+);
+
+CREATE INDEX ix_owner_alias_evidence_alias
+    ON owner_alias_evidence(alias_key, created_at);
+
+CREATE INDEX ix_owner_aliases_status ON owner_aliases(status);
+
 -- ---- store/parser_ticks.py ----
 
 CREATE TABLE parser_ticks (

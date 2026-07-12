@@ -48,6 +48,7 @@ def _ref(name: str) -> dict:
 
 def _payload(**overrides) -> str:
     base = {
+        "owner_alias_candidates": [],
         "entities": [
             {
                 "new_entity": "\u5f20\u4e09",
@@ -155,6 +156,83 @@ def test_owner_alias_canonicalizes_to_self_but_never_mints_person(ac_root) -> No
     assert [entity["ref"] for entity in clean["entities"]] == ["Kevin"]
     assert clean["relations"][0]["src"] == {"ref": "self"}
     assert clean["relations"][0]["dst"] == {"ref": "Kevin"}
+
+
+def test_ai_owner_alias_evidence_promotes_without_user_config(ac_root, fake_llm) -> None:
+    quote = "Opened the user's own GitHub account Singularity-tian with Kevin"
+    start, end = _seed_session_blocks([f"[Chrome] {quote}"])
+    fake_llm.set_default(
+        delta_mod.STAGE,
+        _payload(
+            owner_alias_candidates=[
+                {
+                    "alias": "Singularity-tian",
+                    "source_kind": "owned_account",
+                    "quote": quote,
+                    "confidence": 0.94,
+                }
+            ],
+            entities=[
+                {
+                    "new_entity": "Singularity-tian",
+                    "kind": "person",
+                    "quote": quote,
+                    "confidence": 0.94,
+                },
+                {
+                    "new_entity": "Kevin",
+                    "kind": "person",
+                    "quote": quote,
+                    "confidence": 0.9,
+                },
+            ],
+            assertions=[],
+            relations=[
+                {
+                    "src": {"new_entity": "Singularity-tian"},
+                    "dst": {"new_entity": "Kevin"},
+                    "predicate": "knows",
+                    "label": "collaborators",
+                    "quote": quote,
+                    "confidence": 0.9,
+                }
+            ],
+        ),
+    )
+    cfg = _cfg()
+
+    first = delta_mod.run_after_session(
+        cfg, session_id="owner-session-1", start_time=start, end_time=end
+    )
+    assert first.counts["owner_alias_candidates"] == 1
+    with fts.cursor() as conn:
+        assert (
+            conn.execute(
+                "SELECT status FROM owner_aliases WHERE alias_key='singularity-tian'"
+            ).fetchone()[0]
+            == "pending"
+        )
+        payload = json.loads(deltas_store.latest_for_session(conn, "owner-session-1")["payload"])
+    assert all(entity.get("new_entity") != "Singularity-tian" for entity in payload["entities"])
+    assert payload["relations"] == []
+
+    second = delta_mod.run_after_session(
+        cfg, session_id="owner-session-2", start_time=start, end_time=end
+    )
+    assert second.counts["owner_alias_candidates"] == 1
+    with fts.cursor() as conn:
+        row = conn.execute(
+            "SELECT status, evidence_count FROM owner_aliases WHERE alias_key='singularity-tian'"
+        ).fetchone()
+        payload = json.loads(deltas_store.latest_for_session(conn, "owner-session-2")["payload"])
+        owner_points = conn.execute(
+            "SELECT COUNT(*) FROM evo_nodes WHERE file_name='person-singularity-tian.md'"
+            " AND is_latest=1 AND status='active'"
+        ).fetchone()[0]
+    assert tuple(row) == ("active", 2)
+    assert payload["relations"][0]["src"] == {"ref": "self"}
+    assert owner_points == 0
+    assert delta_mod._load_roster(cfg)[0] == ("self", ["Singularity-tian"])
 
 
 def test_render_blocks_excludes_local_model_output_and_mixed_focus(ac_root) -> None:

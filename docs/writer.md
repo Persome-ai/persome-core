@@ -10,13 +10,13 @@ Root.
 | Writer | Input | Output |
 |---|---|---|
 | session reducer | timeline blocks | `event-YYYY-MM-DD.md` |
-| memory delta + apply | one newly flushed session window | entities, assertions, events, relation Lines in evomem/FTS/Markdown projection |
+| memory delta + apply | one newly flushed session window | owner-alias evidence plus entities, assertions, events, and relation Lines in evomem/FTS/Markdown projection |
 | pattern detector | repeated event evidence | `memory/skills/skill-*.md` |
 | case extractor | error followed by supported resolution | reusable L5 knowledge Points |
 | schema miner | repeated durable facts | level-1 Face candidates |
 | cross-domain sweeper | stable topic-distinct Faces | level-2 Volumes |
 | root synthesis | active Face/Volume/profile evidence | at most one level-3 Root |
-| CLI/MCP correction | explicit user/agent request | audited append, supersede, retype, merge, or revoke |
+| CLI/MCP correction | explicit user/agent request | audited append, supersede, retype, merge, merge-into-self, reject-owner-alias, or revoke |
 
 No writer owns product tasks, notifications, actuation, or evaluation labels.
 
@@ -47,7 +47,8 @@ live Point/Line path is:
 ```text
 new timeline window + structured focus evidence
   -> one memory_delta LLM extraction
-  -> quote / roster / predicate / confidence gates
+  -> owner-alias evidence + quote / roster / predicate / confidence gates
+  -> repeated owner evidence resolves names and handles to reserved self
   -> append-only memory_deltas audit row
   -> deterministic delta_apply
   -> Points, assertions, events, and relation Lines
@@ -58,8 +59,17 @@ through the identity roster or appear explicitly in the session. Relations use
 a closed predicate set. Low-confidence or unsupported items are dropped and
 counted.
 
-The roster always includes the reserved `self` endpoint. Configured
-`memory_delta.owner_aliases` resolve to `self` and are never minted as people.
+The roster always includes the reserved `self` endpoint. The same LLM pass may
+propose `owner_alias_candidates` only when quoted session evidence identifies a
+proper name or handle as an explicit self-identification or owned account. One
+non-explicit observation stays `pending` and enters a bounded seven-day
+PersonGraph quarantine; two independent sessions promote it to an active alias
+of `self`. A quoted explicit
+first-person identity statement may promote immediately. Promotion retires an
+already-minted duplicate person projection without deleting its audit history.
+
+Configured `memory_delta.owner_aliases` remain a trusted override, but ordinary
+operation does not require users to discover or fill the setting themselves.
 Persome's own localhost `/model` output is removed from the delta evidence so a
 rendered Face, Volume, or Root cannot train the next model window on itself.
 

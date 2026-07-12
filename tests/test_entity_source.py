@@ -7,11 +7,13 @@ import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from persome.evomem import owner_identity
 from persome.evomem.models import MemoryLayer, MemoryNode
 from persome.evomem.store import NodeStore
 from persome.model.entity_source import EntitySource, MemoryPersonNameSource
 from persome.store import entries as entries_store
 from persome.store import fts
+from persome.store import owner_aliases as owner_alias_store
 
 
 def _seed_person_memory() -> str:
@@ -109,6 +111,31 @@ def test_memory_person_source_filters_configured_owner_alias(ac_root) -> None:
         )
     )
     cfg = SimpleNamespace(memory_delta=SimpleNamespace(owner_aliases=["Singularity-tian"]))
+
+    assert MemoryPersonNameSource(cfg=cfg).events() == []
+
+
+def test_memory_person_source_filters_learned_owner_alias(ac_root) -> None:
+    NodeStore().save(
+        MemoryNode(
+            node_id="point-person-learned-owner",
+            content="Singularity-tian opened a pull request.",
+            layer=MemoryLayer.L2_FACT,
+            file_name="person-singularity-tian.md",
+            confidence="high",
+        )
+    )
+    with fts.cursor() as conn:
+        for session_id in ("owner-1", "owner-2"):
+            owner_identity.record_candidate(
+                conn,
+                alias="Singularity-tian",
+                session_id=session_id,
+                source_kind=owner_alias_store.SOURCE_OWNED_ACCOUNT,
+                quote="own account Singularity-tian",
+                confidence=0.9,
+            )
+    cfg = SimpleNamespace(memory_delta=SimpleNamespace(owner_aliases=[]))
 
     assert MemoryPersonNameSource(cfg=cfg).events() == []
 

@@ -188,7 +188,8 @@ class PatternDetectorConfig:
 @dataclass
 class MemoryDeltaConfig:
     # One LLM reading of each newly flushed session window emits a structured
-    # ``memory_delta {entities, assertions, relations, events}`` persisted to
+    # ``memory_delta {owner_alias_candidates, entities, assertions, relations,
+    # events}`` persisted to
     # the ``memory_deltas`` table before deterministic application mints or
     # reinforces evomem Points and relation Lines.
     enabled: bool = True
@@ -198,8 +199,9 @@ class MemoryDeltaConfig:
     # entities are references into this roster or an explicit new_entity — the
     # LLM never emits bare strings that probe the store).
     roster_max: int = 60
-    # Explicit aliases for the one memory owner. They resolve to the reserved
-    # ``self`` endpoint and must never be minted as ordinary people.
+    # Optional trusted overrides for the one memory owner. Normal operation
+    # learns aliases from evidence; configured and learned values both resolve
+    # to reserved ``self`` and are never minted as ordinary people.
     owner_aliases: list[str] = field(default_factory=list)
     # Items whose confidence is below this floor are dropped at the
     # deterministic parse gate (§4.1: judgment belongs to the LLM, gating and
@@ -680,7 +682,7 @@ min_occurrences = 2        # minimum repetitions to flag as a candidate
 enabled = true             # one evidence-gated structured extraction per newly flushed session window
 max_blocks = 120
 roster_max = 60
-owner_aliases = []          # names/handles for the memory owner; all resolve to reserved identity "self"
+owner_aliases = []          # optional trusted overrides; owner aliases are normally learned from evidence
 min_confidence = 0.5
 apply_enabled = true       # deterministic Point/Line production after persist
 apply_assertions = true

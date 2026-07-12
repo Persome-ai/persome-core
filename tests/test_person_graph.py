@@ -9,6 +9,8 @@ from persome.evomem.engine import EvoMemory
 from persome.evomem.models import MemoryLayer, MemoryStatus
 from persome.evomem.person_graph import PersonEvent, PersonGraph
 from persome.evomem.reconciler import Reconciler
+from persome.store import fts
+from persome.store import owner_aliases as owner_alias_store
 
 
 def _no_llm(messages):
@@ -139,6 +141,22 @@ def test_same_source_event_is_idempotent_across_enrichment_ticks(ac_root):
     person = graph.list_persons()[0]
     assert person.sightings == 1
     assert len(graph.person_timeline("Kevin")) == 1
+
+
+def test_pending_owner_alias_never_mints_person(ac_root):
+    with fts.cursor() as conn:
+        owner_alias_store.record_evidence(
+            conn,
+            alias="Singularity-tian",
+            session_id="owner-session-1",
+            source_kind=owner_alias_store.SOURCE_OWNED_ACCOUNT,
+            quote="own GitHub account Singularity-tian",
+            confidence=0.9,
+        )
+
+    graph = PersonGraph(_mem(), cfg=_on(), name_source=_StaticSource([]))
+    assert graph.record(PersonEvent(name="Singularity-tian", summary="opened a PR")) is None
+    assert graph.list_persons() == []
 
 
 def test_shared_alias_distinct_people_do_not_merge(ac_root):

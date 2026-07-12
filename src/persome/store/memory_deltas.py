@@ -1,7 +1,8 @@
 """DAO for windowed structured memory deltas and their apply audit.
 
 One LLM reading of each newly flushed window emits a structured
-``memory_delta {entities, assertions, relations, events}``. The post-gate
+``memory_delta {owner_alias_candidates, entities, assertions, relations, events}``.
+The post-gate
 payload is persisted here before deterministic application mints Points and
 Lines. ``apply_status`` makes interrupted application retryable without
 spending another LLM call or reinforcing an edge twice.
@@ -175,7 +176,13 @@ def stats(conn: sqlite3.Connection) -> dict:
         " WHERE session_id=m.session_id AND window_start=m.window_start"
         " AND window_end=m.window_end)"
     ).fetchall()
-    heads = {"entities": 0, "assertions": 0, "relations": 0, "events": 0}
+    heads = {
+        "owner_alias_candidates": 0,
+        "entities": 0,
+        "assertions": 0,
+        "relations": 0,
+        "events": 0,
+    }
     dropped = 0
     for _sid, payload, drop in rows:
         dropped += int(drop or 0)

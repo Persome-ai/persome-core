@@ -137,6 +137,49 @@ def test_entity_op_routes_to_retype(ac_root, monkeypatch):
     assert res.ok and calls.get("merge") == ("\u5c0f\u5f20", "\u5f20\u4e09")
 
 
+def test_entity_op_can_merge_identity_into_reserved_self(ac_root):
+    with fts.cursor() as conn:
+        res = C.update_memory(
+            _cfg(),
+            conn,
+            "Singularity-tian is my GitHub handle",
+            llm_call=_llm(
+                {
+                    "supersede": [],
+                    "entity_op": {"op": "merge_into_self", "entity": "Singularity-tian"},
+                    "reason": "owner handle",
+                }
+            ),
+        )
+        row = conn.execute(
+            "SELECT status, decision_source FROM owner_aliases WHERE alias_key='singularity-tian'"
+        ).fetchone()
+
+    assert res.ok and "merged Singularity-tian → self" in res.applied
+    assert tuple(row) == ("active", "user")
+
+
+def test_entity_op_can_reject_false_owner_alias(ac_root):
+    with fts.cursor() as conn:
+        res = C.update_memory(
+            _cfg(),
+            conn,
+            "Kevin is my teammate, not me",
+            llm_call=_llm(
+                {
+                    "supersede": [],
+                    "entity_op": {"op": "reject_owner_alias", "entity": "Kevin"},
+                    "reason": "collaborator",
+                }
+            ),
+        )
+        status = conn.execute(
+            "SELECT status FROM owner_aliases WHERE alias_key='kevin'"
+        ).fetchone()[0]
+
+    assert res.ok and status == "rejected"
+
+
 def test_noop_when_nothing_to_update(ac_root):
     with fts.cursor() as conn:
         res = C.update_memory(

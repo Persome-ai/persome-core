@@ -24,6 +24,8 @@ An update contains **supersede operations** and an optional entity operation.
   - `{"op":"retype","entity":"Research Team","kind":"org"}` when an entity exists but has the wrong kind.
   - `{"op":"shadow","entity":"customer"}` when a generic class or role should not be an entity.
   - `{"op":"merge","entity":"Alex J.","keeper":"Alex Jones"}` when two names identify the same entity.
+  - `{"op":"merge_into_self","entity":"Alex"}` when the user authoritatively says Alex is their own name or handle. This registers Alex as an alias of reserved `self`; never merge the owner into an ordinary person keeper.
+  - `{"op":"reject_owner_alias","entity":"Kevin"}` when the user says Kevin is another person, not the memory owner. This prevents future automatic owner promotion without deleting Kevin's legitimate person history.
 
 ## Rules
 

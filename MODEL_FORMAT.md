@@ -48,6 +48,11 @@ file_name, tags, confidence, conflicted, receipt
 `is_latest` identifies a current chain head; historical Points remain available
 for audit and time travel.
 
+The memory owner is the reserved identity `self`, not a person Point. Names and
+handles learned from quoted owner-identity evidence resolve to `self`; if an
+owner alias was previously minted as a person, promotion retires that live
+projection while preserving its historical Point receipts.
+
 ### Line
 
 Lines have two forms:
