@@ -113,6 +113,7 @@ let zoomGoalDistance = null;
 let lastZoomPercent = null;
 let lastFrameTime = performance.now();
 let shareReady = false;
+let modelLoadPromise = null;
 const layerVisible = { points: true, lines: true, faces: true, volumes: true, root: true };
 const kindLayers = { point: "points", context: "points", face: "faces", volume: "volumes", root: "root" };
 const raycaster = new THREE.Raycaster();
@@ -121,6 +122,7 @@ const zoomDirection = new THREE.Vector3();
 const ZOOM_MIN_PERCENT = 50;
 const ZOOM_MAX_PERCENT = 400;
 const ZOOM_STEP_PERCENT = 25;
+const MODEL_GRAPH_TIMEOUT_MS = 45_000;
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function freshLayerObjects() {
@@ -915,14 +917,33 @@ function fingerprint(nextModel) {
   });
 }
 
-async function loadModel(force = false) {
+function showModelLoadError(error) {
+  const message = document.createElement("p");
+  message.textContent = error?.name === "AbortError"
+    ? "The model is taking too long to load. The Runtime may still be building it."
+    : `Unable to load the personal model. ${error?.message || error}`;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "Retry";
+  retry.addEventListener("click", () => loadModel(true));
+  errorEl.replaceChildren(message, retry);
+  errorEl.hidden = false;
+}
+
+async function loadModelOnce(force) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), MODEL_GRAPH_TIMEOUT_MS);
   try {
-    const response = await fetch("./graph", { cache: "no-store" });
+    const response = await fetch("./graph", {
+      cache: "no-store",
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`Model endpoint returned HTTP ${response.status}`);
     const payload = await response.json();
     if (!payload.model || !Array.isArray(payload.model.points)) {
       throw new Error("Model endpoint returned an invalid snapshot");
     }
+    errorEl.hidden = true;
     const nextFingerprint = fingerprint(payload.model);
     if (!force && nextFingerprint === modelFingerprint) return;
     model = payload.model;
@@ -934,13 +955,21 @@ async function loadModel(force = false) {
     setShareBusy(false);
     updateTimelineBounds();
     buildScene();
-    errorEl.hidden = true;
   } catch (error) {
     shareReady = false;
     setShareBusy(false);
-    errorEl.textContent = `Unable to load the personal model. ${error.message || error}`;
-    errorEl.hidden = false;
+    showModelLoadError(error);
+  } finally {
+    window.clearTimeout(timeout);
   }
+}
+
+function loadModel(force = false) {
+  if (modelLoadPromise) return modelLoadPromise;
+  modelLoadPromise = loadModelOnce(force).finally(() => {
+    modelLoadPromise = null;
+  });
+  return modelLoadPromise;
 }
 
 function frameLayout(force) {

@@ -63,6 +63,12 @@ inspect the real person model. `persome model export` and MCP
 `get_model_snapshot` apply deterministic redaction by default; `/model/graph`
 is not a publication endpoint.
 
+The authenticated viewer polls for model changes, but the Runtime keeps one
+owner-local graph payload in memory for at most 15 seconds and makes refresh
+single-flight. This bounds repeated snapshot work across polling tabs without
+writing raw graph content to another file. The browser also coalesces overlapping
+polls and turns a request that exceeds 45 seconds into an explicit retry state.
+
 ## Security boundary
 
 - The server is restricted to loopback and defaults to `127.0.0.1`; wildcard

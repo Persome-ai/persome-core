@@ -50,6 +50,14 @@ _model_ping_cache: dict[
     tuple[float, dict[str, ModelPing]],
 ] = {}
 
+# The authenticated owner-local viewer polls every five seconds. Building a
+# large live snapshot is intentionally transactionally stable, but can take
+# longer than one poll interval. Reuse one raw viewer payload briefly and make
+# refresh single-flight so polling/browser tabs cannot multiply that work.
+_MODEL_GRAPH_CACHE_TTL_SECONDS = 15.0
+_model_graph_cache_lock = threading.Lock()
+_model_graph_cache: tuple[str, float, dict[str, Any]] | None = None
+
 # Re-export config so it can be overridden during tests
 _cfg: Config | None = None
 
@@ -57,10 +65,27 @@ _cfg: Config | None = None
 def set_config(cfg: Config | None) -> None:
     global _cfg
     _cfg = cfg
+    _clear_model_graph_cache()
 
 
 def _get_cfg() -> Config:
     return _cfg or load_config()
+
+
+def _clear_model_graph_cache() -> None:
+    global _model_graph_cache
+    with _model_graph_cache_lock:
+        _model_graph_cache = None
+
+
+def _cached_model_graph(root_key: str, now: float) -> dict[str, Any] | None:
+    cached = _model_graph_cache
+    if cached is None:
+        return None
+    cached_root, created_at, payload = cached
+    if cached_root != root_key or now - created_at >= _MODEL_GRAPH_CACHE_TTL_SECONDS:
+        return None
+    return payload
 
 
 def _read_pid() -> int | None:
@@ -459,15 +484,32 @@ def model_asset(asset_path: str) -> Response:
 
 @router.get("/model/graph", tags=["model"])
 def model_graph() -> dict[str, Any]:
-    """Return the canonical versioned Point/Line/Face/Volume/Root snapshot."""
+    """Return the canonical owner-local Point/Line/Face/Volume/Root snapshot."""
     from ..store import fts as fts_store
 
-    with fts_store.cursor() as conn:
-        snapshot = build_live_snapshot(conn)
-    return {
-        "generated_at": datetime.now().astimezone().isoformat(),
-        "model": snapshot,
-    }
+    global _model_graph_cache
+    root_key = str(paths.root())
+    now = time.monotonic()
+    cached = _cached_model_graph(root_key, now)
+    if cached is not None:
+        return cached
+
+    with _model_graph_cache_lock:
+        now = time.monotonic()
+        cached = _cached_model_graph(root_key, now)
+        if cached is not None:
+            return cached
+
+        with fts_store.cursor() as conn:
+            # This bearer/capability-protected loopback route is the owner's raw
+            # inspection surface. MCP and CLI exports retain redaction by default.
+            snapshot = build_live_snapshot(conn, redact=False)
+        payload = {
+            "generated_at": datetime.now().astimezone().isoformat(),
+            "model": snapshot,
+        }
+        _model_graph_cache = (root_key, time.monotonic(), payload)
+        return payload
 
 
 @router.get("/model/node", tags=["model"])

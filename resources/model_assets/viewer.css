@@ -814,6 +814,24 @@ button {
   color: #ff9cae;
 }
 
+.error p {
+  margin: 0;
+}
+
+.error button {
+  margin-top: 14px;
+  padding: 8px 15px;
+  border: 1px solid rgba(255, 156, 174, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 156, 174, 0.1);
+  color: #ffd4dc;
+  cursor: pointer;
+}
+
+.error button:hover {
+  background: rgba(255, 156, 174, 0.18);
+}
+
 .share-notice {
   position: absolute;
   z-index: 18;
