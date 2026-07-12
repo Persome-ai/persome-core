@@ -117,7 +117,9 @@ proposition, support summary, expected inferences, confidence, and source
 receipts. Low-confidence output is `forming` and excluded from the active model;
 stable output contributes a Face. Derived PersonGraph entity/event nodes are
 excluded from schema mining; only durable person facts can support a person
-Face. Re-mining supersedes the prior schema in place.
+Face. Owner-scoped Faces anchor to `self`; collaborators mentioned only in the
+supporting receipts are not added as hull identities. Re-mining supersedes the
+prior schema in place.
 
 ### Volumes
 

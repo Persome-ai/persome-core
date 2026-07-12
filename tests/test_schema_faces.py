@@ -417,3 +417,13 @@ class TestAnchors:
         )
 
         assert got == ["Bob", "x", "\u5f20\u4f1f"]
+
+        # When the mined proposition is explicitly about the owner, people
+        # mentioned in supporting receipts are context, not hull identities.
+        owner = stage._face_anchors(
+            cfg,
+            "project-x.md",
+            "The user systematically diagnoses integration bugs",
+            ["Kevin reported the failing build"],
+        )
+        assert owner == ["self", "x"]

@@ -313,9 +313,9 @@ def _face_anchors(
     - the source file's own entity (a Face mined from ``person-alex.md`` is
       about Alex; a ``user-*`` Face anchors to ``self``);
     - every roster identity named in the signature OR in the footprint fact
-      BODIES — the cluster emerged from those facts, so the people they name
-      ARE the points it spans (signature-only anchors leave person faces with
-      one anchor forever and every face degenerates to a halo/plate);
+      BODIES when the schema is not explicitly about the owner. Owner-scoped
+      schemas anchor to ``self`` instead of every collaborator mentioned in
+      their evidence;
     - the same ``scan_mentions`` knife the read path uses (§4.3 one funnel).
 
     Best-effort: an empty list just means the face renders as a tower plate."""
@@ -333,17 +333,20 @@ def _face_anchors(
 
         # it is ABOUT the user, so it belongs on the USER hub (§1.5 same-component invariant).
         sig = (signature or "").strip()
-        if (
+        owner_scoped = (
             stem.startswith("user-")
             or sig.startswith("\u7528\u6237")
-            or sig.lower().startswith("user")
-        ):
+            or sig.startswith("\u8be5\u7528\u6237")
+            or sig.lower().startswith(("user", "the user", "this person"))
+        )
+        if owner_scoped:
             anchors.add("self")
         from ..evomem import identity as identity_mod
 
         roster = identity_mod.load_roster(cfg)
         hay = "\n".join([signature, *(facts or [])])
-        anchors.update(identity_mod.scan_mentions(hay, roster))
+        if not owner_scoped:
+            anchors.update(identity_mod.scan_mentions(hay, roster))
     except Exception:  # noqa: BLE001 — anchors decorate, never block the mine
         logger.debug("face anchor derivation failed for %s", source_path, exc_info=True)
     return sorted(anchors)
