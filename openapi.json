@@ -205,6 +205,53 @@
         }
       }
     },
+    "/model/evidence": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "Model Evidence",
+        "description": "Resolve one model receipt or object id into its evidence and nearby context.\n\nExplicit stored lineage is returned in ``sources``. Time-adjacent captures\nare returned separately in ``context`` and are never presented as direct\nprovenance. Unknown or expired references fail open with ``status=missing``\nso a historical receipt remains inspectable even after raw retention ends.",
+        "operationId": "model_evidence_model_evidence_get",
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "title": "Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Model Evidence Model Evidence Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/model/node": {
       "get": {
         "tags": [

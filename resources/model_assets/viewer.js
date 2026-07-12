@@ -97,6 +97,9 @@ let pointerDown = null;
 let hoverPointer = null;
 let hoverDirty = false;
 let selected = null;
+let selectedItem = null;
+let detailMode = "node";
+let evidenceRequest = 0;
 let portraitMode = null;
 let labels = [];
 let pickables = [];
@@ -783,7 +786,10 @@ function syncSelectionState() {
 }
 
 function clearSelection() {
+  evidenceRequest += 1;
   selected = null;
+  selectedItem = null;
+  detailMode = "node";
   detailEl.hidden = true;
   delete detailEl.dataset.kind;
   syncSelectionState();
@@ -829,15 +835,151 @@ function receiptValues(item) {
   return [...new Set(values)];
 }
 
+function evidenceButton(reference, label = reference, relation = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "evidence-link";
+  const relationEl = document.createElement("span");
+  relationEl.textContent = relation ? relation.replaceAll("_", " ") : "Evidence";
+  const labelEl = document.createElement("b");
+  labelEl.textContent = label || reference;
+  button.append(relationEl, labelEl);
+  button.addEventListener("click", () => loadEvidence(reference));
+  return button;
+}
+
+function appendEvidenceGroup(title, links, note = "") {
+  if (!links?.length) return;
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  detailReceiptsEl.appendChild(heading);
+  if (note) {
+    const copy = document.createElement("p");
+    copy.className = "evidence-note";
+    copy.textContent = note;
+    detailReceiptsEl.appendChild(copy);
+  }
+  links.forEach((link) => {
+    const label = link.label || link.reference || link.id;
+    detailReceiptsEl.appendChild(
+      evidenceButton(link.reference || link.id, label, link.relation),
+    );
+  });
+}
+
+function renderEvidence(data) {
+  detailReceiptsEl.replaceChildren();
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "evidence-back";
+  back.textContent = "← Back to node evidence";
+  back.addEventListener("click", () => {
+    if (selected && selectedItem) renderNodeEvidence(selected.kind, selectedItem);
+  });
+  detailReceiptsEl.appendChild(back);
+
+  const heading = document.createElement("strong");
+  heading.textContent = `${data.kind || "unknown"} · ${data.status || "unknown"}`;
+  detailReceiptsEl.appendChild(heading);
+  if (data.summary) {
+    const summary = document.createElement("p");
+    summary.className = "evidence-summary";
+    summary.textContent = data.summary;
+    detailReceiptsEl.appendChild(summary);
+  }
+  const facts = [
+    data.timestamp ? `Time: ${data.timestamp}` : "",
+    data.path ? `Path: ${data.path}` : "",
+    data.canonical_reference ? `Receipt: ${data.canonical_reference}` : "",
+  ].filter(Boolean);
+  facts.forEach((fact) => {
+    const row = document.createElement("div");
+    row.className = "evidence-fact";
+    row.textContent = fact;
+    detailReceiptsEl.appendChild(row);
+  });
+  appendEvidenceGroup("Direct sources", data.sources);
+  appendEvidenceGroup(
+    "Nearby context",
+    data.context,
+    "These captures are close in time. They are investigation clues, not claimed direct proof.",
+  );
+  if (data.status === "missing") {
+    const missing = document.createElement("p");
+    missing.className = "evidence-note evidence-missing";
+    missing.textContent = "The receipt is retained, but its local payload was not found or has expired.";
+    detailReceiptsEl.appendChild(missing);
+  }
+}
+
+async function loadEvidence(reference) {
+  if (!selected || !reference) return;
+  detailMode = "evidence";
+  const request = ++evidenceRequest;
+  detailReceiptsEl.replaceChildren();
+  const loading = document.createElement("div");
+  loading.className = "evidence-loading";
+  loading.textContent = "Resolving evidence…";
+  detailReceiptsEl.appendChild(loading);
+  try {
+    const response = await fetch(`./evidence?ref=${encodeURIComponent(reference)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!selected || request !== evidenceRequest || detailMode !== "evidence") return;
+    renderEvidence(data);
+  } catch (error) {
+    if (!selected || request !== evidenceRequest || detailMode !== "evidence") return;
+    detailReceiptsEl.replaceChildren();
+    const message = document.createElement("p");
+    message.className = "evidence-note evidence-missing";
+    message.textContent = `Unable to resolve evidence. ${error.message || error}`;
+    detailReceiptsEl.appendChild(message);
+  }
+}
+
+function renderNodeEvidence(kind, item) {
+  detailMode = "node";
+  evidenceRequest += 1;
+  detailReceiptsEl.replaceChildren();
+
+  const receipts = receiptValues(item);
+  if (receipts.length) {
+    const heading = document.createElement("strong");
+    heading.textContent = "Evidence receipts";
+    detailReceiptsEl.appendChild(heading);
+    receipts.slice(0, 12).forEach((receipt) => {
+      detailReceiptsEl.appendChild(evidenceButton(receipt, receipt, "direct_evidence"));
+    });
+  }
+
+  if (kind === "point") {
+    fetch(`./node?id=${encodeURIComponent(item.id)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!data || !selected || detailMode !== "node"
+          || selected.kind !== kind || selected.id !== item.id) return;
+        (data.raw || []).slice(0, 3).forEach((raw) => {
+          const row = document.createElement("div");
+          row.className = "evidence-preview";
+          row.textContent = `${raw.ts ? `${String(raw.ts).slice(0, 16)}  ` : ""}${raw.text || ""}`;
+          detailReceiptsEl.appendChild(row);
+        });
+      })
+      .catch(() => {});
+  }
+}
+
 function showDetails(kind, item) {
   selected = { kind, id: item.id };
+  selectedItem = item;
   pauseAutoRotate();
   syncSelectionState();
   detailEl.dataset.kind = kind;
   detailKindEl.textContent = kind;
   detailTitleEl.textContent = item.content || item.signature || item.label || item.id;
   detailMetaEl.replaceChildren();
-  detailReceiptsEl.replaceChildren();
   appendMeta("ID", item.id);
   appendMeta("Layer", item.layer || item.level);
   appendMeta("Status", item.status);
@@ -846,33 +988,8 @@ function showDetails(kind, item) {
   appendMeta("Observations", item.observations);
   appendMeta("Valid from", item.valid_from);
   appendMeta("Members", item.members?.length);
-
-  const receipts = receiptValues(item);
-  if (receipts.length) {
-    const heading = document.createElement("strong");
-    heading.textContent = "Receipts";
-    detailReceiptsEl.appendChild(heading);
-    receipts.slice(0, 12).forEach((receipt) => {
-      const row = document.createElement("div");
-      row.textContent = receipt;
-      detailReceiptsEl.appendChild(row);
-    });
-  }
+  renderNodeEvidence(kind, item);
   detailEl.hidden = false;
-
-  if (kind === "point") {
-    fetch(`./node?id=${encodeURIComponent(item.id)}`)
-      .then((response) => response.ok ? response.json() : null)
-      .then((data) => {
-        if (!data || !selected || selected.kind !== kind || selected.id !== item.id) return;
-        (data.raw || []).slice(0, 3).forEach((raw) => {
-          const row = document.createElement("div");
-          row.textContent = `${raw.ts ? `${String(raw.ts).slice(0, 16)}  ` : ""}${raw.text || ""}`;
-          detailReceiptsEl.appendChild(row);
-        });
-      })
-      .catch(() => {});
-  }
 }
 
 function updateTimelineBounds() {

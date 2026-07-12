@@ -89,8 +89,12 @@ summary can be expanded back to Points.
 
 Receipts are stable evidence handles rather than embedded raw capture payloads.
 Each Point has a receipt; sourced relations and aggregate geometry preserve or
-collect those handles. The MCP `read_receipt` tool resolves a handle to current
-local evidence.
+collect those handles. The MCP `resolve_evidence` tool and authenticated
+`GET /model/evidence?ref=...` route resolve model, memory, activity, and capture
+references through one progressive contract. Explicit lineage is returned as
+`sources`; time-adjacent capture clues are returned separately as `context` and
+must not be described as direct proof. `read_receipt` remains the focused,
+backward-compatible memory-entry resolver.
 
 ## Build record
 

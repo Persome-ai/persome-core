@@ -39,6 +39,7 @@ Example stdio client configuration:
 | `read_memory` | Read one memory file with time, tag, and tail filters. |
 | `search` | Search durable memory with BM25 and optional dense retrieval. |
 | `read_receipt` | Resolve a memory entry to its provenance. |
+| `resolve_evidence` | Resolve model, memory, activity, and capture references through one progressive evidence contract. |
 | `recent_activity` | Read recent durable event entries. |
 | `behavior_patterns` | Read modeled behavioral patterns and their support. |
 | `get_model_snapshot` | Return the versioned Point/Line/Face/Volume/Root model snapshot. |
@@ -56,6 +57,11 @@ Example stdio client configuration:
 | `read_recent_capture` | Read an exact returned `file_stem` or nearest recent capture, with screenshot opt-in. |
 | `attention_trajectory` | Read the derived attention path used by state formation. |
 | `get_schema` | Return the Markdown memory schema. |
+
+`resolve_evidence` returns explicit stored lineage in `sources` and
+time-adjacent capture clues in `context`. Consumers must not present `context`
+as direct proof. Follow each returned `reference` to move down one layer; a
+retained receipt whose payload is no longer available returns `status=missing`.
 
 ## Transport
 

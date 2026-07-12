@@ -25,12 +25,18 @@ runtime schema.
 | POST | `/captures/ingest` | Ingest one bearer-authenticated capture from a trusted local producer. |
 | GET | `/model` | Open the offline Point/Line/Face/Volume/Root explorer. |
 | GET | `/model/graph` | Read the canonical versioned model snapshot. |
+| GET | `/model/evidence?ref=...` | Resolve a model ID or receipt into direct sources and separately labeled nearby context. |
 | GET | `/model/node?id=...` | Resolve a snapshot Point ID or relation endpoint to receipts and its relation tree. |
 
 The model page renders snapshot Points and Lines directly, then derives the
 Face, Volume, and Root hierarchy from their declared `members`. It loads its
 pinned Three.js modules from `/model/assets/*`; those package resources are
 intentionally omitted from OpenAPI.
+
+Receipt buttons in the viewer call `/model/evidence`. The response is a
+progressive-disclosure node with `sources` for explicit stored lineage and
+`context` for time-adjacent captures. An unknown or retention-expired payload
+returns `status=missing` while preserving the original receipt for audit.
 
 `/status.data.llm_profile` reports the effective provider, protocol, model,
 endpoint, key variable name, credential presence, and legacy-migration state.

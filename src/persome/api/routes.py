@@ -470,6 +470,24 @@ def model_graph() -> dict[str, Any]:
     }
 
 
+@router.get("/model/evidence", tags=["model"])
+def model_evidence(
+    ref: str = Query(..., min_length=1, max_length=1024),
+) -> dict[str, Any]:
+    """Resolve one model receipt or object id into its evidence and nearby context.
+
+    Explicit stored lineage is returned in ``sources``. Time-adjacent captures
+    are returned separately in ``context`` and are never presented as direct
+    provenance. Unknown or expired references fail open with ``status=missing``
+    so a historical receipt remains inspectable even after raw retention ends.
+    """
+    from ..evidence import resolve_evidence
+    from ..store import fts as fts_store
+
+    with fts_store.cursor() as conn:
+        return resolve_evidence(conn, ref)
+
+
 @router.get("/model/node", tags=["model"])
 def model_node(
     id: str = Query(..., min_length=1, max_length=512),

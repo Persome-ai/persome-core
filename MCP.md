@@ -54,6 +54,7 @@ Example client configuration:
 | `read_memory` | Read a memory file with time, tag, and tail filters. |
 | `search` | Search durable memory with lexical and optional dense retrieval. |
 | `read_receipt` | Resolve an entry ID to local provenance. |
+| `resolve_evidence` | Resolve any model ID or receipt one layer down; separates direct sources from nearby context. |
 | `recent_activity` | Read recent durable event entries. |
 | `behavior_patterns` | Read modeled patterns and supporting evidence. |
 | `get_model_snapshot` | Return the versioned Point/Line/Face/Volume/Root model. |

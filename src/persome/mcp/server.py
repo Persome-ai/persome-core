@@ -6,7 +6,7 @@ depending on `[mcp] transport`. Exposes:
 
   Compressed memory (Markdown layer):
     list_memories, read_memory, search, verify_fact, behavior_patterns,
-    get_model_snapshot, entity_graph, read_receipt, recent_activity
+    get_model_snapshot, resolve_evidence, entity_graph, read_receipt, recent_activity
   Raw captures (S1 buffer):
     current_context, search_captures, read_recent_capture
   Reference:
@@ -676,6 +676,9 @@ top-down — who they are (resident), what happened (recall), what was on screen
 - `read_receipt(entry_id)` — dereference a `⟨entry_id:path⟩` receipt (from `chains`
   or any hit id) into the full entry + nearby-capture breadcrumbs. The audit trail
   from any memory down to the on-screen moment it came from.
+- `resolve_evidence(reference)` — one resolver for model ids, Point/Line/Face/Volume/
+  Root receipts, memory entries, activities, and captures. Its `sources` are explicit
+  stored lineage; `context` is only time-adjacent and must not be described as proof.
 - `recent_activity(since?, limit?, prefix_filter?)` — newest-first feed across
   memory files. Best for "what has the user been up to" and recency disambiguation.
 - `list_memories()` / `read_memory(path, …)` — file index + whole-file reads, for
@@ -1055,6 +1058,24 @@ def build_server(
         """
         with fts.cursor() as conn:
             return json.dumps(_get_model_snapshot(conn, redact=redact), ensure_ascii=False)
+
+    @server.tool()
+    def resolve_evidence(reference: str) -> str:
+        """Resolve one receipt or model object id through Persome's evidence graph.
+
+        Use this for a Point, Line, Face, Volume, Root, memory receipt, activity,
+        or capture when the user asks "why?" or "what is this based on?". The
+        response keeps ``sources`` (explicit stored lineage) separate from
+        ``context`` (nearby captures that may help investigation but are NOT
+        claimed as direct inputs). Follow returned ``reference`` values to drill
+        down one layer at a time. A retained receipt whose payload has expired
+        returns ``status=missing`` rather than fabricating evidence.
+        """
+        from ..evidence import resolve_evidence as resolve
+
+        reference = bounded_text("reference", reference, maximum=1024)
+        with fts.cursor() as conn:
+            return json.dumps(resolve(conn, reference), ensure_ascii=False)
 
     if getattr(cfg.mcp, "read_receipt_enabled", True):
 
