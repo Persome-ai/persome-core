@@ -1,6 +1,6 @@
 [project]
 name = "persome-core"
-version = "0.3.1"
+version = "0.3.2"
 description = "Local-first macOS Runtime for screen-context memory, personal modeling, and MCP."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -54,6 +54,7 @@ dependencies = [
 
 [project.scripts]
 persome = "persome.cli:app"
+personal-model = "persome.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/Intuition-Lab/personal-model"

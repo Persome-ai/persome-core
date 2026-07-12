@@ -1,5 +1,7 @@
 # Persome
 
+<!-- mcp-name: io.github.Intuition-Lab/personal-model -->
+
 **The local-first Personal Model Runtime for macOS.** Persome observes the apps
 you already use, turns cross-app activity into an inspectable model of a real
 person, and serves that model to MCP agents.

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Intuition-Lab/personal-model",
+  "title": "Persome",
+  "description": "Local-first personal memory and model server for trusted MCP agents on macOS.",
+  "repository": {
+    "url": "https://github.com/Intuition-Lab/personal-model",
+    "source": "github"
+  },
+  "version": "0.3.2",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "personal-model",
+      "version": "0.3.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}
