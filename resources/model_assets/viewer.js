@@ -2,6 +2,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import { computeClusterLayout, zoomMath } from "./layout.mjs";
+import {
+  SHARE_CARD_HEIGHT,
+  SHARE_CARD_WIDTH,
+  SHARE_FILE_NAME,
+  buildXIntentUrl,
+  drawShareCard,
+} from "./share.mjs";
 
 const COLORS = {
   points: 0x4ef0c3,
@@ -29,6 +36,8 @@ const sliderLabel = document.getElementById("as-of-label");
 const zoomOutButton = document.getElementById("zoom-out");
 const zoomResetButton = document.getElementById("zoom-reset");
 const zoomInButton = document.getElementById("zoom-in");
+const shareButton = document.getElementById("share-x");
+const shareNoticeEl = document.getElementById("share-notice");
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x070610, 0.026);
@@ -103,6 +112,7 @@ let fitDistance = 12;
 let zoomGoalDistance = null;
 let lastZoomPercent = null;
 let lastFrameTime = performance.now();
+let shareReady = false;
 const layerVisible = { points: true, lines: true, faces: true, volumes: true, root: true };
 const kindLayers = { point: "points", context: "points", face: "faces", volume: "volumes", root: "root" };
 const raycaster = new THREE.Raycaster();
@@ -648,6 +658,97 @@ function pauseAutoRotate() {
   document.getElementById("rotate").setAttribute("aria-pressed", "false");
 }
 
+function showShareNotice(title, message, failed = false) {
+  const heading = shareNoticeEl.querySelector("strong");
+  const detail = shareNoticeEl.querySelector("small");
+  heading.textContent = title;
+  detail.textContent = message;
+  shareNoticeEl.classList.toggle("failed", failed);
+  shareNoticeEl.hidden = false;
+  window.clearTimeout(showShareNotice.timer);
+  showShareNotice.timer = window.setTimeout(() => {
+    shareNoticeEl.hidden = true;
+  }, 9000);
+}
+
+function setShareBusy(busy) {
+  shareButton.disabled = busy || !shareReady;
+  shareButton.setAttribute("aria-busy", String(busy));
+  shareButton.querySelector("b").textContent = busy ? "Preparing…" : "Share";
+}
+
+function createShareCardBlob() {
+  renderer.render(scene, camera);
+  const canvas = document.createElement("canvas");
+  canvas.width = SHARE_CARD_WIDTH;
+  canvas.height = SHARE_CARD_HEIGHT;
+  const context = canvas.getContext("2d");
+  if (!context) return Promise.reject(new Error("Canvas export is unavailable"));
+  drawShareCard(context, renderer.domElement, model);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("The constellation image could not be encoded"));
+    }, "image/png");
+  });
+}
+
+function downloadShareCard(blob) {
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = SHARE_FILE_NAME;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+function paintShareHandoff(popup) {
+  if (!popup) return;
+  popup.document.title = "Preparing your Persome constellation";
+  popup.document.body.innerHTML = `
+    <main style="min-height:100vh;display:grid;place-items:center;margin:0;background:#070610;color:#f7f4ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+      <section style="width:min(440px,calc(100vw - 48px));padding:38px;border:1px solid rgba(255,255,255,.12);border-radius:24px;background:linear-gradient(145deg,rgba(255,100,214,.11),rgba(119,152,255,.08));box-shadow:0 30px 100px rgba(0,0,0,.45)">
+        <p style="margin:0 0 18px;color:#ff83cf;font-size:11px;font-weight:750;letter-spacing:.16em">PERSOME · SHARE TO X</p>
+        <h1 style="margin:0;font-size:34px;line-height:1.05;letter-spacing:-.045em">Your constellation is downloading.</h1>
+        <p style="margin:18px 0 24px;color:#b8b1c7;font-size:15px;line-height:1.65">In X, click the image button and choose <strong style="color:#fff">${SHARE_FILE_NAME}</strong>. Your copy and tags are already filled in.</p>
+        <div style="height:3px;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.08)"><i style="display:block;width:100%;height:100%;transform-origin:left;background:linear-gradient(90deg,#ff64d6,#7798ff);animation:load 1.8s ease forwards"></i></div>
+        <style>@keyframes load{from{transform:scaleX(0)}to{transform:scaleX(1)}}</style>
+      </section>
+    </main>`;
+}
+
+async function shareToX() {
+  const popup = window.open("about:blank", "_blank");
+  paintShareHandoff(popup);
+  setShareBusy(true);
+  pauseAutoRotate();
+  try {
+    const blob = await createShareCardBlob();
+    downloadShareCard(blob);
+    showShareNotice(
+      "Constellation downloaded",
+      `Add ${SHARE_FILE_NAME} with the image button in X.`,
+    );
+    const intentUrl = buildXIntentUrl();
+    window.setTimeout(() => {
+      if (popup && !popup.closed) {
+        popup.opener = null;
+        popup.location.replace(intentUrl);
+        popup.focus();
+      } else {
+        window.location.assign(intentUrl);
+      }
+      setShareBusy(false);
+    }, 1800);
+  } catch (error) {
+    if (popup && !popup.closed) popup.close();
+    showShareNotice("Share image failed", error.message || String(error), true);
+    setShareBusy(false);
+  }
+}
+
 function syncSelectionState() {
   const activeKey = selected ? selectionKey(selected.kind, selected.id) : null;
   selectionTargets.forEach((targets, key) => {
@@ -814,10 +915,16 @@ async function loadModel(force = false) {
     model = payload.model;
     modelGeneratedAt = payload.generated_at || "";
     modelFingerprint = nextFingerprint;
+    shareReady = Boolean(
+      model.points.length || model.faces.length || model.volumes.length || model.root,
+    );
+    setShareBusy(false);
     updateTimelineBounds();
     buildScene();
     errorEl.hidden = true;
   } catch (error) {
+    shareReady = false;
+    setShareBusy(false);
     errorEl.textContent = `Unable to load the personal model. ${error.message || error}`;
     errorEl.hidden = false;
   }
@@ -1014,6 +1121,7 @@ controls.addEventListener("start", () => {
 });
 document.getElementById("reset").addEventListener("click", resetCamera);
 document.getElementById("close-detail").addEventListener("click", clearSelection);
+shareButton.addEventListener("click", shareToX);
 
 slider.addEventListener("input", () => {
   updateCutoff();

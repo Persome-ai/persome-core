@@ -65,6 +65,9 @@ class TestViewPage:
         assert "Points" in body and "Volumes" in body and "Root" in body
         assert "The shape" in body and "of you." in body
         assert "Local only" in body
+        assert 'id="share-x"' in body
+        assert 'title="Share your constellation to X" disabled>' in body
+        assert 'id="share-notice"' in body
         assert 'aria-label="Zoom controls"' in body
         assert 'id="zoom-out"' in body
         assert 'id="zoom-reset"' in body
@@ -74,13 +77,17 @@ class TestViewPage:
     def test_bundled_viewer_assets_are_served(self, ac_root):
         three = routes.model_asset("three.module.js")
         layout = routes.model_asset("layout.mjs")
+        share = routes.model_asset("share.mjs")
         viewer = routes.model_asset("viewer.js")
         css = routes.model_asset("viewer.css")
 
         assert len(three.body) > 1_000_000
         assert b"class WebGLRenderer" in three.body
         assert b"computeClusterLayout" in layout.body
+        assert b"buildXIntentUrl" in share.body
+        assert b"drawShareCard" in share.body
         assert b'from "./layout.mjs"' in viewer.body
+        assert b'from "./share.mjs"' in viewer.body
         assert b"model.points" in viewer.body
         assert b"model.lines" in viewer.body
         assert b"model.faces" in viewer.body
@@ -92,17 +99,24 @@ class TestViewPage:
         assert b"ACESFilmicToneMapping" in viewer.body
         assert b"model.root?.signature" in viewer.body
         assert b"controls.zoomToCursor = true" in viewer.body
+        assert b"downloadShareCard" in viewer.body
+        assert b"shareReady = Boolean" in viewer.body
+        assert b"window.open" in viewer.body
+        assert b"my-persome-constellation.png" in share.body
         assert b"window.__persomeZoomState" in viewer.body
         assert b"if (!REDUCED_MOTION)" in viewer.body
         assert b'event.key === "+"' in viewer.body
         assert b'event.key === "-"' in viewer.body
         assert b'event.key === "0"' in viewer.body
         assert b".zoom-controls" in css.body
+        assert b".share-button" in css.body
+        assert b".share-notice" in css.body
         assert b"(min-width: 1181px) and (max-width: 1360px)" in css.body
         assert b"top: 116px" in css.body
         assert b"prefers-reduced-motion" in css.body
         assert viewer.media_type == "text/javascript"
         assert layout.media_type == "text/javascript"
+        assert share.media_type == "text/javascript"
         assert css.media_type == "text/css"
 
     def test_viewer_interaction_contract_prefers_labels_over_lines(self, ac_root):

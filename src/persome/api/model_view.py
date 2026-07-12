@@ -43,6 +43,9 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
       </div>
       <div class="view-actions">
         <span class="privacy-badge"><i aria-hidden="true"></i>Local only</span>
+        <button id="share-x" class="share-button" type="button" aria-label="Share your constellation to X" title="Share your constellation to X" disabled>
+          <span aria-hidden="true">X</span><b>Share</b>
+        </button>
         <div class="zoom-controls" role="group" aria-label="Zoom controls">
           <button id="zoom-out" class="icon-button" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
           <button id="zoom-reset" class="zoom-value" type="button" aria-label="Reset zoom to 100 percent" title="Reset zoom (0)">100%</button>
@@ -87,6 +90,11 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
     </div>
 
     <div id="error" class="error" role="alert" hidden></div>
+
+    <div id="share-notice" class="share-notice" role="status" aria-live="polite" hidden>
+      <span aria-hidden="true">↓</span>
+      <div><strong>Constellation downloaded</strong><small>Add my-persome-constellation.png in X.</small></div>
+    </div>
 
     <footer class="timeline">
       <button id="play" class="icon-button" type="button" aria-label="Play model history" aria-pressed="false" title="Play model history">▶</button>

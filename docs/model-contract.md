@@ -64,7 +64,12 @@ The viewer presents that hierarchy as a personal constellation: a Root-centered 
 Volume and Face orbit structures, Point clouds, and restrained ambient depth cues. Its editorial
 frame uses the live Root signature as the model's plain-language identity statement so each view is
 recognizably personal without changing the snapshot. The `Local only` treatment is descriptive, not
-a publishing control: the viewer does not upload, export, or share model content.
+a publishing control. The viewer never uploads the model or exposes its owner-only URL. An explicit
+`Share` action renders a fixed-size PNG locally from the unlabeled WebGL constellation, adds the Root
+identity statement, up to three highest-level Volume or Face signatures, aggregate layer counts, and
+Persome branding, downloads it, and opens an X composer with standard copy and tags. Individual
+Point labels, receipts, source names, timestamps, and viewer credentials are excluded from the share
+artifact; the owner attaches the downloaded image and confirms the post in X.
 
 Visible node labels and their Point, Face, Volume, Root, or context meshes open the same provenance
 detail panel. Labels are keyboard-focusable; Escape closes the selection. Lines remain visual

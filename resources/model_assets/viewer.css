@@ -177,7 +177,8 @@ button {
 
 .layers button,
 .icon-button,
-.zoom-value {
+.zoom-value,
+.share-button {
   min-height: 34px;
   border: 1px solid transparent;
   background: transparent;
@@ -217,7 +218,8 @@ button {
 
 .layers button:hover,
 .icon-button:hover,
-.zoom-value:hover {
+.zoom-value:hover,
+.share-button:hover {
   border-color: var(--border);
   background: rgba(255, 255, 255, 0.07);
   color: var(--text);
@@ -229,7 +231,8 @@ button {
 
 .layers button:active,
 .icon-button:active,
-.zoom-value:active {
+.zoom-value:active,
+.share-button:active {
   transform: scale(0.96);
 }
 
@@ -299,6 +302,41 @@ button {
   border-radius: 50%;
   background: var(--point);
   box-shadow: 0 0 9px rgba(78, 240, 195, 0.75);
+}
+
+.share-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 13px 0 10px;
+  border: 1px solid rgba(255, 100, 214, 0.26);
+  border-radius: 999px;
+  background: linear-gradient(110deg, rgba(255, 100, 214, 0.15), rgba(119, 152, 255, 0.13));
+  color: #f5eefa;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.share-button span {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.share-button b {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.share-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .icon-button {
@@ -754,6 +792,65 @@ button {
   color: #ff9cae;
 }
 
+.share-notice {
+  position: absolute;
+  z-index: 18;
+  right: 24px;
+  bottom: 82px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: min(330px, calc(100vw - 48px));
+  padding: 13px 15px;
+  border: 1px solid rgba(78, 240, 195, 0.24);
+  border-radius: 15px;
+  background: rgba(10, 9, 19, 0.92);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.share-notice[hidden] {
+  display: none;
+}
+
+.share-notice > span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(78, 240, 195, 0.11);
+  color: var(--point);
+  font-size: 16px;
+}
+
+.share-notice div {
+  display: grid;
+  gap: 4px;
+}
+
+.share-notice strong {
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.share-notice small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.share-notice.failed {
+  border-color: rgba(255, 107, 138, 0.28);
+}
+
+.share-notice.failed > span {
+  background: rgba(255, 107, 138, 0.11);
+  color: var(--root);
+}
+
 .model-label {
   --label-accent: var(--text);
   appearance: none;
@@ -824,6 +921,16 @@ button {
 }
 
 @media (min-width: 1181px) and (max-width: 1360px) {
+  .share-button {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .share-button b {
+    display: none;
+  }
+
   .status {
     max-width: calc(50vw - 294px);
   }
@@ -906,6 +1013,21 @@ button {
   .view-actions {
     grid-column: 2;
     grid-row: 1;
+  }
+
+  .share-button {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .share-button b {
+    display: none;
+  }
+
+  .share-notice {
+    right: 10px;
+    bottom: 76px;
   }
 
   .story {
@@ -1058,6 +1180,7 @@ button {
   .layers button,
   .icon-button,
   .zoom-value,
+  .share-button,
   .model-label {
     transition: none;
   }
