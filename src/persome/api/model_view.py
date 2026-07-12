@@ -43,6 +43,11 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
       </div>
       <div class="view-actions">
         <span class="privacy-badge"><i aria-hidden="true"></i>Local only</span>
+        <div class="zoom-controls" role="group" aria-label="Zoom controls">
+          <button id="zoom-out" class="icon-button" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button id="zoom-reset" class="zoom-value" type="button" aria-label="Reset zoom to 100 percent" title="Reset zoom (0)">100%</button>
+          <button id="zoom-in" class="icon-button" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>
+        </div>
         <button id="rotate" class="icon-button action-button" type="button" aria-label="Toggle rotation" aria-pressed="false" title="Toggle rotation"><span aria-hidden="true">↻</span><b>Orbit</b></button>
         <button id="reset" class="icon-button action-button" type="button" aria-label="Reset camera" title="Reset camera"><span aria-hidden="true">⌁</span><b>Frame</b></button>
       </div>
@@ -90,7 +95,7 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
       <output id="as-of-label" for="as-of">Now</output>
     </footer>
 
-    <p class="gesture-hint"><span aria-hidden="true">↗</span> Drag to orbit · Scroll to explore · Select a thought</p>
+    <p class="gesture-hint"><span aria-hidden="true">↗</span> Drag to orbit · Scroll or pinch to zoom · Select a thought</p>
   </main>
   <script type="module" src="assets/viewer.js"></script>
 </body>

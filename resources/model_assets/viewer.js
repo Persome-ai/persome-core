@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
-import { computeClusterLayout } from "./layout.mjs";
+import { computeClusterLayout, zoomMath } from "./layout.mjs";
 
 const COLORS = {
   points: 0x4ef0c3,
@@ -26,6 +26,9 @@ const errorEl = document.getElementById("error");
 const modelIdentityEl = document.getElementById("model-identity");
 const slider = document.getElementById("as-of");
 const sliderLabel = document.getElementById("as-of-label");
+const zoomOutButton = document.getElementById("zoom-out");
+const zoomResetButton = document.getElementById("zoom-reset");
+const zoomInButton = document.getElementById("zoom-in");
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x070610, 0.026);
@@ -55,6 +58,8 @@ canvasHost.appendChild(labelRenderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
+controls.zoomSpeed = 0.62;
+controls.zoomToCursor = true;
 controls.minDistance = 5;
 controls.maxDistance = 32;
 controls.target.set(0, 2.2, 0);
@@ -94,10 +99,19 @@ let currentLayout = null;
 let layoutRadius = 6;
 let framedRadius = 0;
 let pulseGlows = [];
+let fitDistance = 12;
+let zoomGoalDistance = null;
+let lastZoomPercent = null;
+let lastFrameTime = performance.now();
 const layerVisible = { points: true, lines: true, faces: true, volumes: true, root: true };
 const kindLayers = { point: "points", context: "points", face: "faces", volume: "volumes", root: "root" };
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const zoomDirection = new THREE.Vector3();
+const ZOOM_MIN_PERCENT = 50;
+const ZOOM_MAX_PERCENT = 400;
+const ZOOM_STEP_PERCENT = 25;
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function freshLayerObjects() {
   return { points: [], lines: [], faces: [], volumes: [], root: [] };
@@ -816,16 +830,100 @@ function frameLayout(force) {
   if (!force && framedRadius > 0 && radius <= framedRadius * 1.16) return;
   const direction = new THREE.Vector3(portrait ? 0.58 : 0.72, portrait ? 1.25 : 1.05, 1).normalize();
   const distance = Math.max(portrait ? 15 : 12, radius * (portrait ? 3.0 : 2.55));
+  fitDistance = distance;
+  zoomGoalDistance = null;
   camera.position.copy(direction.multiplyScalar(distance));
   controls.target.set(0, 0, 0);
-  controls.minDistance = Math.max(2.8, radius * 0.3);
-  controls.maxDistance = Math.max(32, radius * 5);
+  controls.minDistance = distance * 100 / ZOOM_MAX_PERCENT;
+  controls.maxDistance = distance * 100 / ZOOM_MIN_PERCENT;
   framedRadius = radius;
   controls.update();
+  syncZoomUI();
 }
 
 function resetCamera() {
   frameLayout(true);
+}
+
+function clampZoomPercent(value) {
+  return zoomMath.clampPercent(value, ZOOM_MIN_PERCENT, ZOOM_MAX_PERCENT);
+}
+
+function currentZoomPercent() {
+  const distance = camera.position.distanceTo(controls.target);
+  return zoomMath.percentForDistance(
+    fitDistance,
+    distance,
+    ZOOM_MIN_PERCENT,
+    ZOOM_MAX_PERCENT,
+  );
+}
+
+function syncZoomUI() {
+  const distance = camera.position.distanceTo(controls.target);
+  const percent = currentZoomPercent();
+  if (percent !== lastZoomPercent) {
+    zoomResetButton.textContent = `${percent}%`;
+    zoomResetButton.setAttribute(
+      "aria-label",
+      `Reset zoom to 100 percent (currently ${percent} percent)`,
+    );
+    lastZoomPercent = percent;
+  }
+  zoomOutButton.disabled = percent <= ZOOM_MIN_PERCENT;
+  zoomInButton.disabled = percent >= ZOOM_MAX_PERCENT;
+  window.__persomeZoomState = {
+    percent,
+    distance: Number(distance.toFixed(3)),
+    fitDistance: Number(fitDistance.toFixed(3)),
+    minPercent: ZOOM_MIN_PERCENT,
+    maxPercent: ZOOM_MAX_PERCENT,
+    animating: zoomGoalDistance !== null,
+  };
+}
+
+function requestZoom(percent) {
+  const clamped = clampZoomPercent(percent);
+  zoomGoalDistance = THREE.MathUtils.clamp(
+    fitDistance * 100 / clamped,
+    controls.minDistance,
+    controls.maxDistance,
+  );
+}
+
+function stepZoom(direction) {
+  const current = zoomGoalDistance === null
+    ? currentZoomPercent()
+    : zoomMath.percentForDistance(
+      fitDistance,
+      zoomGoalDistance,
+      ZOOM_MIN_PERCENT,
+      ZOOM_MAX_PERCENT,
+    );
+  requestZoom(zoomMath.nextPercent(
+    current,
+    direction,
+    ZOOM_STEP_PERCENT,
+    ZOOM_MIN_PERCENT,
+    ZOOM_MAX_PERCENT,
+  ));
+}
+
+function applyZoomAnimation(deltaSeconds) {
+  if (zoomGoalDistance === null) return;
+  const currentDistance = camera.position.distanceTo(controls.target);
+  const nextDistance = REDUCED_MOTION
+    ? zoomGoalDistance
+    : THREE.MathUtils.damp(currentDistance, zoomGoalDistance, 12, deltaSeconds);
+  zoomDirection.copy(camera.position).sub(controls.target);
+  if (zoomDirection.lengthSq() < 1e-8) zoomDirection.set(0, 0, 1);
+  zoomDirection.setLength(nextDistance);
+  camera.position.copy(controls.target).add(zoomDirection);
+  if (Math.abs(nextDistance - zoomGoalDistance) < 0.01) {
+    zoomDirection.setLength(zoomGoalDistance);
+    camera.position.copy(controls.target).add(zoomDirection);
+    zoomGoalDistance = null;
+  }
 }
 
 function cullLabels() {
@@ -908,6 +1006,12 @@ document.getElementById("rotate").addEventListener("click", (event) => {
   controls.autoRotateSpeed = 0.7;
   event.currentTarget.setAttribute("aria-pressed", String(controls.autoRotate));
 });
+zoomOutButton.addEventListener("click", () => stepZoom(-1));
+zoomResetButton.addEventListener("click", () => requestZoom(100));
+zoomInButton.addEventListener("click", () => stepZoom(1));
+controls.addEventListener("start", () => {
+  zoomGoalDistance = null;
+});
 document.getElementById("reset").addEventListener("click", resetCamera);
 document.getElementById("close-detail").addEventListener("click", clearSelection);
 
@@ -987,7 +1091,30 @@ renderer.domElement.addEventListener("pointerup", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && selected) clearSelection();
+  if (event.key === "Escape" && selected) {
+    clearSelection();
+    return;
+  }
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target?.isContentEditable
+    || event.metaKey
+    || event.ctrlKey
+    || event.altKey
+  ) return;
+  if (event.key === "+" || event.key === "=") {
+    event.preventDefault();
+    stepZoom(1);
+  } else if (event.key === "-" || event.key === "_") {
+    event.preventDefault();
+    stepZoom(-1);
+  } else if (event.key === "0") {
+    event.preventDefault();
+    requestZoom(100);
+  }
 });
 
 window.addEventListener("resize", () => {
@@ -1008,8 +1135,12 @@ window.addEventListener("unhandledrejection", (event) => {
   errorEl.hidden = false;
 });
 
-function animate() {
+function animate(frameTime = performance.now()) {
+  const deltaSeconds = Math.min(Math.max((frameTime - lastFrameTime) / 1000, 0), 0.5);
+  lastFrameTime = frameTime;
+  applyZoomAnimation(deltaSeconds);
   controls.update();
+  syncZoomUI();
   const time = performance.now() * 0.001;
   pulseGlows.forEach((glow) => {
     const pulse = 1 + Math.sin(time * 1.2 + glow.userData.glowPhase) * glow.userData.glowPulse;

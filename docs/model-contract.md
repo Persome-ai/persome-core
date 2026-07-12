@@ -71,6 +71,11 @@ detail panel. Labels are keyboard-focusable; Escape closes the selection. Lines 
 evidence of evolution, relation, and hierarchy and are intentionally excluded from pointer picking.
 `window.__persomeInteractionState` exposes aggregate interaction counts for local smoke tests.
 
+Zoom is relative to the fitted model: the visible minus, percentage, and plus controls cover 50%
+through 400%, the percentage resets to 100%, and the plus, minus, and zero keys provide the same
+actions. Wheel and trackpad pinch gestures zoom toward the pointer. `window.__persomeZoomState`
+exposes only aggregate distance and percentage values for local visual smoke tests.
+
 ## Evidence sources
 
 Relation edges may carry the nullable triplet `source_kind`, `source_id`, and `source_receipt`.

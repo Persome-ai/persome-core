@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeClusterLayout, layoutMath } from "../../resources/model_assets/layout.mjs";
+import {
+  computeClusterLayout,
+  layoutMath,
+  zoomMath,
+} from "../../resources/model_assets/layout.mjs";
 
 function point(index, file = "project-runtime.md") {
   const id = `point-${String(index).padStart(3, "0")}`;
@@ -117,4 +121,20 @@ test("keeps a point-only degraded model close to the center", () => {
   assert.equal(layout.diagnostics.sourceClusterPoints, 1);
   assert.ok(layout.diagnostics.averageRadius.points < 2);
   assert.ok(layout.diagnostics.bounds.radius < 3);
+});
+
+test("steps fitted zoom predictably through rapid actions and clamps its range", () => {
+  assert.equal(zoomMath.percentForDistance(12, 12), 100);
+  assert.equal(zoomMath.percentForDistance(12, 24), 50);
+  assert.equal(zoomMath.percentForDistance(12, 3), 400);
+  assert.equal(zoomMath.percentForDistance(12, 120), 50);
+  assert.equal(zoomMath.percentForDistance(12, 0.3), 400);
+
+  const firstTap = zoomMath.nextPercent(100, 1);
+  const rapidSecondTap = zoomMath.nextPercent(firstTap, 1);
+  assert.equal(firstTap, 125);
+  assert.equal(rapidSecondTap, 150);
+  assert.equal(zoomMath.nextPercent(113, -1), 100);
+  assert.equal(zoomMath.nextPercent(50, -1), 50);
+  assert.equal(zoomMath.nextPercent(400, 1), 400);
 });

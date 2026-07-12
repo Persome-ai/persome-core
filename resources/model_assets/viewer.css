@@ -176,7 +176,8 @@ button {
 }
 
 .layers button,
-.icon-button {
+.icon-button,
+.zoom-value {
   min-height: 34px;
   border: 1px solid transparent;
   background: transparent;
@@ -215,7 +216,8 @@ button {
 }
 
 .layers button:hover,
-.icon-button:hover {
+.icon-button:hover,
+.zoom-value:hover {
   border-color: var(--border);
   background: rgba(255, 255, 255, 0.07);
   color: var(--text);
@@ -226,7 +228,8 @@ button {
 }
 
 .layers button:active,
-.icon-button:active {
+.icon-button:active,
+.zoom-value:active {
   transform: scale(0.96);
 }
 
@@ -237,6 +240,45 @@ button {
   gap: 5px;
   padding: 4px;
   border-radius: 999px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-right: 1px;
+  padding-right: 5px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.zoom-controls .icon-button {
+  width: 40px;
+  min-height: 40px;
+  font-size: 17px;
+}
+
+.zoom-value {
+  min-width: 48px;
+  min-height: 40px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #d8d3e5;
+  cursor: pointer;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.zoom-controls button:disabled {
+  opacity: 0.32;
+  cursor: default;
+  transform: none;
+}
+
+.zoom-controls button:focus-visible {
+  outline: 2px solid var(--volume);
+  outline-offset: 1px;
 }
 
 .privacy-badge {
@@ -940,6 +982,24 @@ button {
 }
 
 @media (max-width: 480px) {
+  #rotate {
+    display: none;
+  }
+
+  .zoom-controls .icon-button,
+  .zoom-value {
+    min-height: 44px;
+  }
+
+  .zoom-controls .icon-button {
+    width: 44px;
+  }
+
+  .zoom-value {
+    min-width: 50px;
+    font-size: 11px;
+  }
+
   .brand-mark {
     width: 28px;
     height: 28px;
@@ -982,6 +1042,7 @@ button {
 
   .layers button,
   .icon-button,
+  .zoom-value,
   .model-label {
     transition: none;
   }

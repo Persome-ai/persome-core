@@ -437,3 +437,40 @@ export function computeClusterLayout(model) {
 }
 
 export const layoutMath = { distance, magnitude, stableHash };
+
+function clampZoomPercent(value, minPercent = 50, maxPercent = 400) {
+  return Math.max(minPercent, Math.min(maxPercent, Math.round(value)));
+}
+
+function zoomPercentForDistance(
+  fitDistance,
+  distance,
+  minPercent = 50,
+  maxPercent = 400,
+) {
+  if (!Number.isFinite(distance) || distance <= 0 || fitDistance <= 0) return 100;
+  return clampZoomPercent((fitDistance / distance) * 100, minPercent, maxPercent);
+}
+
+function nextZoomPercent(
+  currentPercent,
+  direction,
+  stepPercent = 25,
+  minPercent = 50,
+  maxPercent = 400,
+) {
+  const snapped = direction > 0
+    ? Math.floor(currentPercent / stepPercent) * stepPercent
+    : Math.ceil(currentPercent / stepPercent) * stepPercent;
+  return clampZoomPercent(
+    snapped + direction * stepPercent,
+    minPercent,
+    maxPercent,
+  );
+}
+
+export const zoomMath = {
+  clampPercent: clampZoomPercent,
+  nextPercent: nextZoomPercent,
+  percentForDistance: zoomPercentForDistance,
+};
