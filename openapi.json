@@ -3,7 +3,7 @@
   "info": {
     "title": "Persome API",
     "description": "Local-first screen-context memory and personal-model REST API.",
-    "version": "0.3.0"
+    "version": "0.3.1"
   },
   "paths": {
     "/health": {

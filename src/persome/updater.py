@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import fcntl
+import importlib.metadata
 import json
 import os
 import shutil
@@ -161,6 +162,24 @@ def _runtime_binary() -> Path:
 
 def _runtime_python() -> Path:
     return _venv_dir() / "bin" / "python"
+
+
+def is_external_package_install() -> bool:
+    """Return whether the running CLI is the public package-manager install.
+
+    Source installs own ``<PERSOME_ROOT>/venv`` and can use the transactional
+    directory exchange. A PyPI tool/venv is owned by uv, pipx, or pip instead;
+    that package manager must replace it before onboarding re-proves Runtime
+    ownership and capture readiness.
+    """
+
+    if _venv_dir().is_dir():
+        return False
+    try:
+        importlib.metadata.distribution("personal-model")
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return True
 
 
 _LOCK_KEEPER_CODE = r"""

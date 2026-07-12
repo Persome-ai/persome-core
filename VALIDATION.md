@@ -160,6 +160,35 @@ for relative in required:
 PY
 ```
 
+The public PyPI distribution is built from the same tracked source with the
+name declared by `tool.persome.release.pypi-distribution`. The root project
+keeps the `persome-core` compatibility name because the v0.3.0 updater validates
+that field before handing off to a newer installer. Build and inspect the PyPI
+artifacts independently:
+
+```bash
+rm -rf pypi-dist /tmp/personal-model-wheel
+uv run python scripts/build_pypi_dist.py --out-dir pypi-dist
+uv venv /tmp/personal-model-wheel --python 3.11
+uv pip install --python /tmp/personal-model-wheel/bin/python \
+  --require-hashes --no-build --requirement /tmp/persome-runtime.txt
+uv pip install --python /tmp/personal-model-wheel/bin/python \
+  --no-deps pypi-dist/personal_model-*.whl
+/tmp/personal-model-wheel/bin/python - <<'PY'
+from importlib.metadata import version
+from persome import __version__
+
+assert version("personal-model") == __version__
+PY
+/tmp/personal-model-wheel/bin/persome --help
+```
+
+PyPI installations are owned by their Python tool manager rather than
+`<PERSOME_ROOT>/venv`. Upgrade them with `uv tool upgrade personal-model` (or
+the corresponding pipx/pip command), then run `persome onboard` to restart and
+re-prove the Runtime. `persome update` detects this shape and exits with those
+instructions instead of attempting the source installer's atomic venv exchange.
+
 In an interactive macOS session, `install.sh` runs `persome onboard`. For the
 standard Apple Silicon daemon mode, onboarding separately requests Accessibility
 for the source-versioned capture helper and event watcher, requests Screen
@@ -229,7 +258,10 @@ gh attestation verify persome_core-*.tar.gz \
 The release workflow accepts only an administrator-protected version tag whose
 commit is reachable from `origin/main`. Its Actions are pinned to full commit
 SHAs and its default token permission is read-only; only the final release job
-receives `contents: write`.
+receives `contents: write`. After that GitHub Release succeeds, the `pypi-publish`
+job downloads the already verified `personal_model` artifacts and publishes
+through the GitHub `pypi` environment with OIDC `id-token: write`; no PyPI API
+token is stored in the repository.
 
 ## 7. Build record
 

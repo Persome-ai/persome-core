@@ -1,6 +1,6 @@
 [project]
 name = "persome-core"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local-first macOS Runtime for screen-context memory, personal modeling, and MCP."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -60,6 +60,12 @@ Homepage = "https://github.com/Intuition-Lab/personal-model"
 Repository = "https://github.com/Intuition-Lab/personal-model"
 Issues = "https://github.com/Intuition-Lab/personal-model/issues"
 Documentation = "https://github.com/Intuition-Lab/personal-model/tree/main/docs"
+
+[tool.persome.release]
+# Keep the root project name as `persome-core` so the v0.3.0 updater can still
+# validate and install future source checkouts. Public PyPI artifacts are built
+# from the same tagged tree with this distribution name.
+pypi-distribution = "personal-model"
 
 [build-system]
 requires = ["hatchling==1.31.0"]

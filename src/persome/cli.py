@@ -215,19 +215,20 @@ def _capture_continuity(hours: float = 1.0) -> tuple[int, float | None]:
 
 def _install_source() -> str:
     """Return the editable-install source path recorded in direct_url.json."""
-    try:
-        import importlib.metadata
+    import importlib.metadata
 
-        dist = importlib.metadata.distribution("persome-core")
-        raw = dist.read_text("direct_url.json")
-        if raw:
-            data = json.loads(raw)
-            url = str(data.get("url", ""))
-            if url.startswith("file://"):
-                return url[7:]
-            return url
-    except Exception:  # noqa: BLE001
-        pass
+    for distribution_name in ("personal-model", "persome-core"):
+        try:
+            dist = importlib.metadata.distribution(distribution_name)
+            raw = dist.read_text("direct_url.json")
+            if raw:
+                data = json.loads(raw)
+                url = str(data.get("url", ""))
+                if url.startswith("file://"):
+                    return url[7:]
+                return url
+        except Exception:  # noqa: BLE001
+            continue
     return "unknown"
 
 
@@ -923,6 +924,17 @@ def update(
 ) -> None:
     """Update the installed Persome Runtime and prove it is healthy."""
     from . import updater
+
+    if updater.is_external_package_install():
+        console.print(
+            "[yellow]This Persome CLI is managed by a Python package manager.[/yellow]\n"
+            "Upgrade the public distribution, then re-run Runtime proof:\n\n"
+            "  [bold]uv tool upgrade personal-model[/bold]\n"
+            "  [bold]persome onboard[/bold]\n\n"
+            "For pipx or pip installations, upgrade [bold]personal-model[/bold] with that "
+            "manager instead."
+        )
+        raise typer.Exit(1)
 
     updater.claim_legacy_foreground()
     launchagent_was_loaded = False

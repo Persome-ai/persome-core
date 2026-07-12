@@ -269,7 +269,7 @@ def check_helpers(capture: config_mod.CaptureConfig | None = None) -> list[Check
                 Check(
                     name,
                     "fail",
-                    "binary and bundled Swift source not found — reinstall persome-core",
+                    "binary and bundled Swift source not found — reinstall Persome",
                 )
             )
     return out

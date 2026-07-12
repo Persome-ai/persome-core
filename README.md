@@ -84,6 +84,26 @@ against repository-pinned SHA-256 digests; the Runtime environment is installed
 from the committed `uv.lock`, and the complete build-backend closure is
 hash-constrained rather than resolved afresh.
 
+Install the published PyPI distribution with `uv` and run the same explicit
+onboarding proof:
+
+```bash
+uv tool install personal-model
+persome onboard
+```
+
+The distribution is named `personal-model`; the installed CLI remains
+`persome`. The source installer below remains the most explicit first-run path
+and is also used by transactional updates.
+
+Upgrade a PyPI/`uv tool` installation with its package manager, then re-run the
+same Runtime proof:
+
+```bash
+uv tool upgrade personal-model
+persome onboard
+```
+
 ```bash
 git clone https://github.com/Intuition-Lab/personal-model.git
 cd personal-model
@@ -126,7 +146,8 @@ ingest runner instead of pretending that its daemon produced an AX frame.
 
 ### Update an existing installation
 
-Run the updater from any directory; no Git checkout is required:
+For an installation created by `install.sh`, run the transactional updater from
+any directory; no Git checkout is required:
 
 ```bash
 persome update

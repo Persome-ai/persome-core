@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import importlib.metadata
 import json
 import os
 import subprocess
@@ -26,6 +27,30 @@ def _source_tree(root: Path) -> Path:
     (root / "build-constraints.txt").write_text("", encoding="utf-8")
     (root / "install.sh").write_text("#!/bin/bash\n", encoding="utf-8")
     return root
+
+
+def test_external_package_install_requires_public_distribution_and_no_managed_venv(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        lambda name: object() if name == "personal-model" else None,
+    )
+    assert updater.is_external_package_install() is True
+
+    (ac_root / "venv").mkdir()
+    assert updater.is_external_package_install() is False
+
+
+def test_root_distribution_without_managed_venv_is_not_external(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing(_name: str) -> object:
+        raise importlib.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(importlib.metadata, "distribution", missing)
+    assert updater.is_external_package_install() is False
 
 
 def _begin_transaction(*, launchagent: bool = False) -> str:
