@@ -1,8 +1,8 @@
 name: Release
 
 # Builds and verifies source/wheel artifacts, then creates a GitHub Release when
-# a version tag is pushed. PyPI publishing is intentionally not part of the
-# public-alpha launch contract.
+# a version tag is pushed. Until trusted publishing is automated, maintainers
+# publish the exact verified dist artifacts to PyPI as a separate release step.
 #
 # Cut a release:
 #   1. bump `version` in pyproject.toml + `__version__` in src/persome/__init__.py

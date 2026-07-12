@@ -1,6 +1,6 @@
 [project]
 name = "persome-core"
-version = "0.2.2"
+version = "0.3.0"
 description = "Local-first macOS Runtime for screen-context memory, personal modeling, and MCP."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

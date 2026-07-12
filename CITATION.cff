@@ -2,14 +2,14 @@ cff-version: 1.2.0
 message: "If you use Persome Runtime, please cite this software."
 title: "Persome Runtime"
 type: software
-version: "0.2.2"
+version: "0.3.0"
 license: Apache-2.0
 repository-code: "https://github.com/Intuition-Lab/personal-model"
 url: "https://github.com/Intuition-Lab/personal-model"
 identifiers:
   - type: url
-    value: "https://github.com/Intuition-Lab/personal-model/releases/tag/v0.2.2"
-    description: "Persome Runtime v0.2.2 release"
+    value: "https://github.com/Intuition-Lab/personal-model/releases/tag/v0.3.0"
+    description: "Persome Runtime v0.3.0 release"
 abstract: >-
   Local-first screen-context memory daemon for macOS. It captures Accessibility
   tree events, distills them into persistent Markdown memory and SQLite indexes,
