@@ -429,6 +429,31 @@ secrets, personal data, non-English source text, contract drift, lint failures,
 and offline regressions. Third-party Actions are pinned to reviewed commit SHAs
 and workflow permissions default to read-only.
 
+## Contributors ✨
+
+Thanks goes to these wonderful people
+([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Singularity-tian"><img src="https://avatars.githubusercontent.com/u/113085728?v=4?s=100" width="100px;" alt="Singularity"/><br /><sub><b>Singularity</b></sub></a><br /><a href="https://github.com/Intuition-Lab/personal-model/commits?author=Singularity-tian" title="Code">💻</a> <a href="#maintenance-Singularity-tian" title="Maintenance">🚧</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the
+[all-contributors](https://github.com/all-contributors/all-contributors)
+specification. Contributions of any kind are welcome!
+
 ### Support Persome
 
 If an inspectable, user-owned personal model is useful to your agents,

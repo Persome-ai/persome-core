@@ -1,0 +1,27 @@
+{
+  "projectName": "personal-model",
+  "projectOwner": "Intuition-Lab",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "badge": false,
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "Singularity-tian",
+      "name": "Singularity",
+      "avatar_url": "https://avatars.githubusercontent.com/u/113085728?v=4",
+      "profile": "https://github.com/Singularity-tian",
+      "contributions": [
+        "code",
+        "maintenance"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "linkToUsage": false
+}
