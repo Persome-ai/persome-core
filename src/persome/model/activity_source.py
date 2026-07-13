@@ -107,6 +107,127 @@ class ActivitySource:
         finally:
             self._conn.row_factory = previous_factory
 
+    def event(self, identity: str) -> ActivityEvent | None:
+        """Return one activity by stable identity without expanding the feed.
+
+        Evidence drill-down is an exact lookup.  Rebuilding the bounded recent
+        feed for it is both incorrect for retained activities older than
+        ``limit`` and needlessly expensive because feed construction expands
+        every candidate session into timeline blocks.
+        """
+        normalized = normalize_activity_identity(identity)
+        parts = normalized.split(":", 2)
+        if len(parts) != 3 or parts[0] != "event" or parts[1] not in SOURCE_KINDS:
+            return None
+        kind, source_id = parts[1], parts[2].strip()
+        if not source_id:
+            return None
+
+        previous_factory = self._conn.row_factory
+        self._conn.row_factory = sqlite3.Row
+        try:
+            if kind == "entry":
+                try:
+                    row = self._conn.execute(
+                        "SELECT id, path, timestamp, content FROM entries "
+                        "WHERE id = ? AND prefix = 'event' LIMIT 1",
+                        (source_id,),
+                    ).fetchone()
+                except sqlite3.Error:
+                    return None
+                return self._entry_event(row) if row is not None else None
+
+            if kind == "session":
+                try:
+                    row = self._conn.execute(
+                        "SELECT id, start_time, end_time FROM sessions "
+                        "WHERE id = ? AND status != 'active' AND end_time IS NOT NULL LIMIT 1",
+                        (source_id,),
+                    ).fetchone()
+                except sqlite3.Error:
+                    return None
+                return self._session_event(row) if row is not None else None
+
+            if not self._include_legacy:
+                return None
+            placeholders = ",".join("?" * len(_DONE_INTENT_STATUSES))
+            try:
+                row = self._conn.execute(
+                    f"SELECT id, ts, kind, rationale, payload FROM intents "
+                    f"WHERE id = ? AND (status IN ({placeholders}) "
+                    "OR (status = 'resolved' AND resolution_outcome = 'done')) LIMIT 1",
+                    (source_id, *_DONE_INTENT_STATUSES),
+                ).fetchone()
+            except sqlite3.Error:
+                return None
+            return self._legacy_intent_event(row) if row is not None else None
+        finally:
+            self._conn.row_factory = previous_factory
+
+    def _entry_event(self, row: sqlite3.Row) -> ActivityEvent | None:
+        entry_id, path, timestamp, content = map(lambda value: value or "", row[:4])
+        entry_id = str(entry_id).strip()
+        summary = str(content).strip()
+        if not entry_id or not summary:
+            return None
+        return ActivityEvent(
+            stable_id=f"event:entry:{entry_id}",
+            occurred_at=str(timestamp) or None,
+            summary=summary,
+            participant_ids=self._resolve([], summary),
+            source_kind="entry",
+            source_id=entry_id,
+            source_receipt=f"⟨{entry_id}:{path}⟩",
+        )
+
+    def _session_event(self, row: sqlite3.Row) -> ActivityEvent | None:
+        session_id = str(row[0] or "").strip()
+        start = _parse_time(row[1])
+        end = _parse_time(row[2])
+        if not session_id or start is None or end is None:
+            return None
+        try:
+            blocks = timeline_store.query_range(self._conn, start, end, limit=200)
+        except sqlite3.Error:
+            blocks = []
+        summary = "\n".join(
+            entry.strip() for block in blocks for entry in block.entries if entry and entry.strip()
+        )[:2000]
+        if not summary:
+            summary = f"Session ended at {end.isoformat()}"
+        return ActivityEvent(
+            stable_id=f"event:session:{session_id}",
+            occurred_at=end.isoformat(),
+            summary=summary,
+            participant_ids=self._resolve([], summary),
+            source_kind="session",
+            source_id=session_id,
+            source_receipt=f"⟨{session_id}:sessions⟩",
+        )
+
+    def _legacy_intent_event(self, row: sqlite3.Row) -> ActivityEvent | None:
+        source_id = str(row[0] or "").strip()
+        if not source_id:
+            return None
+        try:
+            payload = json.loads(row[4] or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        raw_people = payload.get("with") or payload.get("participants") or []
+        names = [str(name) for name in raw_people] if isinstance(raw_people, list) else []
+        summary = str(row[3] or "").strip() or f"Completed {row[2] or 'activity'}"
+        return ActivityEvent(
+            stable_id=f"event:intent:{source_id}",
+            occurred_at=str(row[1]) if row[1] else None,
+            summary=summary,
+            participant_ids=self._resolve(names, summary),
+            source_kind="intent",
+            source_id=source_id,
+            source_receipt=f"⟨{source_id}:intents⟩",
+        )
+
     def _entry_events(self) -> list[ActivityEvent]:
         try:
             rows = self._conn.execute(
@@ -117,25 +238,7 @@ class ActivitySource:
             ).fetchall()
         except sqlite3.Error:
             return []
-        out: list[ActivityEvent] = []
-        for row in rows:
-            entry_id, path, timestamp, content = map(lambda value: value or "", row[:4])
-            entry_id = str(entry_id).strip()
-            summary = str(content).strip()
-            if not entry_id or not summary:
-                continue
-            out.append(
-                ActivityEvent(
-                    stable_id=f"event:entry:{entry_id}",
-                    occurred_at=str(timestamp) or None,
-                    summary=summary,
-                    participant_ids=self._resolve([], summary),
-                    source_kind="entry",
-                    source_id=entry_id,
-                    source_receipt=f"⟨{entry_id}:{path}⟩",
-                )
-            )
-        return out
+        return [event for row in rows if (event := self._entry_event(row)) is not None]
 
     def _session_events(self) -> list[ActivityEvent]:
         try:
@@ -147,37 +250,7 @@ class ActivitySource:
             ).fetchall()
         except sqlite3.Error:
             return []
-        out: list[ActivityEvent] = []
-        for row in rows:
-            session_id = str(row[0] or "").strip()
-            start = _parse_time(row[1])
-            end = _parse_time(row[2])
-            if not session_id or start is None or end is None:
-                continue
-            try:
-                blocks = timeline_store.query_range(self._conn, start, end, limit=200)
-            except sqlite3.Error:
-                blocks = []
-            summary = "\n".join(
-                entry.strip()
-                for block in blocks
-                for entry in block.entries
-                if entry and entry.strip()
-            )[:2000]
-            if not summary:
-                summary = f"Session ended at {end.isoformat()}"
-            out.append(
-                ActivityEvent(
-                    stable_id=f"event:session:{session_id}",
-                    occurred_at=end.isoformat(),
-                    summary=summary,
-                    participant_ids=self._resolve([], summary),
-                    source_kind="session",
-                    source_id=session_id,
-                    source_receipt=f"⟨{session_id}:sessions⟩",
-                )
-            )
-        return out
+        return [event for row in rows if (event := self._session_event(row)) is not None]
 
     def _legacy_intent_events(self) -> list[ActivityEvent]:
         placeholders = ",".join("?" * len(_DONE_INTENT_STATUSES))
@@ -191,27 +264,4 @@ class ActivitySource:
             ).fetchall()
         except sqlite3.Error:
             return []
-        out: list[ActivityEvent] = []
-        for row in rows:
-            source_id = str(row[0] or "").strip()
-            if not source_id:
-                continue
-            try:
-                payload = json.loads(row[4] or "{}")
-            except (TypeError, ValueError):
-                payload = {}
-            raw_people = payload.get("with") or payload.get("participants") or []
-            names = [str(name) for name in raw_people] if isinstance(raw_people, list) else []
-            summary = str(row[3] or "").strip() or f"Completed {row[2] or 'activity'}"
-            out.append(
-                ActivityEvent(
-                    stable_id=f"event:intent:{source_id}",
-                    occurred_at=str(row[1]) if row[1] else None,
-                    summary=summary,
-                    participant_ids=self._resolve(names, summary),
-                    source_kind="intent",
-                    source_id=source_id,
-                    source_receipt=f"⟨{source_id}:intents⟩",
-                )
-            )
-        return out
+        return [event for row in rows if (event := self._legacy_intent_event(row)) is not None]

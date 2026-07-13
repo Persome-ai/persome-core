@@ -179,7 +179,11 @@ def test_browser_bootstrap_is_single_use_and_cookie_is_model_only(
     viewer_page = client.get(viewer_url)
     assert f'<base href="{viewer_url}">' in viewer_page.text
     assert client.get(viewer_url + "graph").status_code == 200
+    evidence = client.get(viewer_url + "evidence?ref=missing-evidence")
+    assert evidence.status_code == 200
+    assert evidence.json()["status"] == "missing"
     assert client.get(viewer_url + "assets/viewer.js").status_code == 200
+    assert client.get("/model/evidence?ref=missing-evidence").status_code == 401
     assert client.get("/status").status_code == 401
 
     # Cookie jars ignore ports. The random path prevents a predictable request

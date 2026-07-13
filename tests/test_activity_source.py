@@ -132,6 +132,46 @@ def test_activity_source_can_exclude_legacy_intents(ac_root) -> None:
     assert all(not event.stable_id.startswith("event:intent:") for event in events)
 
 
+def test_exact_activity_lookup_is_not_limited_to_recent_feed(ac_root) -> None:
+    with fts.cursor() as conn:
+        entry_id = _seed_sources(conn)
+        conn.execute(
+            "UPDATE entries SET timestamp = '2020-01-01T00:00:00+00:00' WHERE id = ?",
+            (entry_id,),
+        )
+        newer_entry_id = entries_store.append_entry(
+            conn,
+            name="event-2026-07-10.md",
+            content="A newer retained activity.",
+            tags=["work"],
+        )
+        recent_ids = {event.stable_id for event in ActivitySource(conn, limit=1).events()}
+
+        event = ActivitySource(conn, limit=1).event(f"event:entry:{entry_id}")
+
+    assert f"event:entry:{entry_id}" not in recent_ids
+    assert f"event:entry:{newer_entry_id}" in recent_ids
+    assert event is not None
+    assert event.stable_id == f"event:entry:{entry_id}"
+    assert event.summary == "Reviewed the Persome runtime architecture with Test Contact."
+
+
+def test_exact_activity_lookup_accepts_canonical_and_legacy_stable_ids(ac_root) -> None:
+    with fts.cursor() as conn:
+        entry_id = _seed_sources(conn)
+        source = ActivitySource(conn)
+
+        entry = source.event(f"event:entry:{entry_id}")
+        session = source.event("event:session:synthetic-session")
+        canonical_intent = source.event("event:intent:1")
+        legacy_intent = source.event("event:1")
+
+    assert entry is not None and entry.source_kind == "entry"
+    assert session is not None and session.source_kind == "session"
+    assert canonical_intent is not None and canonical_intent.stable_id == "event:intent:1"
+    assert legacy_intent == canonical_intent
+
+
 def test_activity_source_limit_uses_actual_instant_across_offsets(ac_root) -> None:
     with fts.cursor() as conn:
         _ensure_legacy_intents(conn)

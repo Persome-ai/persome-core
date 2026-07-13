@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import stat
+from pathlib import Path
 from typing import Any
 
 _SUMMARY_LIMIT = 4_000
@@ -229,8 +231,9 @@ def _resolve_entry(
             metadata.update(valid_from=temporal[0], valid_until=temporal[1])
 
     path = str(row[1] or "")
-    canonical = receipt or f"⟨{identifier}:{path}⟩"
+    canonical = f"⟨{identifier}:{path}⟩" if path else receipt or identifier
     timestamp = str(row[2]) if row[2] else None
+    context_timestamp = str(metadata.get("occurred_at") or timestamp or "") or None
     return _base(
         reference=original,
         canonical_reference=canonical,
@@ -242,7 +245,7 @@ def _resolve_entry(
         timestamp=timestamp,
         path=path,
         metadata=metadata,
-        context=_nearby_capture_links(conn, timestamp),
+        context=_nearby_capture_links(conn, context_timestamp),
     )
 
 
@@ -305,8 +308,8 @@ def _resolve_evo_node(
             )
 
     path = str(row[8] or "")
-    canonical = receipt or f"⟨{identifier}:{path}⟩"
-    timestamp = str(row[6] or row[7]) if row[6] or row[7] else None
+    canonical = f"⟨{identifier}:{path}⟩" if path else receipt or identifier
+    timestamp = str(row[14] or row[6] or row[7]) if row[14] or row[6] or row[7] else None
     return _base(
         reference=original,
         canonical_reference=canonical,
@@ -354,7 +357,17 @@ def _resolve_capture(
 
     from . import paths
 
-    buffer_available = (paths.capture_buffer_dir() / f"{identifier}.json").is_file()
+    # Capture IDs are file stems.  Even if an imported/corrupt database contains
+    # a hostile absolute or nested ID, evidence lookup must not turn it into an
+    # existence probe outside the capture buffer.
+    capture_name = f"{identifier}.json"
+    buffer_available = False
+    if Path(capture_name).name == capture_name:
+        try:
+            retained = (paths.capture_buffer_dir() / capture_name).lstat()
+            buffer_available = stat.S_ISREG(retained.st_mode) and retained.st_nlink == 1
+        except OSError:
+            pass
     summary = _trim(row[7] or row[6])
     return _base(
         reference=original,
@@ -388,20 +401,17 @@ def _resolve_activity(
     identifier: str,
     receipt: str | None,
 ) -> dict[str, Any] | None:
-    from .model.activity_source import ActivitySource, normalize_activity_identity
+    from .model.activity_source import ActivitySource, is_activity_identity
 
-    normalized = normalize_activity_identity(identifier)
+    _receipt_id, path_hint, _canonical = parse_reference(original)
+    if is_activity_identity(identifier):
+        activity_identity = identifier
+    elif path_hint in {"sessions", "intents"}:
+        activity_identity = f"event:{path_hint.removesuffix('s')}:{identifier}"
+    else:
+        return None
     try:
-        event = next(
-            (
-                item
-                for item in ActivitySource(conn).events()
-                if item.stable_id == normalized
-                or item.source_receipt == original
-                or item.source_receipt == receipt
-            ),
-            None,
-        )
+        event = ActivitySource(conn).event(activity_identity)
     except sqlite3.Error:
         return None
     if event is None:
@@ -421,7 +431,7 @@ def _resolve_activity(
         )
     return _base(
         reference=original,
-        canonical_reference=receipt or event.source_receipt,
+        canonical_reference=event.source_receipt,
         kind="activity",
         identifier=event.stable_id,
         status="historical",
@@ -449,12 +459,32 @@ def _receipt_values(item: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(str(value) for value in values if value))
 
 
+def _has_geometry_identity(conn: sqlite3.Connection, identifier: str) -> bool:
+    """Cheaply reject arbitrary IDs before building the full model snapshot."""
+    if identifier.startswith("evolution:"):
+        return True
+    for table, column in (("relation_edges", "edge_id"), ("schema_faces", "face_id")):
+        if not _table_exists(conn, table):
+            continue
+        try:
+            if conn.execute(
+                f"SELECT 1 FROM {table} WHERE {column}=? LIMIT 1", (identifier,)
+            ).fetchone():
+                return True
+        except sqlite3.Error:
+            continue
+    return False
+
+
 def _resolve_geometry(
     conn: sqlite3.Connection,
     *,
     original: str,
     identifier: str,
 ) -> dict[str, Any] | None:
+    if not _has_geometry_identity(conn, identifier):
+        return None
+
     from .model.snapshot import build_snapshot
 
     try:
