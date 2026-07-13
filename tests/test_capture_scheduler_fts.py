@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from contextlib import contextmanager
@@ -62,6 +63,119 @@ def test_write_capture_indexes_into_fts(ac_root: Path) -> None:
         assert len(hits) == 1
         assert hits[0].id == path.stem
         assert hits[0].app_name == "Cursor"
+
+
+def test_restore_capture_index_sanitizes_legacy_placeholder(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    out = _capture_dict(
+        ts="2026-07-12T23:00:00+08:00",
+        app="Chat",
+        title="Conversation",
+        value=phrase,
+        text=f"[TextArea] {phrase}",
+    )
+    out["ax_tree"] = {
+        "apps": [
+            {
+                "name": "Chat",
+                "bundle_id": "com.test.chat",
+                "is_frontmost": True,
+                "focused_element": {
+                    "role": "AXTextArea",
+                    "value": phrase,
+                    "is_editable": True,
+                },
+                "windows": [
+                    {
+                        "title": "Conversation",
+                        "elements": [
+                            {
+                                "role": "AXTextArea",
+                                "value": phrase,
+                                "children": [
+                                    {
+                                        "role": "AXGroup",
+                                        "domClassList": ["placeholder"],
+                                        "children": [{"role": "AXStaticText", "value": phrase}],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    target = paths.capture_buffer_dir() / "legacy-placeholder.json"
+    target.write_text(json.dumps(out), encoding="utf-8")
+
+    scheduler_mod._restore_capture_index(target)
+
+    with fts.cursor() as conn:
+        row = conn.execute(
+            "SELECT focused_value, visible_text FROM captures WHERE id=?",
+            (target.stem,),
+        ).fetchone()
+    assert row is not None
+    assert row["focused_value"] == ""
+    assert phrase not in row["visible_text"]
+
+
+def test_placeholder_repair_preserves_ocr_backfill_sentinel(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    out = _capture_dict(
+        ts="2026-07-12T23:01:00+08:00",
+        app="Chat",
+        title="Conversation",
+        value=phrase,
+        text="",
+    )
+    out["ocr_submitted"] = True
+    out["ax_tree"] = {
+        "apps": [
+            {
+                "name": "Chat",
+                "bundle_id": "com.test.chat",
+                "is_frontmost": True,
+                "focused_element": {
+                    "role": "AXTextArea",
+                    "value": phrase,
+                    "is_editable": True,
+                },
+                "windows": [
+                    {
+                        "title": "Conversation",
+                        "elements": [
+                            {
+                                "role": "AXTextArea",
+                                "value": phrase,
+                                "children": [
+                                    {
+                                        "role": "AXGroup",
+                                        "domClassList": ["placeholder"],
+                                        "children": [{"role": "AXStaticText", "value": phrase}],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    assert scheduler_mod._index_capture("ocr-placeholder", out) is True
+    with fts.cursor() as conn:
+        before = conn.execute(
+            "SELECT focused_value, visible_text FROM captures WHERE id='ocr-placeholder'"
+        ).fetchone()
+        assert before["focused_value"] == ""
+        assert before["visible_text"] == ""
+        fts.backfill_capture_ocr_text(conn, "ocr-placeholder", "recognized body")
+        after = conn.execute(
+            "SELECT visible_text FROM captures WHERE id='ocr-placeholder'"
+        ).fetchone()
+    assert after["visible_text"] == "recognized body"
 
 
 def test_cleanup_buffer_removes_fts_rows(ac_root: Path) -> None:

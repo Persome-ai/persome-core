@@ -53,6 +53,37 @@ def _write_capture_json(buf: Path, stem: str, visible_text: str = "") -> None:
     (buf / f"{stem}.json").write_text(json.dumps(data))
 
 
+def _placeholder_ax_tree(phrase: str) -> dict[str, Any]:
+    return {
+        "apps": [
+            {
+                "name": "Chat",
+                "bundle_id": "com.example.chat",
+                "is_frontmost": True,
+                "windows": [
+                    {
+                        "title": "Conversation",
+                        "focused": True,
+                        "elements": [
+                            {
+                                "role": "AXTextArea",
+                                "value": phrase,
+                                "children": [
+                                    {
+                                        "role": "AXGroup",
+                                        "domClassList": ["placeholder"],
+                                        "children": [{"role": "AXStaticText", "value": phrase}],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+
 # ─── store/fts.py: backfill_capture_ocr_text ──────────────────────────────────
 
 
@@ -286,6 +317,44 @@ class TestWriteCaptureDefersOcr:
         assert "_ocr_tier" not in on_disk
         assert "_ocr_structured" not in on_disk
         assert on_disk.get("ocr_submitted") is True  # but the marker is kept
+
+    def test_deferred_ocr_filters_proven_placeholder_but_keeps_other_lines(
+        self, monkeypatch: pytest.MonkeyPatch, ac_root: Path
+    ) -> None:
+        from persome.capture import scheduler as sched_mod
+
+        phrase = "Ask for follow-up changes"
+        monkeypatch.setattr(
+            sched_mod.ocr_local,
+            "recognize_detailed",
+            lambda *a, **k: (
+                [phrase, "legitimate OCR body"],
+                [[0, 0, 100, 20], [0, 30, 100, 50]],
+                [0.99, 0.99],
+            ),
+        )
+        monkeypatch.setattr(sched_mod.threading, "Thread", _InlineThread)
+        ts = "2026-07-12T23:02:00+08:00"
+        out = {
+            "timestamp": ts,
+            "window_meta": {
+                "app_name": "Chat",
+                "title": "Conversation",
+                "bundle_id": "com.example.chat",
+            },
+            "focused_element": {},
+            "visible_text": "",
+            "url": "",
+            "ax_tree": _placeholder_ax_tree(phrase),
+            "_ocr_pending_jpeg": b"jpeg",
+            "_ocr_tier": "tiny",
+        }
+
+        path = sched_mod._write_capture(out)
+
+        with fts_store.cursor() as conn:
+            text = fts_store.get_capture_visible_text(conn, path.stem)
+        assert text == "legitimate OCR body"
 
 
 # ─── mcp/captures.py: OCR enrichment in read_recent_capture ──────────────────

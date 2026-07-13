@@ -17,7 +17,7 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from . import browser_detect, generic_render
+from . import browser_detect, generic_render, placeholder
 from .ax_models import ax_app_to_markdown, ax_tree_to_markdown
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -41,6 +41,8 @@ _STATIC_ROLES = {"AXStaticText", "AXWebArea"}
 _VISIBLE_TEXT_MAX = 10_000
 _FOCUS_TITLE_MAX = 200
 _FOCUS_VALUE_MAX = 2_000
+_CMUX_TERMINAL_MARKER = "### [cmux terminal]"
+_OCR_PLACEHOLDER_VALUES = "_persome_ocr_placeholder_values"
 
 
 @dataclass
@@ -69,7 +71,14 @@ def enrich(capture: dict[str, Any]) -> None:
     if not isinstance(ax_tree, dict):
         return
 
-    app_data = _frontmost_app(ax_tree)
+    clean_ax_tree = placeholder.sanitize_ax_tree(ax_tree)
+    original_app = _frontmost_app(ax_tree)
+    trigger = capture.get("trigger")
+    if isinstance(trigger, dict):
+        clean_trigger = placeholder.sanitize_trigger(original_app or {}, trigger)
+        if clean_trigger is not trigger:
+            capture["trigger"] = clean_trigger
+    app_data = _frontmost_app(clean_ax_tree)
     if app_data is None:
         capture["focused_element"] = FocusedElement().to_dict()
         capture["visible_text"] = ""
@@ -79,6 +88,85 @@ def enrich(capture: dict[str, Any]) -> None:
     capture["focused_element"] = _extract_focused_element(app_data).to_dict()
     capture["visible_text"] = _render_visible_text(app_data, app_data.get("bundle_id") or "")
     capture["url"] = _extract_url(app_data)
+
+
+def ocr_placeholder_values(capture: dict[str, Any]) -> tuple[str, ...]:
+    """Return trusted placeholder evidence for this capture's OCR surface."""
+    cached = capture.get(_OCR_PLACEHOLDER_VALUES)
+    # JSON cannot encode tuples, so this type also distinguishes the internal
+    # replay cache below from an untrusted key in a persisted/ingested record.
+    if isinstance(cached, tuple) and all(isinstance(value, str) for value in cached):
+        return cached
+    return placeholder.confirmed_placeholder_values(capture.get("ax_tree"))
+
+
+def sanitize_ocr_text(capture: dict[str, Any], text: str) -> str:
+    """Filter OCR using only exact fields backed by this capture's raw AX."""
+    return placeholder.sanitize_ocr_text(text, ocr_placeholder_values(capture))
+
+
+def sanitize_capture(capture: dict[str, Any], *, replace_ax_tree: bool = False) -> dict[str, Any]:
+    """Return a replay-safe capture without mutating the raw record.
+
+    Historical buffer JSON and trusted-ingest producers may predate the native
+    placeholder fix. Recompute their S1 projection from a sanitized AX tree so
+    timeline replay, MCP reads, and capture-index rebuilds cannot resurrect an
+    old placeholder as authored text. Already-clean captures are returned by
+    identity.
+    """
+    ax_tree = capture.get("ax_tree")
+    ocr_values = ocr_placeholder_values(capture) if replace_ax_tree else ()
+    clean_ax_tree = placeholder.sanitize_ax_tree(ax_tree) if isinstance(ax_tree, dict) else ax_tree
+    original_app = _frontmost_app(ax_tree) if isinstance(ax_tree, dict) else None
+    trigger = capture.get("trigger")
+    clean_trigger = (
+        placeholder.sanitize_trigger(original_app or {}, trigger)
+        if isinstance(trigger, dict)
+        else trigger
+    )
+    projection_changed = clean_ax_tree is not ax_tree
+    trigger_changed = clean_trigger is not trigger
+    cache_changed = (
+        replace_ax_tree and bool(ocr_values) and ocr_values != capture.get(_OCR_PLACEHOLDER_VALUES)
+    )
+    if not projection_changed and not trigger_changed and not cache_changed:
+        return capture
+    clean = dict(capture)
+    if replace_ax_tree and projection_changed:
+        clean["ax_tree"] = clean_ax_tree
+    if replace_ax_tree and ocr_values:
+        clean[_OCR_PLACEHOLDER_VALUES] = ocr_values
+    if trigger_changed:
+        clean["trigger"] = clean_trigger
+    if not projection_changed:
+        return clean
+    app_data = _frontmost_app(clean_ax_tree)
+    if app_data is None:
+        clean["focused_element"] = FocusedElement().to_dict()
+        clean["visible_text"] = ""
+        clean["url"] = None
+        return clean
+    clean["focused_element"] = _extract_focused_element(app_data).to_dict()
+    preserve_ocr_sentinel = bool(capture.get("ocr_submitted")) and not str(
+        capture.get("visible_text") or ""
+    )
+    visible_text = (
+        ""
+        if preserve_ocr_sentinel
+        else _render_visible_text(app_data, app_data.get("bundle_id") or "")
+    )
+    # cmux terminal text is injected *after* S1 enrichment because its GPU
+    # surface is absent from AX. Historical replay must preserve that suffix
+    # while recomputing only the AX-derived prefix.
+    if capture.get("cmux_text_injected"):
+        prior = str(capture.get("visible_text") or "")
+        marker_at = prior.find(_CMUX_TERMINAL_MARKER)
+        if marker_at >= 0:
+            suffix = prior[marker_at:].strip()
+            visible_text = f"{visible_text.rstrip()}\n\n{suffix}" if visible_text else suffix
+    clean["visible_text"] = visible_text
+    clean["url"] = _extract_url(app_data)
+    return clean
 
 
 def _frontmost_app(ax_tree: dict[str, Any]) -> dict[str, Any] | None:

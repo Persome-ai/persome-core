@@ -25,6 +25,7 @@ from . import (
     cmux_source,
     ocr_local,
     ocr_structure,
+    placeholder,
     s1_parser,
     screen_state,
     screenshot,
@@ -102,6 +103,7 @@ def _submit_ocr_async(
     tier: str,
     window_meta: dict[str, str] | None = None,
     structured: bool = False,
+    placeholder_values: tuple[str, ...] = (),
 ) -> None:
     """Fire-and-forget local OCR + geometry structuring. Runs on a daemon thread.
 
@@ -136,6 +138,7 @@ def _submit_ocr_async(
     backfill_text = ocr_structure.to_markdown(struct) if struct else ""
     if not backfill_text:
         backfill_text = raw
+    backfill_text = placeholder.sanitize_ocr_text(backfill_text, placeholder_values)
     if not backfill_text:
         return
 
@@ -483,6 +486,7 @@ def _write_capture(out: dict[str, Any]) -> Path:
     ocr_jpeg = out.pop("_ocr_pending_jpeg", None)
     ocr_tier = out.pop("_ocr_tier", "tiny")
     ocr_structured = out.pop("_ocr_structured", False)
+    ocr_placeholder_values = s1_parser.ocr_placeholder_values(out) if ocr_jpeg is not None else ()
     if ocr_jpeg is not None:
         out["ocr_submitted"] = True
 
@@ -505,7 +509,14 @@ def _write_capture(out: dict[str, Any]) -> Path:
     if ocr_jpeg is not None:
         thread = threading.Thread(
             target=_submit_ocr_async,
-            args=(ocr_jpeg, path.stem, ocr_tier, meta, ocr_structured),
+            args=(
+                ocr_jpeg,
+                path.stem,
+                ocr_tier,
+                meta,
+                ocr_structured,
+                ocr_placeholder_values,
+            ),
             name=f"ocr-submit-{path.stem}",
             daemon=True,
         )
@@ -521,21 +532,25 @@ def _index_capture(file_stem: str, out: dict[str, Any]) -> bool:
     ``persome rebuild-captures-index``; killing the capture worker
     over an indexing hiccup would lose the JSON too.
     """
-    meta = out.get("window_meta") or {}
-    focused = out.get("focused_element") or {}
+    # Rollback/recovery paths can feed historical JSON that predates native
+    # placeholder filtering. Index the repaired S1 projection without
+    # rewriting the forensic raw AX tree on disk.
+    indexed_out = s1_parser.sanitize_capture(out)
+    meta = indexed_out.get("window_meta") or {}
+    focused = indexed_out.get("focused_element") or {}
     try:
         with fts_store.cursor() as conn:
             fts_store.insert_capture(
                 conn,
                 id=file_stem,
-                timestamp=out.get("timestamp", ""),
+                timestamp=indexed_out.get("timestamp", ""),
                 app_name=meta.get("app_name") or "",
                 bundle_id=meta.get("bundle_id") or "",
                 window_title=meta.get("title") or "",
                 focused_role=focused.get("role") or "",
                 focused_value=focused.get("value") or "",
-                visible_text=out.get("visible_text") or "",
-                url=out.get("url") or "",
+                visible_text=indexed_out.get("visible_text") or "",
+                url=indexed_out.get("url") or "",
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("captures FTS insert failed for %s: %s", file_stem, exc)

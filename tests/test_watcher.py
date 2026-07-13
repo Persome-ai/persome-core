@@ -238,3 +238,21 @@ def test_normal_watcher_start_uses_pure_accessibility_check() -> None:
 
     assert "let trusted = AXIsProcessTrusted()" in normal_start
     assert "AXIsProcessTrustedWithOptions" not in normal_start
+
+
+def test_native_watcher_filters_standard_placeholder_without_descendant_scan() -> None:
+    source = (Path(__file__).resolve().parents[1] / "resources" / "mac-ax-watcher.swift").read_text(
+        encoding="utf-8"
+    )
+    describe = source.split("func describeElement", 1)[1].split("func appInfoForElement", 1)[0]
+
+    assert 'axString(element, "AXPlaceholderValue")' in source
+    assert "directPlaceholderTexts(el, role: role)" in describe
+    assert "placeholderTexts.contains(normalizedAXText(rawValue))" in describe
+    assert "placeholderTexts.contains(rawTitle)" in describe
+    assert "placeholderDescendantTexts" not in source
+    callback = source.split("func interactionTapCallback", 1)[1].split(
+        "let interaction = InteractionTapper", 1
+    )[0]
+    assert "handleMouseDown(event, type: type)" in callback
+    assert "handleKeyDown(event)" in callback

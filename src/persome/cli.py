@@ -3219,6 +3219,8 @@ def rebuild_captures_index(
     """
     import json
 
+    from .capture import s1_parser
+
     _init()
     buf = paths.capture_buffer_dir()
     files = sorted(p for p in buf.iterdir() if p.is_file() and p.suffix == ".json")
@@ -3226,6 +3228,16 @@ def rebuild_captures_index(
     indexed = 0
     skipped = 0
     with fts.cursor() as conn:
+        # OCR text is a DB-only backfill: raw JSON intentionally keeps an
+        # empty ``visible_text`` sentinel plus ``ocr_submitted=true``. Preserve
+        # those rows across both exact and merge rebuilds instead of silently
+        # replacing recognized text with the raw empty sentinel.
+        ocr_backfills = {
+            str(row["id"]): str(row["visible_text"] or "")
+            for row in conn.execute(
+                "SELECT id, visible_text FROM captures WHERE visible_text != ''"
+            ).fetchall()
+        }
         # Exact rebuild is reconciliation, not just an upsert pass. Recovery
         # merge intentionally preserves older snapshot rows whose source JSON
         # has already aged out of the bounded capture buffer.
@@ -3238,6 +3250,18 @@ def rebuild_captures_index(
                 skipped += 1
                 console.print(f"[yellow]skip {p.name}: {exc}[/yellow]")
                 continue
+            if not isinstance(data, dict):
+                skipped += 1
+                console.print(f"[yellow]skip {p.name}: capture is not a JSON object[/yellow]")
+                continue
+            preserve_ocr = bool(data.get("ocr_submitted")) and not str(
+                data.get("visible_text") or ""
+            )
+            data = s1_parser.sanitize_capture(data)
+            preserved_ocr = s1_parser.sanitize_ocr_text(
+                data,
+                ocr_backfills.get(p.stem, ""),
+            )
             meta = data.get("window_meta") or {}
             focused = data.get("focused_element") or {}
             try:
@@ -3250,7 +3274,11 @@ def rebuild_captures_index(
                     window_title=meta.get("title") or "",
                     focused_role=focused.get("role") or "",
                     focused_value=focused.get("value") or "",
-                    visible_text=data.get("visible_text") or "",
+                    visible_text=(
+                        preserved_ocr
+                        if preserve_ocr and not data.get("visible_text")
+                        else data.get("visible_text") or ""
+                    ),
                     url=data.get("url") or "",
                 )
                 indexed += 1

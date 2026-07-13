@@ -578,6 +578,225 @@ def test_format_events_generic_app_not_narrowed() -> None:
     assert loc is not None and loc.rung in {"focus", "fallback"}
 
 
+def test_format_events_replays_placeholder_capture_without_authored_text() -> None:
+    phrase = "Ask for follow-up changes"
+    ts = datetime(2026, 7, 12, 23, 0, tzinfo=_TZ)
+    data = {
+        "timestamp": ts.isoformat(),
+        "window_meta": {
+            "app_name": "Chat",
+            "title": "Conversation",
+            "bundle_id": "com.example.chat",
+        },
+        "trigger": {
+            "event_type": "UserMouseClick",
+            "details": {"element": {"role": "AXStaticText", "value": phrase}},
+        },
+        "focused_element": {
+            "role": "AXTextArea",
+            "value": phrase,
+            "is_editable": True,
+            "value_length": len(phrase),
+        },
+        "visible_text": f"[TextArea] {phrase}",
+        "ax_tree": {
+            "apps": [
+                {
+                    "name": "Chat",
+                    "bundle_id": "com.example.chat",
+                    "is_frontmost": True,
+                    "focused_element": {
+                        "role": "AXTextArea",
+                        "value": phrase,
+                        "is_editable": True,
+                    },
+                    "windows": [
+                        {
+                            "title": "Conversation",
+                            "focused": True,
+                            "elements": [
+                                {
+                                    "role": "AXTextArea",
+                                    "value": phrase,
+                                    "children": [
+                                        {
+                                            "role": "AXGroup",
+                                            "domClassList": ["placeholder"],
+                                            "children": [{"role": "AXStaticText", "value": phrase}],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    events_text, _apps, loc = aggregator._format_events(
+        [(Path(f"{_stem(ts)}.json"), data)], locus_enabled=True
+    )
+
+    assert phrase not in events_text
+    assert f'"{phrase}"' not in events_text
+    assert loc is None or loc.rung != "editing"
+
+
+def test_produce_block_replays_placeholder_without_focus_evidence(ac_root: Path, fake_llm) -> None:
+    phrase = "Ask for follow-up changes"
+    start = datetime(2026, 7, 12, 23, 10, tzinfo=_TZ)
+    capture_path = paths.capture_buffer_dir() / f"{_stem(start + timedelta(seconds=10))}.json"
+    capture_path.write_text(
+        json.dumps(
+            {
+                "timestamp": (start + timedelta(seconds=10)).isoformat(),
+                "window_meta": {
+                    "app_name": "Chat",
+                    "title": "Conversation",
+                    "bundle_id": "com.example.chat",
+                },
+                "trigger": {
+                    "event_type": "UserMouseClick",
+                    "details": {"element": {"role": "AXStaticText", "value": phrase}},
+                },
+                "focused_element": {
+                    "role": "AXTextArea",
+                    "value": phrase,
+                    "is_editable": True,
+                    "value_length": len(phrase),
+                },
+                "visible_text": f"[TextArea] {phrase}",
+                "ax_tree": {
+                    "apps": [
+                        {
+                            "name": "Chat",
+                            "bundle_id": "com.example.chat",
+                            "is_frontmost": True,
+                            "focused_element": {
+                                "role": "AXTextArea",
+                                "value": phrase,
+                                "is_editable": True,
+                            },
+                            "windows": [
+                                {
+                                    "title": "Conversation",
+                                    "elements": [
+                                        {
+                                            "role": "AXTextArea",
+                                            "value": phrase,
+                                            "children": [
+                                                {
+                                                    "role": "AXGroup",
+                                                    "domClassList": ["placeholder"],
+                                                    "children": [
+                                                        {
+                                                            "role": "AXStaticText",
+                                                            "value": phrase,
+                                                        }
+                                                    ],
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_llm.set_default("timeline", json.dumps({"entries": ["[Chat] composer opened"]}))
+
+    block = aggregator.produce_block_for_window(
+        config_mod.load(ac_root / "config.toml"),
+        start=start,
+        end=start + timedelta(minutes=1),
+    )
+
+    assert block is not None
+    assert phrase not in "\n".join(block.entries)
+    assert phrase not in block.focus_excerpt
+    assert phrase not in block.focus_structured
+
+
+def test_placeholder_replay_keeps_ocr_fallback_available(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    ts = datetime(2026, 7, 12, 23, 12, tzinfo=_TZ)
+    stem = _stem(ts)
+    path = paths.capture_buffer_dir() / f"{stem}.json"
+    data = {
+        "timestamp": ts.isoformat(),
+        "window_meta": {
+            "app_name": "Chat",
+            "title": "Conversation",
+            "bundle_id": "com.example.chat",
+        },
+        "focused_element": {
+            "role": "AXTextArea",
+            "value": phrase,
+            "is_editable": True,
+        },
+        "visible_text": "",
+        "ocr_submitted": True,
+        "ax_tree": {
+            "apps": [
+                {
+                    "name": "Chat",
+                    "bundle_id": "com.example.chat",
+                    "is_frontmost": True,
+                    "focused_element": {
+                        "role": "AXTextArea",
+                        "value": phrase,
+                        "is_editable": True,
+                    },
+                    "windows": [
+                        {
+                            "title": "Conversation",
+                            "elements": [
+                                {
+                                    "role": "AXTextArea",
+                                    "value": phrase,
+                                    "children": [
+                                        {
+                                            "role": "AXGroup",
+                                            "domClassList": ["placeholder"],
+                                            "children": [{"role": "AXStaticText", "value": phrase}],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with fts.cursor() as conn:
+        fts.insert_capture(
+            conn,
+            id=stem,
+            timestamp=data["timestamp"],
+            app_name="Chat",
+            bundle_id="com.example.chat",
+            window_title="Conversation",
+            focused_role="AXTextArea",
+            focused_value="",
+            visible_text=f"{phrase}\nrecognized body",
+            url="",
+        )
+
+    parsed = aggregator._load_captures([path])
+    events_text, _apps, loc = aggregator._format_events(parsed, locus_enabled=True)
+
+    assert "recognized body" in events_text
+    assert phrase not in events_text
+    assert loc is None or loc.rung != "editing"
+
+
 def test_produce_block_persists_attention_locus(ac_root: Path, fake_llm) -> None:
     """End-to-end: the editing rung of a WeChat composer capture lands on the
     block and round-trips through the DB."""

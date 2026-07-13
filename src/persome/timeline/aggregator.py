@@ -18,6 +18,7 @@ from datetime import datetime, tzinfo
 from pathlib import Path
 
 from .. import paths
+from ..capture import s1_parser
 from ..capture.ax_models import ax_tree_to_markdown
 from ..capture.timestamps import parse_capture_path_timestamp
 from ..config import Config
@@ -245,7 +246,10 @@ def _load_captures(capture_files: list[Path]) -> list[tuple[Path, dict]]:
         if not isinstance(data, dict):
             logger.warning("timeline: capture %s is not a JSON object", p.name)
             continue
-        parsed.append((p, data))
+        # Sanitize once at the replay boundary so prompt rendering, heuristic
+        # fallback, focus_excerpt, and per-app structured parsers all consume
+        # the same placeholder-free projection.
+        parsed.append((p, s1_parser.sanitize_capture(data, replace_ax_tree=True)))
     return parsed
 
 
@@ -277,6 +281,9 @@ def _format_events(
 
     files = parsed[-_MAX_EVENTS_PER_WINDOW:]
     for i, (p, data) in enumerate(files, 1):
+        # Direct unit callers can pass pre-parsed captures without going
+        # through ``_load_captures``. Keep this idempotent boundary guard.
+        data = s1_parser.sanitize_capture(data, replace_ax_tree=True)
         ts_raw = str(data.get("timestamp", p.stem))
         ts = _short_time(ts_raw, display_tz=display_tz)
 
@@ -345,7 +352,7 @@ def _format_events(
                 with fts_store.cursor() as conn:
                     ocr_text = fts_store.get_ocr_result_for_capture(conn, p.stem)
                     if ocr_text:
-                        visible_text = ocr_text.strip()
+                        visible_text = s1_parser.sanitize_ocr_text(data, ocr_text).strip()
             except Exception:  # noqa: BLE001
                 pass
 

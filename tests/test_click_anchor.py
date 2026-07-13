@@ -58,3 +58,16 @@ def test_empty_element_returns_empty() -> None:
 
 def test_non_click_trigger_with_no_details_is_empty() -> None:
     assert _click_anchor({"event_type": "UserTextInput"}) == ""
+
+
+def test_text_input_element_is_not_mislabeled_as_click() -> None:
+    trigger = {
+        "event_type": "UserTextInput",
+        "details": {
+            "element": {
+                "role": "AXTextArea",
+                "value": "draft from the keyboard event",
+            }
+        },
+    }
+    assert _click_anchor(trigger) == ""

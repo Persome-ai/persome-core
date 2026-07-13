@@ -55,6 +55,20 @@ func axSubrole(_ element: AXUIElement) -> String? {
     return axString(element, kAXSubroleAttribute as String)
 }
 
+private let editableTextRoles: Set<String> = [
+    "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField",
+]
+
+func normalizedAXText(_ value: String?) -> String {
+    return (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func directPlaceholderTexts(_ element: AXUIElement, role: String) -> Set<String> {
+    guard editableTextRoles.contains(role) else { return [] }
+    let standard = normalizedAXText(axString(element, "AXPlaceholderValue"))
+    return standard.isEmpty ? [] : [standard]
+}
+
 /// True if the element itself is a secure text field.
 func isSecureElement(_ el: AXUIElement) -> Bool {
     return axRole(el) == "AXTextField" && axSubrole(el) == "AXSecureTextField"
@@ -96,10 +110,19 @@ func truncate(_ s: String, _ maxLen: Int) -> String {
 func describeElement(_ el: AXUIElement) -> [String: Any] {
     let role = axRole(el) ?? ""
     let subrole = axSubrole(el) ?? ""
-    let title = truncate(axString(el, kAXTitleAttribute as String) ?? "", 200)
+    let placeholderTexts = directPlaceholderTexts(el, role: role)
+    let rawTitle = normalizedAXText(axString(el, kAXTitleAttribute as String))
+    let title = placeholderTexts.contains(rawTitle) ? "" : truncate(rawTitle, 200)
     let identifier = truncate(axString(el, kAXIdentifierAttribute as String) ?? "", 200)
     let rawValue = axString(el, kAXValueAttribute as String) ?? ""
-    let value = isSecureElement(el) ? "[REDACTED]" : truncate(rawValue, 2000)
+    let value: String
+    if isSecureElement(el) {
+        value = "[REDACTED]"
+    } else if placeholderTexts.contains(normalizedAXText(rawValue)) {
+        value = ""
+    } else {
+        value = truncate(rawValue, 2000)
+    }
     return [
         "role": role,
         "subrole": subrole,
@@ -511,7 +534,8 @@ final class InteractionTapper {
 /// C callback for the CGEventTap. Keep this fast — the system will disable
 /// the tap if callbacks take too long. We do the minimum inline (unpacking
 /// the userInfo pointer and dispatching by event type); the real work in
-/// ``handleMouseDown`` / ``handleKeyDown`` is still synchronous but cheap.
+/// ``handleMouseDown`` / ``handleKeyDown`` remains the established synchronous
+/// path and only reads direct AX attributes.
 func interactionTapCallback(
     proxy: CGEventTapProxy,
     type: CGEventType,

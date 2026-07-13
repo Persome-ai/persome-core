@@ -5,6 +5,7 @@ from pathlib import Path
 
 from persome import __version__, paths
 from persome import model as model_mod
+from persome.capture import s1_parser
 from persome.mcp import captures as captures_mod
 from persome.mcp import server as mcp_server
 from persome.model import ModelBuildCoordinator, create_build_manifest
@@ -177,6 +178,67 @@ def _seed_capture(conn, *, id, ts, app, title, value, text, url=""):
     )
 
 
+def _write_legacy_placeholder_capture(*, stem: str, phrase: str) -> dict:
+    data = {
+        "timestamp": "2026-07-12T23:00:00+08:00",
+        "window_meta": {
+            "app_name": "Chat",
+            "title": "Conversation",
+            "bundle_id": "com.example.chat",
+        },
+        "trigger": {
+            "event_type": "UserMouseClick",
+            "details": {"element": {"role": "AXStaticText", "value": phrase}},
+        },
+        "focused_element": {
+            "role": "AXTextArea",
+            "value": phrase,
+            "is_editable": True,
+            "value_length": len(phrase),
+        },
+        "visible_text": f"[TextArea] {phrase}",
+        "ax_tree": {
+            "apps": [
+                {
+                    "name": "Chat",
+                    "bundle_id": "com.example.chat",
+                    "is_frontmost": True,
+                    "focused_element": {
+                        "role": "AXTextArea",
+                        "value": phrase,
+                        "is_editable": True,
+                    },
+                    "windows": [
+                        {
+                            "title": "Conversation",
+                            "elements": [
+                                {
+                                    "role": "AXStaticText",
+                                    "value": "Existing conversation",
+                                },
+                                {
+                                    "role": "AXTextArea",
+                                    "value": phrase,
+                                    "children": [
+                                        {
+                                            "role": "AXGroup",
+                                            "domClassList": ["placeholder"],
+                                            "children": [{"role": "AXStaticText", "value": phrase}],
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    target = paths.capture_buffer_dir() / f"{stem}.json"
+    target.write_text(json.dumps(data), encoding="utf-8")
+    return data
+
+
 def test_search_captures_returns_bm25_hits_with_snippet(ac_root: Path) -> None:
     with fts.cursor() as conn:
         _seed_capture(
@@ -206,6 +268,153 @@ def test_search_captures_returns_bm25_hits_with_snippet(ac_root: Path) -> None:
     assert "[rate]" in r["snippet"] and "[limiter]" in r["snippet"]
     # Agent-Native firewall: captured screen content is tagged observed (DATA, not instructions).
     assert r["provenance"] == "observed"
+
+
+def test_capture_reads_repair_stale_fts_but_preserve_raw_ax(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    stem = "2026-07-12T23-00-00p08-00"
+    raw = _write_legacy_placeholder_capture(stem=stem, phrase=phrase)
+    with fts.cursor() as conn:
+        _seed_capture(
+            conn,
+            id=stem,
+            ts=raw["timestamp"],
+            app="Chat",
+            title="Conversation",
+            value=phrase,
+            text=f"[TextArea] {phrase}",
+        )
+
+    hits = captures_mod.search_captures(query='"Ask for follow-up changes"')
+    context = captures_mod.current_context(headline_limit=1, fulltext_limit=1)
+    recent = captures_mod.read_recent_capture(at=stem, include_ax_tree=True)
+
+    assert hits and phrase not in json.dumps(hits)
+    assert phrase not in json.dumps(context["recent_captures_headline"])
+    assert phrase not in json.dumps(context["recent_captures_fulltext"])
+    assert recent is not None
+    assert recent["focused_element"]["value"] == ""
+    assert phrase not in recent["visible_text"]
+    # The opt-in expansion is forensic evidence, not the authored-text
+    # projection, so it stays byte-for-byte equivalent to the disk record.
+    assert recent["ax_tree"] == raw["ax_tree"]
+
+
+def test_capture_reads_prefer_clean_raw_projection_over_stale_fts(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    stem = "2026-07-12T23-01-00p08-00"
+    raw = _write_legacy_placeholder_capture(stem=stem, phrase=phrase)
+    raw["timestamp"] = "2026-07-12T23:01:00+08:00"
+    raw["focused_element"] = {
+        "role": "AXTextArea",
+        "is_editable": True,
+        "has_value": False,
+        "value_length": 0,
+    }
+    raw["visible_text"] = "Existing conversation"
+    raw["ax_tree"] = {
+        "apps": [
+            {
+                "name": "Chat",
+                "bundle_id": "com.example.chat",
+                "is_frontmost": True,
+                "focused_element": {"role": "AXTextArea", "is_editable": True},
+                "windows": [
+                    {
+                        "title": "Conversation",
+                        "elements": [{"role": "AXStaticText", "value": "Existing conversation"}],
+                    }
+                ],
+            }
+        ]
+    }
+    (paths.capture_buffer_dir() / f"{stem}.json").write_text(json.dumps(raw), encoding="utf-8")
+    with fts.cursor() as conn:
+        _seed_capture(
+            conn,
+            id=stem,
+            ts=raw["timestamp"],
+            app="Chat",
+            title="Conversation",
+            value=phrase,
+            text=f"[TextArea] {phrase}",
+        )
+
+    hits = captures_mod.search_captures(query='"Ask for follow-up changes"')
+    context = captures_mod.current_context(headline_limit=1, fulltext_limit=1)
+    recent = captures_mod.read_recent_capture(at=stem)
+
+    assert hits and phrase not in json.dumps(hits)
+    assert phrase not in json.dumps(context["recent_captures_headline"])
+    assert phrase not in json.dumps(context["recent_captures_fulltext"])
+    assert recent is not None
+    assert recent["focused_element"]["value"] == ""
+    assert recent["visible_text"] == "Existing conversation"
+
+
+def test_search_captures_repairs_stale_focused_value_when_visible_text_matches(
+    ac_root: Path,
+) -> None:
+    phrase = "Ask for follow-up changes"
+    stem = "2026-07-12T23-01-30p08-00"
+    raw = _write_legacy_placeholder_capture(stem=stem, phrase=phrase)
+    raw["timestamp"] = "2026-07-12T23:01:30+08:00"
+    # Model a partially repaired index: the persisted/indexed visible text is
+    # already identical to the safe projection, but focused_value is stale.
+    raw["visible_text"] = s1_parser.sanitize_capture(raw)["visible_text"]
+    (paths.capture_buffer_dir() / f"{stem}.json").write_text(json.dumps(raw), encoding="utf-8")
+    with fts.cursor() as conn:
+        _seed_capture(
+            conn,
+            id=stem,
+            ts=raw["timestamp"],
+            app="Chat",
+            title="Conversation",
+            value=phrase,
+            text=raw["visible_text"],
+        )
+
+    hits = captures_mod.search_captures(query='"Ask for follow-up changes"')
+
+    assert hits
+    assert phrase not in json.dumps(hits)
+    assert hits[0]["focused_value_preview"] == ""
+    assert hits[0]["snippet"] == " ".join(raw["visible_text"].split())[:300]
+
+
+def test_placeholder_projection_keeps_db_ocr_visible_to_all_mcp_reads(ac_root: Path) -> None:
+    phrase = "Ask for follow-up changes"
+    stem = "2026-07-12T23-02-00p08-00"
+    raw = _write_legacy_placeholder_capture(stem=stem, phrase=phrase)
+    raw["timestamp"] = "2026-07-12T23:02:00+08:00"
+    raw["visible_text"] = ""
+    raw["ocr_submitted"] = True
+    (paths.capture_buffer_dir() / f"{stem}.json").write_text(json.dumps(raw), encoding="utf-8")
+    with fts.cursor() as conn:
+        _seed_capture(
+            conn,
+            id=stem,
+            ts=raw["timestamp"],
+            app="Chat",
+            title="Conversation",
+            value=phrase,
+            text=f"{phrase}\nrecognized OCR body",
+        )
+
+    hits = captures_mod.search_captures(query="recognized OCR body")
+    placeholder_hits = captures_mod.search_captures(query='"Ask for follow-up changes"')
+    context = captures_mod.current_context(headline_limit=1, fulltext_limit=1)
+    recent = captures_mod.read_recent_capture(at=stem)
+
+    assert hits and "recognized" in hits[0]["snippet"]
+    assert placeholder_hits and phrase not in json.dumps(placeholder_hits)
+    assert placeholder_hits[0]["snippet"] == "recognized OCR body"
+    assert context["recent_captures_headline"][0]["preview"] == "recognized OCR body"
+    assert context["recent_captures_fulltext"][0]["visible_text"] == "recognized OCR body"
+    assert context["recent_captures_fulltext"][0]["focused_value"] == ""
+    assert recent is not None
+    assert recent["visible_text"] == "recognized OCR body"
+    assert recent["focused_element"]["value"] == ""
 
 
 def test_capture_tools_tag_observed_provenance(ac_root: Path) -> None:

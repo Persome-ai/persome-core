@@ -2,8 +2,62 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime
+from typing import Any
+
+from .. import paths
+from ..capture import s1_parser
+
+
+def _safe_visible_text(capture_id: str, indexed_text: Any) -> str:
+    """Return placeholder-safe text when the raw capture proves the repair.
+
+    The capture index can outlive the S1 projection that produced it.  Use the
+    raw AX tree to repair those legacy rows, but keep the indexed text as the
+    fail-open value when the matching JSON is unavailable, malformed, or lacks
+    structural placeholder evidence.  OCR backfills live only in SQLite, so an
+    OCR-submitted capture with an empty safe AX projection sanitizes (rather
+    than replaces) that DB-only text.
+    """
+    db_text = str(indexed_text or "")
+    path = paths.capture_buffer_dir() / f"{capture_id}.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return db_text
+    if not isinstance(raw, dict):
+        return db_text
+
+    projection = s1_parser.sanitize_capture(raw)
+    safe_ax_text = str(projection.get("visible_text") or "")
+    if bool(raw.get("ocr_submitted")) and not safe_ax_text:
+        # OCR is a flat pixel projection.  Only evidence that the placeholder
+        # was actually visible can authorize removing an exact OCR field.
+        if not s1_parser.ocr_placeholder_values(raw):
+            return db_text
+        return s1_parser.sanitize_ocr_text(raw, db_text)
+
+    # Non-OCR S1 can be repaired from the local editable/placeholder pairing
+    # even when a filled control hides its standard hint from OCR.  Require a
+    # concrete change to an authored-text field before replacing the indexed
+    # value: tree-only metadata changes are not enough to trust a recomputed
+    # projection over SQLite.
+    raw_focus = raw.get("focused_element")
+    safe_focus = projection.get("focused_element")
+    visible_repaired = safe_ax_text != str(raw.get("visible_text") or "")
+    focus_repaired = (
+        isinstance(raw_focus, dict)
+        and isinstance(safe_focus, dict)
+        and any(
+            str(raw_focus.get(key) or "") != str(safe_focus.get(key) or "")
+            for key in ("title", "value")
+        )
+    )
+    if not visible_repaired and not focus_repaired:
+        return db_text
+    return safe_ax_text
 
 
 def extract_chat_messages(
@@ -22,7 +76,7 @@ def extract_chat_messages(
     the most recent content).
     """
     rows = conn.execute(
-        "SELECT timestamp, visible_text FROM captures "
+        "SELECT id, timestamp, visible_text FROM captures "
         " WHERE app_name = ? "
         "   AND persome_epoch(timestamp) >= persome_epoch(?) "
         "   AND persome_epoch(timestamp) <= persome_epoch(?) "
@@ -35,8 +89,8 @@ def extract_chat_messages(
 
     # Deduplicate consecutive identical visible_text snapshots.
     deduped: list[tuple[str, str]] = []
-    for ts, text in rows:
-        text = (text or "").strip()
+    for capture_id, ts, indexed_text in rows:
+        text = _safe_visible_text(str(capture_id), indexed_text).strip()
         if not text:
             continue
         if deduped and deduped[-1][1] == text:
