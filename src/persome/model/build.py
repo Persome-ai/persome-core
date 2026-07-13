@@ -14,11 +14,13 @@ from typing import Any
 
 from .. import paths
 from ..evomem.store import NodeStore
+from ..logger import get
 from ..store import fts
 from .manifest import create_build_manifest, is_valid_build_manifest
 from .snapshot import build_snapshot
 
 DEFAULT_WAIT_SECONDS = 30.0
+logger = get("persome.model.build")
 _MODEL_STAGES = (
     "reducer",
     "classifier",
@@ -70,6 +72,7 @@ class ModelBuildResult:
     stats: dict[str, Any]
     stages: dict[str, dict[str, Any]]
     manifest_path: Path
+    human_path: Path | None = None
 
 
 class ModelBuildCoordinator:
@@ -502,14 +505,23 @@ def run_model_build(
         with fts.cursor() as conn:
             snapshot = build_snapshot(
                 conn,
+                redact=False,
                 generated_at=completed_dt.isoformat(),
                 build_metadata=manifest,
             )
         _write_json_owner_only(paths.model_build_manifest(), manifest)
+        human_path: Path | None = None
+        try:
+            from .human import materialize_human_markdown
+
+            human_path = materialize_human_markdown(snapshot)
+        except Exception as exc:  # noqa: BLE001 - a derived view never fails the build
+            logger.warning("HUMAN.md projection failed after model build: %s", exc)
         return ModelBuildResult(
             status=manifest["status"],
             manifest=manifest,
             stats=snapshot["stats"],
             stages=outcome.stages,
             manifest_path=paths.model_build_manifest(),
+            human_path=human_path,
         )

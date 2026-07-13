@@ -872,6 +872,13 @@ def onboard(
     _init()
     env_file_mod.load_env_file(paths.env_file())
     try:
+        from .model.human import sync_live_human_markdown
+
+        human_path = sync_live_human_markdown()
+        console.print(f"[green]✓ HUMAN.md ready[/green]  [dim]{human_path}[/dim]")
+    except Exception as exc:  # noqa: BLE001 - onboarding still proves the core Runtime
+        console.print(f"[yellow]⚠ HUMAN.md was preserved or could not be refreshed: {exc}[/yellow]")
+    try:
         proof = onboarding_mod.onboard(
             tier=tier,
             gui=gui,
@@ -2766,6 +2773,8 @@ def model_build(
                 "[yellow]Deferred pairs stay queued for later scheduled or explicit builds.[/yellow]"
             )
     console.print(f"manifest: {result.manifest_path}")
+    if (human_path := getattr(result, "human_path", None)) is not None:
+        console.print(f"HUMAN.md: {human_path}")
 
 
 @model_app.command("export")
@@ -3452,6 +3461,7 @@ def _clean_memory() -> tuple[int, int, int, int]:
             paths.exports_dir(),
             paths.backup_dir(),
             paths.root() / "projection-md",
+            paths.human_file(),
             paths.model_build_manifest(),
             paths.model_build_lock(),
             paths.session_model_lock(),
@@ -3463,6 +3473,7 @@ def _clean_memory() -> tuple[int, int, int, int]:
     artifacts += sum(
         _remove_path(path)
         for path in _private_atomic_crash_artifacts(
+            paths.human_file(),
             paths.model_build_manifest(),
             paths.integrity_recovery_marker(),
             paths.integrity_recovery_pending(),
@@ -3579,6 +3590,7 @@ def clean_all(
         paths.exports_dir(),
         paths.backup_dir(),
         paths.root() / "projection-md",
+        paths.human_file(),
         # Legacy Chat-era data written by versions that still shipped the Chat
         # feature; keep purging it so a full wipe stays a full wipe.
         paths.root() / "chat-history",
@@ -3599,6 +3611,7 @@ def clean_all(
     )
     quarantined_personal_data = tuple(paths.root().glob("*.corrupt.*"))
     atomic_crash_data = _private_atomic_crash_artifacts(
+        paths.human_file(),
         paths.model_build_manifest(),
         paths.integrity_recovery_marker(),
         paths.integrity_recovery_pending(),

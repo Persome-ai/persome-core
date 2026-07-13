@@ -51,6 +51,13 @@ is recoverable from the candidate marker. The updater pins both `PERSOME_ROOT`
 and the installer's `PERSOME_INSTALL_HOME` to the active data root so an isolated
 profile cannot be redirected to `~/.persome`.
 
+Model builds materialize `<PERSOME_ROOT>/HUMAN.md` after producing the current
+raw snapshot. Daemon startup and `persome onboard` also reconcile it, which
+backfills a valid existing Root after `persome update` or after
+`uv tool upgrade personal-model` plus onboarding without recapture or an LLM
+call. Reconciliation emits a forming placeholder when no Root exists and
+refuses to replace an unmarked file at that path.
+
 `start` holds `<PERSOME_ROOT>/.daemon.lock` from preflight through the entire
 foreground or double-forked daemon lifetime. This prevents two concurrent
 starters from both passing the PID check. The daemon writes a numeric `.pid` for
@@ -107,6 +114,7 @@ labels, ports, and data roots do not belong in core.
 | `model-build.lock` | cross-process build lock |
 | `session-model.lock` | cross-process terminal-session finalization lock |
 | `model-build.json` | last build manifest |
+| `HUMAN.md` | Persome-managed raw model reading view; owner-only mode `0600` |
 | `.integrity-recovery.pending.json` | resumable full-database recovery phase journal |
 | `.integrity-config-recovery.pending.json` | pre-quarantine config intent and authority guard |
 | `.integrity-recovery.json` | last completed quarantine/recovery report |

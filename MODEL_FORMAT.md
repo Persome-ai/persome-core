@@ -6,6 +6,14 @@ inside `/model/graph` expose the same schema; consumers must not import internal
 DAOs or query SQLite tables directly. Redaction policy differs: export and MCP
 redact by default, while the owner-only loopback viewer uses raw local content.
 
+`<PERSOME_ROOT>/HUMAN.md` (`~/.persome/HUMAN.md` by default) is a separate,
+deterministic reading view of that snapshot, not another model or import
+format. It contains raw local Root, Volume, and Face text, is written
+owner-only with mode `0600`, and may change when Persome's renderer changes.
+The versioned JSON snapshot and its build manifest remain authoritative for
+machines, reproducibility, receipts, and redacted export. A missing Root renders
+an explicit still-forming placeholder rather than a fabricated identity.
+
 ## Top-level schema
 
 ```json

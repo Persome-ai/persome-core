@@ -1301,17 +1301,29 @@ def _reconcile_resolved_write_authority(authority: str) -> dict[str, object]:
 
 
 def _invalidate_model_manifest() -> bool:
-    """Remove build metadata that belongs to the quarantined database."""
+    """Remove derived model views that belong to the quarantined database."""
     manifest = paths.model_build_manifest()
+    manifest_invalidated = True
     try:
         manifest.unlink(missing_ok=True)
-        return True
     except OSError as exc:
+        manifest_invalidated = False
         _log.warning(
             "integrity: failed to invalidate stale model build manifest",
             extra={"path": str(manifest), "error": str(exc)},
         )
-        return False
+    try:
+        from .model.human import HumanMarkdownConflict, remove_managed_human_markdown
+
+        remove_managed_human_markdown()
+    except HumanMarkdownConflict as exc:
+        _log.warning("integrity: preserving user-owned HUMAN.md", extra={"error": str(exc)})
+    except (OSError, RuntimeError) as exc:
+        _log.warning(
+            "integrity: failed to remove stale HUMAN.md projection",
+            extra={"path": str(paths.human_file()), "error": str(exc)},
+        )
+    return manifest_invalidated
 
 
 def _capture_buffer_replay_available() -> bool:

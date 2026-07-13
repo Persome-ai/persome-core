@@ -331,6 +331,16 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
 
     fts_hybrid.wire_read_path(cfg)
 
+    # Upgrade backfill: released models already have a valid Root/snapshot but
+    # predate the owner-local HUMAN.md projection. Materialize it at startup
+    # without recapture or another LLM call; later model builds refresh it.
+    try:
+        from .model.human import sync_live_human_markdown
+
+        await asyncio.to_thread(sync_live_human_markdown)
+    except Exception:  # noqa: BLE001 - a derived Markdown view never blocks Runtime startup
+        logger.exception("HUMAN.md startup projection failed")
+
     # A process crash cannot run SessionManager.force_end. Close any rows owned
     # by the previous daemon before capture can create a new active session; the
     # reducer-retry task below immediately catches them up through modeling.

@@ -26,6 +26,7 @@ from persome.model import (
     load_live_manifest,
     model_status,
     run_model_build,
+    sync_live_human_markdown,
 )
 from persome.store import fts, schema_faces
 from persome.store import relation_edges as edges
@@ -296,8 +297,36 @@ def test_fresh_root_rebuild_is_structurally_identical(ac_root, monkeypatch, tmp_
     assert first == second
 
 
+def test_upgrade_backfills_human_from_existing_root_without_rebuild(
+    ac_root, monkeypatch, tmp_path
+) -> None:
+    seeded = _seed_model(monkeypatch)
+    timestamp = seeded["seed"]["generated_at"]
+    manifest = create_build_manifest(
+        core_commit="0123456789abcdef",
+        prompt_dir=tmp_path / "missing-prompts",
+        started_at=timestamp,
+        completed_at=timestamp,
+        trigger="pre-human-upgrade",
+        mode="mock",
+    )
+    paths.atomic_write_private_text(
+        paths.model_build_manifest(),
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True),
+    )
+
+    assert not paths.human_file().exists()
+    human_path = sync_live_human_markdown()
+    rendered = human_path.read_text(encoding="utf-8")
+
+    assert f'build_id: "{manifest["build_id"]}"' in rendered
+    assert f'root_id: "{seeded["root_id"]}"' in rendered
+    assert "Persome has not formed a verified Root yet" not in rendered
+    assert human_path.stat().st_mode & 0o777 == 0o600
+
+
 def test_model_build_persists_complete_owner_only_manifest(ac_root, monkeypatch) -> None:
-    _seed_model(monkeypatch)
+    seeded = _seed_model(monkeypatch)
     cfg = config_mod.load(ac_root / "config.toml")
     moments = iter(
         [
@@ -319,6 +348,14 @@ def test_model_build_persists_complete_owner_only_manifest(ac_root, monkeypatch)
     assert result.stages == pipeline.stages
     assert load_last_manifest() == result.manifest
     assert result.manifest_path.stat().st_mode & 0o777 == 0o600
+    human_path = paths.human_file()
+    assert result.human_path == human_path
+    human = human_path.read_text(encoding="utf-8")
+    assert human_path.stat().st_mode & 0o777 == 0o600
+    assert f'build_id: "{result.manifest["build_id"]}"' in human
+    assert f'root_id: "{seeded["root_id"]}"' in human
+    assert "# HUMAN.md" in human
+    assert "Persome has not formed a verified Root yet" not in human
 
 
 def test_empty_model_build_is_degraded_not_success(ac_root) -> None:
@@ -334,6 +371,31 @@ def test_empty_model_build_is_degraded_not_success(ac_root) -> None:
     assert result.manifest["degraded_stages"] == ["model_contract"]
     assert result.stats["points"] == 0
     assert result.stats["roots"] == 0
+    human_path = paths.human_file()
+    human = human_path.read_text(encoding="utf-8")
+    assert human_path.stat().st_mode & 0o777 == 0o600
+    assert 'build_status: "degraded"' in human
+    assert "root_id: null" in human
+    assert "Persome has not formed a verified Root yet" in human
+    assert "## Stable patterns" not in human
+    assert "## Cross-domain patterns" not in human
+
+
+def test_model_build_preserves_unknown_human_and_reports_no_projection(ac_root) -> None:
+    unknown = "# My HUMAN.md\n\nPersome must not replace this file.\n"
+    paths.human_file().write_text(unknown, encoding="utf-8")
+    cfg = config_mod.load(ac_root / "config.toml")
+    result = run_model_build(
+        cfg,
+        pipeline_runner=lambda _cfg: PipelineOutcome(),
+        now=lambda: datetime(2026, 7, 10, 8, 0, tzinfo=UTC),
+        trigger="test-human-conflict",
+    )
+
+    assert result.status == "degraded"
+    assert result.human_path is None
+    assert load_last_manifest() == result.manifest
+    assert paths.human_file().read_text(encoding="utf-8") == unknown
 
 
 def test_interrupted_model_build_invalidates_previous_completed_manifest(ac_root) -> None:

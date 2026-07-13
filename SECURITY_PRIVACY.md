@@ -15,6 +15,7 @@ The default data root is `~/.persome` and can be redirected with
 | indexes/model | `index.db` | SQLite WAL, FTS5, vectors, provenance, geometry |
 | provider/local API secrets | `env` | dotenv file, mode `0600` |
 | build metadata | `model-build.json` | hashes/IDs, no API keys |
+| human-readable model | `HUMAN.md` | raw deterministic projection, mode `0600`; not redacted for sharing |
 | exported model | `exports/*.json` | redacted by default, mode `0600` |
 | Runtime receipts | `.runtime-state.json`, `.update-state.json` | owner-only generation, policy, and transaction metadata |
 | native AX binaries | `native/<source-digest>/` | immutable machine-local permission principals |
@@ -125,6 +126,9 @@ model stages report degradation rather than silently claiming success.
   send returned personal data to its own model provider.
 - `/model/graph` is a raw owner-local inspection surface. Default CLI/MCP model
   export is redacted; the browser viewer is not a safe publication artifact.
+- `HUMAN.md` is also a raw owner-local inspection surface, despite its readable
+  format and `0600` mode. Do not publish or attach it as though it were a
+  redacted export.
 - Wildcard and LAN binds are rejected even when a bearer is configured because
   the Runtime does not terminate TLS. Exposing it through a tunnel changes the
   privacy boundary and is not a supported deployment.
@@ -152,11 +156,13 @@ from the selected write authority; they do not erase provenance history.
 For irreversible deletion, stop the daemon and run `persome clean memory` or
 `persome clean all`. The memory command also removes canonical evomem state,
 relations, geometry, every file under `memory/` (including interrupted atomic
-writes), exports, projections, backups, and recovery markers. The all command also
-removes captures, timeline/session state, legacy Chat-era history and skills
-from older releases, logs, and SQLite files while preserving config, env, and
-the installed virtualenv. See
+writes), the generated `HUMAN.md`, exports, projections, backups, and recovery
+markers. The all command also removes `HUMAN.md`, captures, timeline/session
+state, legacy Chat-era history and skills from older releases, logs, and SQLite
+files while preserving config, env, and the installed virtualenv. See
 [operations and data control](docs/operations.md).
+These explicit erasure commands remove the root-level `HUMAN.md` path even if
+automatic refresh had preserved it as an unrecognized user-authored file.
 
 `persome clean captures` and `persome clean timeline` scrub the same tables
 from retained SQLite snapshots, unfinished `.tmp` snapshots, and integrity

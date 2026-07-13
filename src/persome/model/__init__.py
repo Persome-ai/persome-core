@@ -21,6 +21,11 @@ from .build import (
     run_model_build,
 )
 from .entity_source import EntityEvent, EntitySource, MemoryPersonNameSource
+from .human import (
+    materialize_human_markdown,
+    render_human_markdown,
+    sync_live_human_markdown,
+)
 from .manifest import (
     create_build_manifest,
     detect_core_commit,
@@ -64,9 +69,12 @@ __all__ = [
     "load_live_manifest",
     "is_activity_identity",
     "is_valid_build_manifest",
+    "materialize_human_markdown",
     "model_status",
     "normalize_activity_identity",
     "prompt_hashes",
+    "render_human_markdown",
     "run_model_build",
+    "sync_live_human_markdown",
     "validate_snapshot",
 ]

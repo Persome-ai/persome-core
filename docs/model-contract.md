@@ -13,6 +13,24 @@ persome model status
 persome model export --out model-snapshot.json
 ```
 
+## Human-readable projection
+
+After a build, Persome deterministically projects the raw current snapshot to
+`<PERSOME_ROOT>/HUMAN.md` (`~/.persome/HUMAN.md` by default). The file is an
+owner-local `0600` reading surface, not a second model contract: the versioned
+JSON snapshot, build manifest, and evidence APIs remain the machine authority.
+No additional capture or LLM call is needed to render it.
+
+Daemon startup and `persome onboard` reconcile the file from an existing valid
+Root, so upgrades backfill it without rebuilding the user's history. With no
+verified Root, Persome writes a truthful forming placeholder and replaces that
+placeholder after later model builds. Automatic refresh replaces only files
+with Persome's projection marker. If an unrecognized, self-authored
+`HUMAN.md` already occupies the path, Persome preserves it and reports the
+conflict instead of overwriting it. Direct edits to a managed projection are
+not a correction interface and may be replaced; use `persome correct` for model
+changes.
+
 `model build` uses an exclusive `<PERSOME_ROOT>/model-build.lock`. It waits up to 30 seconds by
 default; `--wait-seconds` changes the bound and `--no-wait` returns `busy` immediately. The kernel
 releases the lock on process exit. A run first atomically records `status: building`, invalidating
@@ -122,6 +140,8 @@ mode `0600`. Callers must opt out explicitly with `redact=False`. A fixed `gener
 
 The `model` object in loopback `/model/graph` uses the same schema but raw local
 content so the owner can inspect the real model. It is not a publication export.
+`HUMAN.md` uses the same raw owner-local boundary and likewise must not be
+treated as a safe sharing artifact.
 
 The synthetic contract fixture lives at
 [`tests/fixtures/runtime_model/model_seed.json`](../tests/fixtures/runtime_model/model_seed.json). It

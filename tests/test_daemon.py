@@ -349,6 +349,7 @@ class TestRunLifecycle:
         self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from persome import paths
+        from persome.model import human as human_mod
 
         # All tasks return immediately; FIRST_COMPLETED then unblocks _run and
         # it proceeds through the normal (non-cancelled) shutdown path.
@@ -361,12 +362,38 @@ class TestRunLifecycle:
         monkeypatch.setattr(
             "persome.daemon._build_task_registry", lambda _receipt=None: stub_registry
         )
+        sync_human = MagicMock(return_value=paths.human_file())
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
 
         await _run(self._no_task_cfg(), capture_only=True)
 
+        sync_human.assert_called_once_with()
         # Health invariant: a cleanly stopped daemon leaves no pid file behind.
         assert not paths.pid_file().exists()
         assert not paths.runtime_state_file().exists()
+
+    async def test_human_projection_failure_does_not_crash_startup(
+        self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from persome.model import human as human_mod
+
+        async def returns() -> None:
+            return
+
+        stub_registry = [
+            replace(td, create=lambda c, sm: returns()) for td in _build_task_registry()
+        ]
+        monkeypatch.setattr(
+            "persome.daemon._build_task_registry", lambda _receipt=None: stub_registry
+        )
+        sync_human = MagicMock(side_effect=RuntimeError("synthetic HUMAN.md failure"))
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
+
+        with patch("persome.daemon.logger") as logger:
+            await _run(self._no_task_cfg(), capture_only=True)
+
+        sync_human.assert_called_once_with()
+        logger.exception.assert_any_call("HUMAN.md startup projection failed")
 
     async def test_force_end_failure_does_not_crash_shutdown(
         self, ac_root: Path, monkeypatch: pytest.MonkeyPatch

@@ -56,6 +56,11 @@ def model_build_manifest() -> Path:
     return root() / "model-build.json"
 
 
+def human_file() -> Path:
+    """Latest owner-only, human-readable projection of the personal model."""
+    return root() / "HUMAN.md"
+
+
 def config_file() -> Path:
     return root() / "config.toml"
 

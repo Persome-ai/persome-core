@@ -254,6 +254,15 @@ persome onboard
 persome model open --after 30
 ```
 
+Persome also maintains `~/.persome/HUMAN.md`, a raw, owner-only (`0600`),
+human-readable projection of the current personal model. Existing users get it
+from an already valid Root after `persome update`, or after
+`uv tool upgrade personal-model` followed by `persome onboard`; that backfill
+does not recapture activity or call an LLM. If no verified Root exists yet, the
+file honestly says that the model is still forming and refreshes after a later
+build. Persome replaces only a `HUMAN.md` carrying its own management marker;
+an unknown file you created at that path is preserved.
+
 For an installation created by `install.sh`, run the transactional updater from
 any directory:
 
@@ -273,6 +282,9 @@ OCR repair, backup, and uninstall details.
 
 - Durable Markdown, SQLite/FTS5, model snapshots, and logs live under
   `~/.persome` unless `PERSOME_ROOT` is set.
+- `~/.persome/HUMAN.md` is a raw local reading view; the versioned JSON
+  snapshot remains the machine-readable authority and the default export stays
+  redacted.
 - AX is the default signal. Optional PP-OCRv6 runs locally in an isolated
   subprocess with bundled weights.
 - The HTTP/MCP server is restricted to loopback (`127.0.0.1` by default), requires an owner-local
@@ -403,6 +415,7 @@ persome model status
 persome faces-report
 persome contradictions
 persome model open
+# Read the raw owner-only personal-model projection at ~/.persome/HUMAN.md
 
 # Correct or revoke one memory while retaining its audit trail
 persome correct --help
@@ -448,6 +461,9 @@ advice, export sensitivity, reset behavior, and manual removal steps.
 - Screenshots are omitted from MCP by default and encrypted at rest when
   retention is enabled.
 - `persome model export` is redacted by default; `--raw` is an explicit opt-out.
+- `~/.persome/HUMAN.md` is raw personal data, not a sharing artifact. Persome
+  refreshes its managed copy; make corrections through `persome correct`
+  instead of editing the projection.
 - There is no built-in remote account, sync service, telemetry, meeting audio
   capture, computer-use actuation, or filesystem profiler.
 
