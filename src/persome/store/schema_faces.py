@@ -286,14 +286,19 @@ def maybe_promote(
 
 def resident_faces(conn: sqlite3.Connection, *, top_k: int = 5) -> list[sqlite3.Row]:
     """The §3.1 residency selection: ACTIVE (= promoted, both-provenance) faces,
-    strongest first, capped — the O(1) tower-top block the system prompt holds."""
+    strongest first, capped — the O(1) tower-top block the system prompt holds.
+    The level-3 root apex is excluded: it is its own resident block
+    (``resident_root``/``render_root``), and a live root satisfies the
+    ACTIVE∧live predicate — without the level filter it would be delivered
+    twice and mislabeled as a behavior regularity by ``render_residency``."""
     ensure_schema(conn)
     conn.row_factory = sqlite3.Row
     return list(
         conn.execute(
             "SELECT * FROM schema_faces WHERE status = ? AND valid_to IS NULL"
+            " AND level != ?"
             " ORDER BY observations DESC, confidence DESC, face_id LIMIT ?",
-            (MemoryStatus.ACTIVE.value, top_k),
+            (MemoryStatus.ACTIVE.value, ROOT_LEVEL, top_k),
         )
     )
 
