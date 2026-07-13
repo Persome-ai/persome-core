@@ -220,6 +220,19 @@ def test_entity_graph_edges_neighbors_and_chain(ac_root, _roster_zhangwei):
         assert "\u795e\u79d8\u4eba" in with_shadow["neighbors"]
 
 
+def test_entity_graph_bumps_recall_on_walked_active_edges(ac_root, _roster_zhangwei):
+    """Walking ACTIVE edges IS a read reinforcement (\u00a73.3 testing effect). The
+    projection used to filter on a non-existent ``id`` column (the PK is
+    ``edge_id``), so ``bump_recall`` was dead code and recall_count never moved."""
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        _seed_edges(conn)
+        mcp_server._entity_graph(conn, None, name="\u5f20\u4f1f", depth=2)
+        rows = list(conn.execute("SELECT status, recall_count FROM relation_edges"))
+        assert all(c >= 1 for s, c in rows if s == "active"), rows
+        assert all(c == 0 for s, c in rows if s == "shadow"), rows
+
+
 def test_entity_graph_as_of_time_travel(ac_root, _roster_zhangwei):
     with fts.cursor() as conn:
         conn.executescript(fts.SCHEMA)

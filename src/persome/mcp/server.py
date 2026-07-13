@@ -366,6 +366,13 @@ def _verify_fact(  # type: ignore[no-untyped-def]
     stale = freshest is None or freshest > fresh_within_days
     if not evidence:
         note = "No related evidence exists in memory. Do not state this claim as fact."
+    elif freshest is None:
+        # Evidence exists but no item carries a parseable timestamp: freshness is
+        # UNKNOWN, not "old" — the stale branch below would interpolate literal None.
+        note = (
+            "Related evidence exists but none of it carries a usable timestamp, so "
+            "freshness cannot be judged. Verify this claim with a current source."
+        )
     elif stale:
         note = (
             f"The freshest related evidence is {freshest} day(s) old. Time-sensitive "
@@ -514,7 +521,7 @@ def _entity_graph(  # type: ignore[no-untyped-def]
     except Exception:  # noqa: BLE001 — the chain decorates the edges, never breaks them
         logger.exception("chain_to_user failed for %s", canonical)
     try:
-        edge_ids = [r["id"] for r in active_rows if "id" in set(r.keys())]
+        edge_ids = [r["edge_id"] for r in active_rows if "edge_id" in set(r.keys())]
         if edge_ids:
             edges_store.bump_recall(conn, edge_ids)
     except Exception:  # noqa: BLE001 — reinforcement is best-effort
