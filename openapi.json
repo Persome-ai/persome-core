@@ -187,7 +187,7 @@
           "model"
         ],
         "summary": "Model Graph",
-        "description": "Return the canonical versioned Point/Line/Face/Volume/Root snapshot.",
+        "description": "Return the canonical owner-local Point/Line/Face/Volume/Root snapshot.",
         "operationId": "model_graph_model_graph_get",
         "responses": {
           "200": {

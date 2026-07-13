@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pytest
@@ -33,6 +35,13 @@ BUILD_KEYS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _reset_model_graph_cache():
+    routes._clear_model_graph_cache()
+    yield
+    routes._clear_model_graph_cache()
+
+
 def _save_point(
     *,
     node_id: str,
@@ -55,8 +64,9 @@ class TestGraphJson:
         sentinel = {"schema_version": 1, "source": "live-reader"}
         calls = []
 
-        def fake_live_snapshot(conn):  # type: ignore[no-untyped-def]
+        def fake_live_snapshot(conn, *, redact=True):  # type: ignore[no-untyped-def]
             calls.append(conn)
+            assert redact is False
             return sentinel
 
         monkeypatch.setattr(routes, "build_live_snapshot", fake_live_snapshot)
@@ -65,6 +75,75 @@ class TestGraphJson:
 
         assert graph["model"] is sentinel
         assert len(calls) == 1
+
+    def test_graph_reuses_recent_owner_local_snapshot(self, ac_root, monkeypatch):
+        calls = []
+
+        def fake_live_snapshot(conn, *, redact=True):  # type: ignore[no-untyped-def]
+            calls.append(conn)
+            assert redact is False
+            return {"schema_version": 1, "call": len(calls)}
+
+        monkeypatch.setattr(routes, "build_live_snapshot", fake_live_snapshot)
+
+        first = routes.model_graph()
+        second = routes.model_graph()
+
+        assert first is second
+        assert first["model"]["call"] == 1
+        assert len(calls) == 1
+
+    def test_graph_cache_expires_after_bounded_ttl(self, ac_root, monkeypatch):
+        calls = []
+        clock = [100.0]
+
+        def fake_live_snapshot(conn, *, redact=True):  # type: ignore[no-untyped-def]
+            calls.append(conn)
+            return {"schema_version": 1, "call": len(calls)}
+
+        monkeypatch.setattr(routes, "build_live_snapshot", fake_live_snapshot)
+        monkeypatch.setattr(routes.time, "monotonic", lambda: clock[0])
+
+        first = routes.model_graph()
+        clock[0] += routes._MODEL_GRAPH_CACHE_TTL_SECONDS + 0.1
+        second = routes.model_graph()
+
+        assert first["model"]["call"] == 1
+        assert second["model"]["call"] == 2
+        assert len(calls) == 2
+
+    def test_graph_refresh_is_single_flight(self, ac_root, monkeypatch):
+        calls = []
+        started = threading.Event()
+        release = threading.Event()
+
+        def fake_live_snapshot(conn, *, redact=True):  # type: ignore[no-untyped-def]
+            calls.append(conn)
+            started.set()
+            assert release.wait(timeout=2)
+            return {"schema_version": 1, "call": len(calls)}
+
+        monkeypatch.setattr(routes, "build_live_snapshot", fake_live_snapshot)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(routes.model_graph)
+            assert started.wait(timeout=2)
+            second = pool.submit(routes.model_graph)
+            release.set()
+            first_payload = first.result(timeout=2)
+            second_payload = second.result(timeout=2)
+
+        assert first_payload is second_payload
+        assert len(calls) == 1
+
+    def test_graph_preserves_raw_owner_local_content(self, ac_root):
+        content = "/" + "Users" + "/synthetic-owner/private-note"
+        _save_point(node_id="point-private", content=content)
+
+        graph = routes.model_graph()
+
+        assert graph["model"]["points"][0]["content"] == content
+        assert graph["model"]["stats"]["redactions"] == {}
 
     def test_graph_is_the_canonical_snapshot(self, ac_root):
         _save_point(node_id="point-runtime", content="The runtime stores local context.")
@@ -194,6 +273,10 @@ class TestViewPage:
         assert b"model.volumes" in viewer.body
         assert b"model.root" in viewer.body
         assert b'fetch("./graph"' in viewer.body
+        assert b"MODEL_GRAPH_TIMEOUT_MS = 45_000" in viewer.body
+        assert b"modelLoadPromise" in viewer.body
+        assert b"controller.abort()" in viewer.body
+        assert b'retry.textContent = "Retry"' in viewer.body
         assert b"fetch(`./node" in viewer.body
         assert b'fetch("/model' not in viewer.body
         assert b"ACESFilmicToneMapping" in viewer.body
@@ -227,6 +310,7 @@ class TestViewPage:
         assert b".zoom-controls" in css.body
         assert b".share-button" in css.body
         assert b".share-notice" in css.body
+        assert b".error button" in css.body
         assert b"(min-width: 1181px) and (max-width: 1360px)" in css.body
         assert b"top: 116px" in css.body
         assert b"prefers-reduced-motion" in css.body
