@@ -12,7 +12,7 @@ The open-source personal model that makes every AI yours.
 
 Persome learns how you actually think and work from everything you see, say, hear, and do—then gives Codex, Claude Code, and any MCP agent the context to pick up where you left off, understand what matters, and work while you sleep.
 
-![图片展示了Persome个人模型的界面，左侧有“LIVE PERSONAL MODEL”及“THE SHAPE OF YOU”等文字，强调系统思维创始人将个人上下文转化为可检验产品、证据支持决策和可持续动量。右侧是模型可视化界面，显示了1012个点、326条线、18个面、6个体积和1个根节点，还呈现了可调整的货币、原型先探索等信号，以及反馈循环、投资判断平衡等概念。右侧还配有如何阅读模型的说明，如点代表观察到的事实，线代表演变或关系等。](docs/assets/readme/personal-model.png)
+<p align="center"><img src="docs/assets/readme/personal-model.png" alt="图片展示了Persome个人模型的界面，左侧有“LIVE PERSONAL MODEL”及“THE SHAPE OF YOU”等文字，强调系统思维创始人将个人上下文转化为可检验产品、证据支持决策和可持续动量。右侧是模型可视化界面，显示了1012个点、326条线、18个面、6个体积和1个根节点，还呈现了可调整的货币、原型先探索等信号，以及反馈循环、投资判断平衡等概念。右侧还配有如何阅读模型的说明，如点代表观察到的事实，线代表演变或关系等。" width="100%"></p>
 
 **Runs locally on your Mac. Private by default. Yours to inspect, correct, export, and delete.**
 
@@ -23,7 +23,7 @@ Your `HUMAN.md`
 Persome connects activity into progressively deeper context:
 
 | Layer | Meaning |
-|-|-|
+| --- | --- |
 | **Point** | A sourced observation or event |
 | **Line** | A relationship or change over time |
 | **Face** | A pattern supported by related evidence |
@@ -40,13 +40,13 @@ New evidence can strengthen, revise, or overturn an earlier inference. Every imp
 
 Persome turns sourced observations into relationships, patterns, higher-order structure, and one current Root: what matters now, how you tend to decide, and where your attention is moving.
 
-![图片展示了“ONE ROOT - A MODEL OF YOU”概念，说明其将活动流转化为个人模型。从左至右，活动流（如笔记、Bugs等）形成点（1000+时刻）、线（300+连接）、面（80+模式）、体（20+主题），最终生成一个模型（1个，类型为模型）。右侧是个人模型示例，包含当前目标、质量标准等信息，底部强调“Thousands of moments. One evolving model of you.”，与上下文介绍的个人模型从众多时刻中生成、不断演进的内容相呼应。](docs/assets/readme/one-root.png)
+<p align="center"><img src="docs/assets/readme/one-root.png" alt="图片展示了“ONE ROOT - A MODEL OF YOU”概念，说明其将活动流转化为个人模型。从左至右，活动流（如笔记、Bugs等）形成点（1000+时刻）、线（300+连接）、面（80+模式）、体（20+主题），最终生成一个模型（1个，类型为模型）。右侧是个人模型示例，包含当前目标、质量标准等信息，底部强调“Thousands of moments. One evolving model of you.”，与上下文介绍的个人模型从众多时刻中生成、不断演进的内容相呼应。" width="100%"></p>
 
 From Points to Lines, Faces, Volumes, and one Root—a living model of who you are and what matters now.
 
 1. **Same AI. Different You.**
 
-![](docs/assets/readme/same-ai-different-you.png)
+<p align="center"><img src="docs/assets/readme/same-ai-different-you.png" alt="" width="100%"></p>
 
 **The model is the same. The person it understands is different.**
 
@@ -56,7 +56,7 @@ The same prompt should not produce the same answer for everyone. Give AI a model
 
 1. **One MCP - Trun coding agent into proactive agent** 
 
-![](docs/assets/readme/one-mcp.png)
+<p align="center"><img src="docs/assets/readme/one-mcp.png" alt="" width="100%"></p>
 
 **Your coding agent finds its own work body**
 
@@ -66,11 +66,11 @@ Persome identifies unfinished work, ranks it against your priorities, and separa
 
 **-Continue where you left off** 
 
-![这张图片展示了Persome作为编程代理的功能场景，核心呈现“继续未完工作”的能力。页面左侧标注了三个待处理任务，分别为README、Onboarding和MCP，附带对应时间；右侧CODEX区域显示已恢复的工作状态，即此前准备Persome的启动事宜，当前目标是让Personal Model在五分钟内可见，下一步工作为修复新用户引导的验证，同时呈现了当前项目目录、git状态及未暂存的文件改动，印证该工具可将个人工作模型同步给编程代理，帮助用户从断点处继续推进工作。](docs/assets/readme/continue-where-you-left-off.png)
+<p align="center"><img src="docs/assets/readme/continue-where-you-left-off.png" alt="这张图片展示了Persome作为编程代理的功能场景，核心呈现“继续未完工作”的能力。页面左侧标注了三个待处理任务，分别为README、Onboarding和MCP，附带对应时间；右侧CODEX区域显示已恢复的工作状态，即此前准备Persome的启动事宜，当前目标是让Personal Model在五分钟内可见，下一步工作为修复新用户引导的验证，同时呈现了当前项目目录、git状态及未暂存的文件改动，印证该工具可将个人工作模型同步给编程代理，帮助用户从断点处继续推进工作。" width="100%"></p>
 
 **-Work while you sleep**
 
-![图片展示了Persome的“Work While You Sleep”功能界面。左侧“30 OPEN LOOPS”部分，呈现了Personal Model、Tests、Dependencies、Codebase、Docs等模块及对应数值。中间“5 SAFE TO COMPLETE”部分，有Safe Task Filter，可筛选权限范围、数据访问、网络、命令、外部动作等。右侧“MORNING REPORT”部分，列出已完成本地任务、等待决策任务、外部动作等，还展示了权限边界设置。该图与上下文介绍的Persome功能相呼应，直观呈现其工作模式。](docs/assets/readme/work-while-you-sleep.png)
+<p align="center"><img src="docs/assets/readme/work-while-you-sleep.png" alt="图片展示了Persome的“Work While You Sleep”功能界面。左侧“30 OPEN LOOPS”部分，呈现了Personal Model、Tests、Dependencies、Codebase、Docs等模块及对应数值。中间“5 SAFE TO COMPLETE”部分，有Safe Task Filter，可筛选权限范围、数据访问、网络、命令、外部动作等。右侧“MORNING REPORT”部分，列出已完成本地任务、等待决策任务、外部动作等，还展示了权限边界设置。该图与上下文介绍的Persome功能相呼应，直观呈现其工作模式。" width="100%"></p>
 
 ### Install, connect, and verify
 
@@ -80,7 +80,7 @@ Persome identifies unfinished work, ranks it against your priorities, and separa
 
 Try the complete Persome model without touching your personal data. This path requires Git and [uv](https://docs.astral.sh/uv/getting-started/installation/), but no API key, macOS Accessibility permission, or access to your existing `~/.persome` data.
 
-```Plain Text
+```text
 git clone https://github.com/Intuition-Lab/personal-model.git
 cd personal-model
 uv run python scripts/sample_demo.py
@@ -92,7 +92,7 @@ The script opens the local viewer at `http://127.0.0.1:8743/model` and deletes i
 
 Requirements: macOS 13 or newer and Xcode Command Line Tools. For the shortest package-managed installation:
 
-```Plain Text
+```text
 uv tool install personal-model
 persome onboard
 persome model open --after 30
@@ -102,7 +102,7 @@ The distribution is named `personal-model`; the installed CLI is `persome`.
 
 For the most explicit source-based first run:
 
-```Plain Text
+```text
 git clone https://github.com/Intuition-Lab/personal-model.git
 cd personal-model
 bash install.sh
@@ -120,7 +120,7 @@ After successful interactive onboarding, the source installer schedules the one-
 
 An LLM is optional for collection and BM25 recall, but required for semantic modeling. If provider setup was skipped, run:
 
-```Plain Text
+```text
 persome llm setup
 persome llm status --check
 ```
@@ -129,7 +129,7 @@ persome llm status --check
 
 Register whichever owner-local clients you use:
 
-```Plain Text
+```text
 persome install claude-code
 persome install codex
 persome install claude-desktop
@@ -140,7 +140,7 @@ These stdio registrations launch Persome on demand, so the daemon does not need 
 
 For Cursor, generate a stdio configuration and merge its `mcpServers.persome` object into `.cursor/mcp.json` or `~/.cursor/mcp.json`:
 
-```Plain Text
+```text
 persome install mcp-json --filename persome-mcp.json
 ```
 
@@ -148,7 +148,7 @@ persome install mcp-json --filename persome-mcp.json
 
 #### 4. Verify and ask grounded questions
 
-```Plain Text
+```text
 persome status
 persome model status
 persome model open
@@ -169,7 +169,7 @@ Active work is reduced every five minutes by default. With valid capture and a w
 
 For a `uv tool` installation, upgrade with the package manager and re-run Runtime proof:
 
-```Plain Text
+```text
 uv tool upgrade personal-model
 persome onboard
 persome model open --after 30
@@ -177,7 +177,7 @@ persome model open --after 30
 
 For an installation created by `install.sh`, run the transactional updater from any directory:
 
-```Plain Text
+```text
 persome update
 ```
 
