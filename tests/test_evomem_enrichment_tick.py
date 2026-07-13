@@ -8,6 +8,7 @@ import pytest
 
 import persome.evomem.person_graph as pg_mod
 import persome.session.tick as tick
+import persome.writer.attention_digest as digest_mod
 import persome.writer.case_extractor as case_mod
 
 
@@ -84,6 +85,45 @@ def test_strict_enrichment_reports_failure_after_running_all_layers(ac_root, mon
     with pytest.raises(RuntimeError, match="person_graph"):
         tick._run_evomem_enrichment_once(cfg, raise_on_error=True)
     assert _CALLS == ["person", "case"]
+
+
+def test_enrichment_runs_attention_digest_when_enabled(ac_root, monkeypatch) -> None:
+    _CALLS.clear()
+
+    def _fake_digest(cfg, **_k):  # noqa: ANN001
+        _CALLS.append("digest")
+        return SimpleNamespace(committed=True, surfaces=["ProjA"])
+
+    monkeypatch.setattr(pg_mod, "PersonGraph", _FakeGraph)
+    monkeypatch.setattr(case_mod, "run_case_extraction", _fake_case)
+    monkeypatch.setattr(digest_mod, "run_attention_digest", _fake_digest)
+    cfg = SimpleNamespace(
+        person_graph_enabled=True,
+        case_extraction_enabled=True,
+        attention_digest_enabled=True,
+    )
+    report = tick._run_evomem_enrichment_once(cfg)
+    assert _CALLS == ["person", "case", "digest"]
+    assert report["attention_digest"] == 1
+
+
+def test_enrichment_skips_attention_digest_when_disabled(ac_root, monkeypatch) -> None:
+    _CALLS.clear()
+
+    def _boom_digest(*_a, **_k):
+        raise AssertionError("attention digest should not run when disabled")
+
+    monkeypatch.setattr(pg_mod, "PersonGraph", _FakeGraph)
+    monkeypatch.setattr(case_mod, "run_case_extraction", _fake_case)
+    monkeypatch.setattr(digest_mod, "run_attention_digest", _boom_digest)
+    cfg = SimpleNamespace(
+        person_graph_enabled=True,
+        case_extraction_enabled=True,
+        attention_digest_enabled=False,
+    )
+    report = tick._run_evomem_enrichment_once(cfg)
+    assert _CALLS == ["person", "case"]
+    assert report["attention_digest"] == 0
 
 
 def test_enrichment_has_no_second_daemon_schedule() -> None:

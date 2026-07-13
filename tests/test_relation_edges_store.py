@@ -425,6 +425,104 @@ def test_promote_never_demotes(ac_root) -> None:
     assert st[ids[0]] == "active"
 
 
+def _seed_edge(conn, *, predicate, src, dst, src_kind, dst_kind, obs):
+    eid = edges.add_edge(
+        conn,
+        src_identity=src,
+        dst_identity=dst,
+        predicate=predicate,
+        src_kind=src_kind,
+        dst_kind=dst_kind,
+        provenance="inferred",
+        confidence=0.9,
+    )
+    conn.execute("UPDATE relation_edges SET observations=? WHERE edge_id=?", (obs, eid))
+    return eid
+
+
+def test_promote_covers_semantic_predicates(ac_root) -> None:
+    # The extractor writes participates_in / about / reports_to SHADOW; they earn
+    # ACTIVE through the same gates as knows, not by a separate mechanism.
+    _K = edges.EntityKind
+    with fts.cursor() as conn:
+        edges.ensure_schema(conn)
+        part = _seed_edge(
+            conn,
+            predicate=edges.Predicate.PARTICIPATES_IN,
+            src="self",
+            dst="proj-x",
+            src_kind=_K.SELF,
+            dst_kind=_K.PROJECT,
+            obs=3,
+        )
+        about = _seed_edge(
+            conn,
+            predicate=edges.Predicate.ABOUT,
+            src="standup-0618",
+            dst="proj-x",
+            src_kind=_K.EVENT,
+            dst_kind=_K.PROJECT,
+            obs=3,
+        )
+        reports = _seed_edge(
+            conn,
+            predicate=edges.Predicate.REPORTS_TO,
+            src="self",
+            dst="alice",
+            src_kind=_K.SELF,
+            dst_kind=_K.PERSON,
+            obs=3,
+        )
+        assert edges.promote_edges(conn, min_observations=3, max_per_identity=10) == 3
+        st = _statuses(conn)
+    assert st[part] == "active" and st[about] == "active" and st[reports] == "active"
+
+
+def test_promote_excludes_engaged_with(ac_root) -> None:
+    # engaged_with is the dense co-occurrence floor — active at write time by
+    # design; a shadow one must never earn ACTIVE through this pass.
+    _K = edges.EntityKind
+    with fts.cursor() as conn:
+        edges.ensure_schema(conn)
+        eng = _seed_edge(
+            conn,
+            predicate=edges.Predicate.ENGAGED_WITH,
+            src="self",
+            dst="proj-x",
+            src_kind=_K.SELF,
+            dst_kind=_K.PROJECT,
+            obs=9,
+        )
+        assert edges.promote_edges(conn, min_observations=3, max_per_identity=10) == 0
+        st = _statuses(conn)
+    assert st[eng] == "shadow"
+
+
+def test_promote_cap_shared_across_predicates(ac_root) -> None:
+    # Dilution is per identity, not per predicate: a hub cannot exceed the cap
+    # by spreading edges over predicates. The strongest edges win regardless of kind.
+    _K = edges.EntityKind
+    with fts.cursor() as conn:
+        edges.ensure_schema(conn)
+        knows = _seed_knows(conn, 2, obs=5)
+        parts = [
+            _seed_edge(
+                conn,
+                predicate=edges.Predicate.PARTICIPATES_IN,
+                src="self",
+                dst=f"proj-{i}",
+                src_kind=_K.SELF,
+                dst_kind=_K.PROJECT,
+                obs=9,
+            )
+            for i in range(2)
+        ]
+        assert edges.promote_edges(conn, min_observations=3, max_per_identity=2) == 2
+        st = _statuses(conn)
+    assert all(st[e] == "active" for e in parts)  # strongest two make the cap
+    assert all(st[e] == "shadow" for e in knows)
+
+
 # ── §7-6 graph-projection axes: kinds + polarity persist (were validate-only) ──
 
 

@@ -457,12 +457,25 @@ def neighbors(
     return reached
 
 
+# Semantic predicates that are written SHADOW and earn ACTIVE through
+# repeated evidence. ``engaged_with`` stays out: the dense co-occurrence
+# floor is active at write time by design and would flood the fan-out cap.
+_PROMOTABLE_PREDICATES: tuple[str, ...] = (
+    Predicate.KNOWS.value,
+    Predicate.PARTICIPATES_IN.value,
+    Predicate.ABOUT.value,
+    Predicate.REPORTS_TO.value,
+    Predicate.PART_OF.value,
+    Predicate.DEPENDS_ON.value,
+)
+
+
 def promote_edges(
     conn: sqlite3.Connection,
     *,
     min_observations: int = 3,
     max_per_identity: int = 20,
-    predicate: str = "knows",
+    predicates: Iterable[str] = _PROMOTABLE_PREDICATES,
 ) -> int:
     """Promote shadow edges to ACTIVE using evidence and fan-out gates.
 
@@ -483,16 +496,24 @@ def promote_edges(
        ones worth spreading activation through, exactly the §3.1 residency
        logic (top-K by evidence) applied to edges.
 
+    The cap is shared per source identity ACROSS every promotable predicate —
+    dilution is a property of the identity's expansion fan-out, not of one
+    predicate — so a hub cannot exceed the cap by spreading edges over
+    predicates. ``engaged_with`` is never promoted here (active at write time).
+
     Idempotent (already-ACTIVE edges count against their identity's cap but
     are not rewritten). Never demotes. Returns the number promoted.
     """
     ensure_schema(conn)
     conn.row_factory = sqlite3.Row
+    preds = tuple(predicates)
+    placeholders = ",".join("?" * len(preds))
     rows = conn.execute(
         "SELECT edge_id, src_identity, observations, status FROM relation_edges"
-        " WHERE predicate = ? AND valid_to IS NULL AND observations >= ?"
+        f" WHERE predicate IN ({placeholders})"  # noqa: S608 — placeholders, not values
+        " AND valid_to IS NULL AND observations >= ?"
         " ORDER BY src_identity, observations DESC, created_at DESC",
-        (predicate, min_observations),
+        (*preds, min_observations),
     ).fetchall()
     promoted = 0
     taken: dict[str, int] = {}

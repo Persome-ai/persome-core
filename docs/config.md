@@ -258,13 +258,19 @@ Additional top-level enrichment flags:
 ```toml
 person_graph_enabled = true
 case_extraction_enabled = true
-relation_extraction_enabled = false
+attention_digest_enabled = true
+relation_extraction_enabled = true
 edge_promote_fanout = 20
 ```
 
 Person-graph ingest is deterministic. Case extraction distills reusable
-problem/solution evidence. Experimental relation extraction remains off; the
-memory-delta relation path is already active.
+problem/solution evidence. The attention digest deterministically folds the
+day's attention-locus dwell into one durable `user-attention.md` fact per
+calendar day (same-day re-runs supersede in place), so sustained-focus
+regularities become schema-miner input. Relation extraction writes shadow
+edges only; every semantic predicate stays inert until the promotion pass
+(evidence floor plus per-identity fan-out cap) proves it, so enabling
+extraction never puts unproven edges into retrieval.
 
 ## Higher geometry
 

@@ -9,7 +9,9 @@ It is empty (prompt byte-identical) until the locus pipeline populates
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+from persome.store import fts
 from persome.timeline import store as timeline_store
 from persome.writer import session_reducer
 
@@ -65,3 +67,24 @@ def test_attention_block_empty_when_no_surface() -> None:
 
 def test_attention_block_empty_for_no_blocks() -> None:
     assert session_reducer._format_attention_trajectory([]) == ""
+
+
+def test_blocks_for_session_round_trips_attention_columns(ac_root: Path) -> None:
+    # Regression: the reducer's own block loader used to hand-construct
+    # TimelineBlock without the attention_* columns, so the attention section
+    # was always empty on the real DB path even though the rows carried data.
+    stored = [_blk(0, "ProjA"), _blk(1, "ProjA"), _blk(2, "ProjB")]
+    with fts.cursor() as conn:
+        timeline_store.ensure_schema(conn)
+        for b in stored:
+            timeline_store.insert(conn, b)
+        loaded = session_reducer._blocks_for_session(
+            conn,
+            datetime(2026, 6, 18, 16, 0, tzinfo=_TZ),
+            datetime(2026, 6, 18, 18, 0, tzinfo=_TZ),
+        )
+    assert [b.attention_surface for b in loaded] == ["ProjA", "ProjA", "ProjB"]
+    assert all(b.attention_rung == "content" for b in loaded)
+    assert all(b.attention_confidence == 0.5 for b in loaded)
+    out = session_reducer._format_attention_trajectory(loaded)
+    assert "ProjA" in out and "ProjB" in out

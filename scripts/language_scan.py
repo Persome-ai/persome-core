@@ -29,7 +29,17 @@ TEXT_SUFFIXES = {
     ".yml",
 }
 TEXT_NAMES = {".gitignore", ".python-version", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES"}
-SKIP_PARTS = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "__pycache__"}
+# `.claude` covers agent worktrees (each embeds a full repo copy, OCR dictionary
+# included) — the same carve-out ruff's `exclude` already makes.
+SKIP_PARTS = {
+    ".claude",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+}
 
 
 def _text_files(root: Path) -> list[Path]:

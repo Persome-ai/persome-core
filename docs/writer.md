@@ -119,6 +119,16 @@ The dirty-gated 30-minute refresh, `persome model build`, and the unconditional
 the LLM to distill supported problem/solution cards. Unresolved errors are not
 minted. Cards enter the public deterministic evomem write entrance.
 
+### Attention digest
+
+`attention_digest` deterministically folds the day's attention-locus dwell
+(the Step-1 `attention_*` columns on timeline blocks) into one ranked
+`user-attention.md` fact per calendar day — no LLM. Surfaces under five
+minutes of total dwell are excluded, and a same-day re-run supersedes that
+day's digest in place instead of appending. Because `user-` is a
+schema-miner fact prefix, sustained-focus regularities become eligible Face
+evidence through the existing promotion gates.
+
 ### Faces
 
 `schema_miner_stage.mine_schemas_for_user` groups durable facts per memory

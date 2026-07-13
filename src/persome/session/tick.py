@@ -612,11 +612,12 @@ def _run_evomem_enrichment_once(
     *,
     raise_on_error: bool = False,
 ) -> dict[str, object]:
-    """One enrichment pass: person-graph ingest (#1) + case extraction (#2).
+    """One enrichment pass: person-graph ingest, case extraction, attention digest.
 
-    Both layers gate INTERNALLY on their own flags and no-op when off, so this is
-    safe to call whenever the tick fires. Person-graph ingest is deterministic (no
-    LLM); case extraction makes one LLM pass over the last 24h of timeline blocks.
+    Every layer gates INTERNALLY on its own flag and no-ops when off, so this is
+    safe to call whenever the tick fires. Person-graph ingest and the attention
+    digest are deterministic (no LLM); case extraction makes one LLM pass over
+    the last 24h of timeline blocks.
     Extracted so the wiring is unit-testable without driving the daily loop. Each
     layer is isolated in its own try so one failure never blocks the others.
     Scheduled callers stay fail-open; the model build passes ``raise_on_error``
@@ -627,7 +628,12 @@ def _run_evomem_enrichment_once(
     from ..model.entity_source import MemoryPersonNameSource
     from ..writer import case_extractor
 
-    report: dict[str, object] = {"person_updates": 0, "case_cards": 0, "relation_edges": 0}
+    report: dict[str, object] = {
+        "person_updates": 0,
+        "case_cards": 0,
+        "relation_edges": 0,
+        "attention_digest": 0,
+    }
     errors: list[str] = []
 
     if getattr(cfg, "person_graph_enabled", False):
@@ -653,8 +659,26 @@ def _run_evomem_enrichment_once(
             logger.error("evomem enrichment: case extraction failed: %s", exc, exc_info=True)
             errors.append(f"case_extraction: {type(exc).__name__}: {exc}")
 
+    # Deterministic dwell digest (no LLM): today's attention loci → one durable
+    # user-attention.md fact, so dwell regularities can reach the schema miner.
+    if getattr(cfg, "attention_digest_enabled", False):
+        try:
+            from ..writer import attention_digest
+
+            digest = attention_digest.run_attention_digest(cfg)
+            report["attention_digest"] = 1 if digest.committed else 0
+            if digest.committed:
+                logger.info(
+                    "evomem enrichment: attention digest covers %d surface(s)",
+                    len(digest.surfaces),
+                )
+        except Exception as exc:  # noqa: BLE001 — best-effort enrichment, never crash the tick
+            logger.error("evomem enrichment: attention digest failed: %s", exc, exc_info=True)
+            errors.append(f"attention_digest: {type(exc).__name__}: {exc}")
+
     # Graph-memory P0-2 (#428): relation-edge extraction → SHADOW. Gates internally on
-    # relation_extraction_enabled (default off) + fully fail-open, like the two layers above.
+    # relation_extraction_enabled + fully fail-open, like the layers above; shadow-first
+    # is enforced by the promotion gates below, not by keeping extraction off.
     if getattr(cfg, "relation_extraction_enabled", False):
         try:
             from ..evomem import relation_extractor

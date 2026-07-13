@@ -420,21 +420,10 @@ def _blocks_for_session(
         """,
         (start.isoformat(), end.isoformat()),
     ).fetchall()
-    blocks: list[timeline_store.TimelineBlock] = []
-    for r in rows:
-        blocks.append(
-            timeline_store.TimelineBlock(
-                id=r["id"],
-                start_time=datetime.fromisoformat(r["start_time"]),
-                end_time=datetime.fromisoformat(r["end_time"]),
-                timezone=r["timezone"] or "",
-                entries=json.loads(r["entries"] or "[]"),
-                apps_used=json.loads(r["apps_used"] or "[]"),
-                capture_count=r["capture_count"] or 0,
-                created_at=datetime.fromisoformat(r["created_at"]) if r["created_at"] else None,
-            )
-        )
-    return blocks
+    # The store's row parser is the single source of truth for column mapping;
+    # a hand-rolled constructor here silently drops columns added later
+    # (attention_* went missing exactly that way).
+    return [timeline_store._row_to_block(r) for r in rows]
 
 
 def _format_blocks(blocks: list[timeline_store.TimelineBlock]) -> str:
