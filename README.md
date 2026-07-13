@@ -1,8 +1,6 @@
-# Persome
+# Persome: Build your Personal Model
 
 <!-- mcp-name: io.github.Intuition-Lab/personal-model -->
-
-**Build your Personal Model.**
 
 Persome is the local-first Personal Model Runtime for macOS. It observes focused
 context across the apps you already use, turns that activity into an
