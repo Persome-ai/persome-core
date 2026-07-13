@@ -50,7 +50,11 @@ The Runtime requires SQLite 3.42 or newer. It enables both SQLite core
 and capture terms are removed from ordinary pages and full-text shadow indexes.
 On the first open after this security upgrade it also rebuilds both FTS indexes
 from live rows and vacuums the database, removing segment terms left by deletes
-performed by older releases.
+performed by older releases. The rebuild commits atomically with its recorded
+milestone exactly once, and the follow-up vacuum/WAL truncation retries on
+later opens (or the daily checkpoint) if concurrent readers keep the database
+busy — a busy database defers the one-time cleanup instead of refusing
+connections.
 
 ## macOS permission principals
 
