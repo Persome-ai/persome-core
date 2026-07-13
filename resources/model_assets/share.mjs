@@ -2,24 +2,37 @@ export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 675;
 export const SHARE_FILE_NAME = "my-persome-constellation.png";
 export const SHARE_URL = "https://github.com/Intuition-Lab/personal-model";
-export const SHARE_HASHTAGS = ["Persome", "PersonalAI"];
-export const SHARE_TEXT = [
-  "My Mac has been quietly learning the shape of how I work.",
-  "",
-  "This is my personal constellation — built locally from real context with Persome.",
-  "",
-  "Build yours →",
-].join("\n");
+export const SHARE_TEXTS = Object.freeze([
+  [
+    "I let @PersonalModel_ observe how I use my Mac, and apparently this is what I look like 😳",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+  [
+    "I let my @PersonalModel_ learn from how I use my Mac. I didn’t expect this is how it sees me 😳",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+  [
+    "I let @PersonalModel_ observe how I use my Mac, and this is the model it built 🤔",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+]);
+
+export function pickShareText(random = Math.random) {
+  const index = Math.floor(random() * SHARE_TEXTS.length);
+  return SHARE_TEXTS[Math.max(0, Math.min(index, SHARE_TEXTS.length - 1))];
+}
 
 export function buildXIntentUrl({
-  text = SHARE_TEXT,
+  text,
   url = SHARE_URL,
-  hashtags = SHARE_HASHTAGS,
+  random = Math.random,
 } = {}) {
   const params = new URLSearchParams();
-  params.set("text", text);
+  params.set("text", text ?? pickShareText(random));
   params.set("url", url);
-  params.set("hashtags", hashtags.join(","));
   return `https://x.com/intent/tweet?${params.toString()}`;
 }
 

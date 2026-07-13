@@ -5,22 +5,53 @@ import {
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
   SHARE_FILE_NAME,
-  SHARE_HASHTAGS,
-  SHARE_TEXT,
+  SHARE_TEXTS,
   SHARE_URL,
   buildXIntentUrl,
+  pickShareText,
   shareNarrative,
   shareStats,
 } from "../../resources/model_assets/share.mjs";
 
-test("builds an X composer URL with the standard copy, destination, and tags", () => {
-  const intent = new URL(buildXIntentUrl());
+const EXPECTED_SHARE_TEXTS = [
+  [
+    "I let @PersonalModel_ observe how I use my Mac, and apparently this is what I look like 😳",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+  [
+    "I let my @PersonalModel_ learn from how I use my Mac. I didn’t expect this is how it sees me 😳",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+  [
+    "I let @PersonalModel_ observe how I use my Mac, and this is the model it built 🤔",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+];
+
+test("keeps the three approved X share variants verbatim", () => {
+  assert.deepEqual(SHARE_TEXTS, EXPECTED_SHARE_TEXTS);
+});
+
+test("selects each X share variant from an equal third of the random range", () => {
+  assert.equal(pickShareText(() => 0), EXPECTED_SHARE_TEXTS[0]);
+  assert.equal(pickShareText(() => (1 / 3) - Number.EPSILON), EXPECTED_SHARE_TEXTS[0]);
+  assert.equal(pickShareText(() => 1 / 3), EXPECTED_SHARE_TEXTS[1]);
+  assert.equal(pickShareText(() => (2 / 3) - Number.EPSILON), EXPECTED_SHARE_TEXTS[1]);
+  assert.equal(pickShareText(() => 2 / 3), EXPECTED_SHARE_TEXTS[2]);
+  assert.equal(pickShareText(() => 0.999999), EXPECTED_SHARE_TEXTS[2]);
+});
+
+test("builds an X composer URL with a selected variant and destination", () => {
+  const intent = new URL(buildXIntentUrl({ random: () => 0.5 }));
 
   assert.equal(intent.origin, "https://x.com");
   assert.equal(intent.pathname, "/intent/tweet");
-  assert.equal(intent.searchParams.get("text"), SHARE_TEXT);
+  assert.equal(intent.searchParams.get("text"), EXPECTED_SHARE_TEXTS[1]);
   assert.equal(intent.searchParams.get("url"), SHARE_URL);
-  assert.equal(intent.searchParams.get("hashtags"), SHARE_HASHTAGS.join(","));
+  assert.equal(intent.searchParams.get("hashtags"), null);
   assert.ok(!intent.href.includes("localhost"));
   assert.ok(!intent.href.includes("/model/"));
 });

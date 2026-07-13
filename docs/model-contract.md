@@ -79,7 +79,8 @@ recognizably personal without changing the snapshot. The `Local only` treatment 
 a publishing control. The viewer never uploads the model or exposes its owner-only URL. An explicit
 `Share` action renders a fixed-size PNG locally from the unlabeled WebGL constellation, adds the Root
 identity statement, up to three highest-level Volume or Face signatures, aggregate layer counts, and
-Persome branding, downloads it, and opens an X composer with standard copy and tags. Individual
+Persome branding, downloads it, and opens an X composer with one of three standard copy variants,
+each carrying the Personal Model tag and official account mention. Individual
 Point labels, receipts, source names, timestamps, and viewer credentials are excluded from the share
 artifact; the owner attaches the downloaded image and confirms the post in X.
 
