@@ -1099,7 +1099,10 @@ def mcp() -> None:
     # current PID/lock receipts and could be writing while a newer stdio client
     # decides the database is offline. Daemon startup and explicit maintenance
     # commands retain the recovery path.
-    _init(recover_integrity=False)
+    # Stdio stdout is the JSON-RPC transport. Keep first-run config notices and
+    # lifecycle diagnostics visible on stderr without corrupting the protocol.
+    with contextlib.redirect_stdout(sys.stderr):
+        _init(recover_integrity=False)
     from .mcp import server as mcp_server
 
     mcp_server.run_stdio()

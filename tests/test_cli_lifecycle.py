@@ -161,6 +161,23 @@ def test_mcp_uses_non_recovering_initialization(monkeypatch: pytest.MonkeyPatch)
     assert started == [True]
 
 
+def test_mcp_keeps_initialization_notices_off_protocol_stdout(
+    ac_root,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli.paths.config_file().unlink(missing_ok=True)
+
+    from persome.mcp import server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "run_stdio", lambda: None)
+    cli.mcp()
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Created default config" in captured.err
+
+
 def test_cli_surfaces_database_recovery_and_model_rebuild_next_step(
     ac_root, monkeypatch: pytest.MonkeyPatch
 ) -> None:
