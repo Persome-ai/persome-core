@@ -79,6 +79,7 @@ def test_clean_memory_removes_canonical_model_exports_and_backups(ac_root) -> No
     (paths.exports_dir() / "model.json").write_text("{}")
     paths.backup_dir().mkdir()
     (paths.backup_dir() / "evo.db").write_text("synthetic")
+    paths.human_file().write_text("# HUMAN.md\n")
     paths.model_build_manifest().write_text("{}")
 
     files, entries, model_rows, artifacts = cli._clean_memory()
@@ -86,9 +87,10 @@ def test_clean_memory_removes_canonical_model_exports_and_backups(ac_root) -> No
     assert files == 1
     assert entries == 1
     assert model_rows >= 2
-    assert artifacts == 3
+    assert artifacts == 4
     assert not paths.exports_dir().exists()
     assert not paths.backup_dir().exists()
+    assert not paths.human_file().exists()
     assert not paths.model_build_manifest().exists()
     with fts.cursor() as conn:
         assert conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] == 0
@@ -102,6 +104,7 @@ def test_clean_all_keeps_only_install_configuration(ac_root) -> None:
     _seed_model()
     paths.config_file().write_text("[capture]\n")
     paths.env_file().write_text("PERSOME_LLM_API_KEY=synthetic\n")
+    paths.human_file().write_text("# HUMAN.md\n")
     (paths.root() / "venv").mkdir()
     # Legacy Chat-era data from an older install: a full wipe must still purge it.
     (paths.root() / "chat-history").mkdir()
@@ -120,6 +123,7 @@ def test_clean_all_keeps_only_install_configuration(ac_root) -> None:
         paths.capture_buffer_dir(),
         paths.memory_dir(),
         paths.logs_dir(),
+        paths.human_file(),
         paths.root() / "chat-history",
         paths.root() / "skills",
         paths.index_db(),

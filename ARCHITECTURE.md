@@ -104,7 +104,9 @@ Each stage records completion, skip, or failure. Enrichment runs every enabled
 substage before surfacing a partial failure, so the manifest cannot call a
 partially failed stage complete. Missing geometry marks the build degraded and
 never overwrites an existing good Root with an empty result. The manifest is
-written atomically with owner-only permissions.
+written atomically with owner-only permissions. The Runtime then
+deterministically renders the raw snapshot as owner-only `HUMAN.md`; this
+projection makes no additional LLM call and never fabricates a Root.
 
 ## Storage
 
@@ -117,6 +119,7 @@ written atomically with owner-only permissions.
 | `memory/*.md` | readable durable memory and schema projections |
 | `index.db` | WAL-mode FTS5, model, provenance, sessions, and vectors |
 | `model-build.json` | last reproducibility manifest |
+| `HUMAN.md` | raw deterministic model reading view, mode `0600` |
 | `exports/*.json` | redacted model snapshots, mode `0600` |
 | `.runtime-state.json` | owner-only Runtime generation and readiness receipt |
 | `native/<source-digest>/` | immutable AX helper/watcher binaries |
@@ -134,6 +137,8 @@ legacy completed activity can be read through a neutral adapter.
   See [MCP.md](MCP.md).
 - Snapshot: versioned Point/Line/Face/Volume/Root JSON. See
   [MODEL_FORMAT.md](MODEL_FORMAT.md).
+- Human view: raw owner-local `HUMAN.md`, backfilled from an existing valid
+  Root on startup/onboarding. JSON remains the machine contract.
 
 ## Invariants
 
@@ -142,6 +147,8 @@ legacy completed activity can be read through a neutral adapter.
   `event:intent:*` records are read-only compatibility data.
 - At most one live Root exists.
 - A model export is redacted by default and written with mode `0600`.
+- A Persome-managed `HUMAN.md` is refreshed automatically; an unknown file at
+  that path is preserved instead of overwritten.
 - SQLite access uses `with fts.cursor() as conn:` so readers and the writer
   coexist under WAL mode.
 - LLM calls flow through `writer/llm.py` over Anthropic Messages or

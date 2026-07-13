@@ -30,6 +30,7 @@ from persome.daemon import (
     _on_task_done,
     _run,
     _shutdown_tasks,
+    _sync_human_after_update_commit,
 )
 
 
@@ -349,6 +350,7 @@ class TestRunLifecycle:
         self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from persome import paths
+        from persome.model import human as human_mod
 
         # All tasks return immediately; FIRST_COMPLETED then unblocks _run and
         # it proceeds through the normal (non-cancelled) shutdown path.
@@ -361,12 +363,103 @@ class TestRunLifecycle:
         monkeypatch.setattr(
             "persome.daemon._build_task_registry", lambda _receipt=None: stub_registry
         )
+        sync_human = MagicMock(return_value=paths.human_file())
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
 
         await _run(self._no_task_cfg(), capture_only=True)
 
+        sync_human.assert_called_once_with()
         # Health invariant: a cleanly stopped daemon leaves no pid file behind.
         assert not paths.pid_file().exists()
         assert not paths.runtime_state_file().exists()
+
+    async def test_human_projection_failure_does_not_crash_startup(
+        self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from persome.model import human as human_mod
+
+        async def returns() -> None:
+            return
+
+        stub_registry = [
+            replace(td, create=lambda c, sm: returns()) for td in _build_task_registry()
+        ]
+        monkeypatch.setattr(
+            "persome.daemon._build_task_registry", lambda _receipt=None: stub_registry
+        )
+        sync_human = MagicMock(side_effect=RuntimeError("synthetic HUMAN.md failure"))
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
+
+        with patch("persome.daemon.logger") as logger:
+            await _run(self._no_task_cfg(), capture_only=True)
+
+        sync_human.assert_called_once_with()
+        logger.exception.assert_any_call("HUMAN.md startup projection failed")
+
+    async def test_candidate_runtime_creates_no_human_artifacts_before_update_commit(
+        self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from persome import paths
+        from persome.model import human as human_mod
+
+        async def returns() -> None:
+            return
+
+        stub_registry = [
+            replace(td, create=lambda c, sm: returns()) for td in _build_task_registry()
+        ]
+        monkeypatch.setattr(
+            "persome.daemon._build_task_registry", lambda _receipt=None: stub_registry
+        )
+        paths.update_state_file().write_text("pending\n", encoding="utf-8")
+        sync_human = MagicMock(return_value=paths.human_file())
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
+
+        await _run(self._no_task_cfg(), capture_only=True)
+
+        sync_human.assert_not_called()
+        assert not paths.human_file().exists()
+        assert list(ac_root.glob(".HUMAN.md.*")) == []
+
+    async def test_human_projection_waits_for_update_commit(
+        self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from persome import paths
+        from persome.model import human as human_mod
+
+        paths.update_state_file().write_text("pending\n", encoding="utf-8")
+        sync_human = MagicMock(return_value=paths.human_file())
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
+        monkeypatch.setattr("persome.daemon._HUMAN_UPDATE_POLL_SECONDS", 0.001)
+
+        task = asyncio.create_task(_sync_human_after_update_commit())
+        await asyncio.sleep(0.01)
+        sync_human.assert_not_called()
+
+        paths.update_state_file().unlink()
+        await asyncio.wait_for(task, timeout=1)
+        sync_human.assert_called_once_with()
+
+    async def test_rollback_cancels_deferred_human_projection(
+        self, ac_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from persome import paths
+        from persome.model import human as human_mod
+
+        paths.update_state_file().write_text("pending\n", encoding="utf-8")
+        sync_human = MagicMock(return_value=paths.human_file())
+        monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
+        monkeypatch.setattr("persome.daemon._HUMAN_UPDATE_POLL_SECONDS", 0.001)
+
+        task = asyncio.create_task(_sync_human_after_update_commit())
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        paths.update_state_file().unlink()
+        await asyncio.sleep(0.01)
+        sync_human.assert_not_called()
 
     async def test_force_end_failure_does_not_crash_shutdown(
         self, ac_root: Path, monkeypatch: pytest.MonkeyPatch

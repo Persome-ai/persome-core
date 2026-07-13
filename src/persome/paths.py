@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import errno
 import os
 import stat
+import sys
 import tempfile
 from pathlib import Path
 from typing import BinaryIO, TextIO
@@ -54,6 +57,16 @@ def session_model_lock() -> Path:
 
 def model_build_manifest() -> Path:
     return root() / "model-build.json"
+
+
+def human_file() -> Path:
+    """Latest owner-only, human-readable projection of the personal model."""
+    return root() / "HUMAN.md"
+
+
+def update_state_file() -> Path:
+    """Durable receipt for an uncommitted Runtime update transaction."""
+    return root() / ".update-state.json"
 
 
 def config_file() -> Path:
@@ -251,6 +264,55 @@ def atomic_write_private_text(path: Path, content: str, *, encoding: str = "utf-
     finally:
         temporary.unlink(missing_ok=True)
     return path
+
+
+def _atomic_rename_with_flags(first: Path, second: Path, *, darwin: int, linux: int) -> None:
+    """Run one same-directory flagged rename without a destructive fallback."""
+    if first.parent != second.parent:
+        raise ValueError("atomic rename paths must share one parent")
+    encoded_first = os.fsencode(first)
+    encoded_second = os.fsencode(second)
+    library = ctypes.CDLL(None, use_errno=True)
+    try:
+        if sys.platform == "darwin":
+            rename = library.renameatx_np
+            rename.argtypes = [
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            ]
+            rename.restype = ctypes.c_int
+            result = rename(-2, encoded_first, -2, encoded_second, darwin)
+        elif sys.platform.startswith("linux"):
+            rename = library.renameat2
+            rename.argtypes = [
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            ]
+            rename.restype = ctypes.c_int
+            result = rename(-100, encoded_first, -100, encoded_second, linux)
+        else:  # pragma: no cover - Persome is macOS-only; Linux supports CI.
+            raise OSError(errno.ENOSYS, f"flagged rename is unavailable on {sys.platform}")
+    except AttributeError as exc:  # pragma: no cover - current macOS/glibc expose these symbols.
+        raise OSError(errno.ENOSYS, "flagged rename is unavailable") from exc
+    if result != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number), str(first), str(second))
+
+
+def atomic_exchange(first: Path, second: Path) -> None:
+    """Atomically exchange two existing same-directory paths."""
+    _atomic_rename_with_flags(first, second, darwin=0x00000002, linux=0x00000002)
+
+
+def atomic_rename_noreplace(first: Path, second: Path) -> None:
+    """Atomically rename without replacing a concurrently created destination."""
+    _atomic_rename_with_flags(first, second, darwin=0x00000004, linux=0x00000001)
 
 
 def open_private_append_text(

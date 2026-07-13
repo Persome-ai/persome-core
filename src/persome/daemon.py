@@ -36,6 +36,7 @@ logger = get("persome.daemon")
 # keep the daemon process alive and inert indefinitely (capture stopped, health
 # "stale", pid still listed as running).
 _SHUTDOWN_TIMEOUT_SECONDS = 10.0
+_HUMAN_UPDATE_POLL_SECONDS = 0.1
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,24 @@ async def _shutdown_tasks(tasks: list[asyncio.Task], *, timeout: float) -> None:
             timeout,
             sorted(t.get_name() for t in pending),
         )
+
+
+async def _sync_human_after_update_commit() -> None:
+    """Publish HUMAN.md only if this candidate Runtime survives update commit."""
+    from .model.human import HumanMarkdownDeferred, sync_live_human_markdown
+
+    while True:
+        while os.path.lexists(paths.update_state_file()):
+            await asyncio.sleep(_HUMAN_UPDATE_POLL_SECONDS)
+        try:
+            await asyncio.to_thread(sync_live_human_markdown)
+        except HumanMarkdownDeferred:
+            # A new receipt appeared between the path check and publication.
+            await asyncio.sleep(_HUMAN_UPDATE_POLL_SECONDS)
+            continue
+        except Exception:  # noqa: BLE001 - a derived Markdown view never blocks Runtime
+            logger.exception("HUMAN.md post-update projection failed")
+        return
 
 
 async def _mcp_loop(cfg: Config) -> None:
@@ -331,6 +350,29 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
 
     fts_hybrid.wire_read_path(cfg)
 
+    # Upgrade backfill: released models already have a valid Root/snapshot but
+    # predate the owner-local HUMAN.md projection. A candidate Runtime must not
+    # publish raw data until the old updater commits; rollback kills that
+    # candidate before it clears the durable update receipt.
+    from .model.human import HumanMarkdownDeferred, sync_live_human_markdown
+
+    deferred_human_task: asyncio.Task[None] | None = None
+    if os.path.lexists(paths.update_state_file()):
+        deferred_human_task = asyncio.create_task(
+            _sync_human_after_update_commit(),
+            name="human-post-update",
+        )
+    else:
+        try:
+            await asyncio.to_thread(sync_live_human_markdown)
+        except HumanMarkdownDeferred:
+            deferred_human_task = asyncio.create_task(
+                _sync_human_after_update_commit(),
+                name="human-post-update",
+            )
+        except Exception:  # noqa: BLE001 - a derived Markdown view never blocks Runtime startup
+            logger.exception("HUMAN.md startup projection failed")
+
     # A process crash cannot run SessionManager.force_end. Close any rows owned
     # by the previous daemon before capture can create a new active session; the
     # reducer-retry task below immediately catches them up through modeling.
@@ -442,7 +484,10 @@ async def _run(cfg: Config, *, capture_only: bool = False, hard_exit: bool = Fal
 
     # Soft path (tests / embedded callers drive `_run` directly and expect it to
     # return): full graceful drain, no hard-exit.
-    await _shutdown_tasks(tasks, timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+    shutdown_tasks = [*tasks]
+    if deferred_human_task is not None:
+        shutdown_tasks.append(deferred_human_task)
+    await _shutdown_tasks(shutdown_tasks, timeout=_SHUTDOWN_TIMEOUT_SECONDS)
 
     # Flush the currently open session so its S2 reducer has a chance
     # to run. The daemon-thread reducer spawned by the callback will be

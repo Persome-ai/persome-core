@@ -73,6 +73,7 @@ and old helper path.
 | `backup/` | SQLite safety snapshots containing personal model state |
 | `logs/` | daemon and launchd logs; may contain operational context |
 | `model-build.json` | latest build manifest and degraded-stage report |
+| `HUMAN.md` | raw deterministic reading view of the current model; owner-only mode `0600` |
 | `.integrity-recovery.pending.json` | crash-resumable full-database quarantine/replay journal |
 | `.integrity-config-recovery.pending.json` | config-quarantine intent retained until database authority is reconciled |
 | `.pid`, `.runtime-state.json` | compatibility PID plus owner-only generation, phase, permission, OCR-worker, and capture/privacy receipt |
@@ -87,6 +88,12 @@ Treat the whole root as sensitive. Backups and exports are copies of personal
 data, not harmless metadata. Persome enforces `0700` on the root/data
 directories and `0600` on sensitive files, repairs legacy modes once after an
 upgrade, and gives its LaunchAgent umask `0077`.
+
+`HUMAN.md` is regenerated from the model without capture or an LLM call. A
+valid pre-existing Root is backfilled during daemon startup or onboarding; no
+Root produces an honest forming placeholder. Refreshes overwrite only the
+Persome-managed projection marker. An unknown file at that path is left in
+place and reported rather than adopted or overwritten.
 
 ## Startup recovery
 
@@ -194,6 +201,11 @@ Invoking `bash install.sh` from a checkout when Persome is already installed
 delegates to `persome update --source <checkout>` so manual reinstalls receive
 the same stop, rollback, and post-install proof guarantees.
 
+The updated Runtime reconciles `HUMAN.md` from the current valid Root during
+startup/onboarding, so `persome update` backfills existing users without new
+capture or model calls. Package-manager users receive the same reconciliation
+after `uv tool upgrade personal-model` followed by `persome onboard`.
+
 `persome update --source /path/to/checkout` is the explicit developer/offline
 path. The supplied tree must have the complete Persome source layout; the
 updater never pulls or rewrites it.
@@ -242,7 +254,9 @@ persome model open
 ```
 
 The viewer and `GET /model/graph` are raw owner-local inspection surfaces.
-Model export and MCP snapshot export redact by default.
+`HUMAN.md` is another raw owner-local inspection surface. Model export and MCP
+snapshot export redact by default, and their versioned JSON remains the machine
+authority.
 
 ## Correct and revoke
 
@@ -275,7 +289,7 @@ Stop the daemon first so no writer can race the deletion.
 persome stop
 
 # Delete every file under memory/, FTS entries, canonical evomem, relations,
-# Faces, Volumes, Root, exports, projections, backups, and recovery markers.
+# Faces, Volumes, Root, HUMAN.md, exports, projections, backups, and recovery markers.
 # Captures/timeline remain.
 persome clean memory
 
@@ -284,6 +298,10 @@ persome clean memory
 # Keep config, env, and the installed venv.
 persome clean all
 ```
+
+Both `clean memory` and `clean all` remove the root-level `HUMAN.md` path as
+part of an explicit erasure, even when refresh previously preserved it as an
+unrecognized user-authored file.
 
 Clean commands refuse to run while the daemon PID is live, even with `--yes`,
 so a writer cannot retain an open SQLite handle or recreate data mid-erasure.

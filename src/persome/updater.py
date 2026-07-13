@@ -10,7 +10,6 @@ stay identical to a manual update.
 from __future__ import annotations
 
 import contextlib
-import ctypes
 import fcntl
 import importlib.metadata
 import json
@@ -149,7 +148,7 @@ def _update_replacement_dir() -> Path:
 
 
 def _update_state_file() -> Path:
-    return paths.root() / ".update-state.json"
+    return paths.update_state_file()
 
 
 def _venv_dir() -> Path:
@@ -731,42 +730,12 @@ def transaction_prepared() -> bool:
 def _atomic_exchange(first: Path, second: Path) -> None:
     """Exchange two same-filesystem directories in one kernel operation."""
 
-    if first.parent != second.parent:
-        raise UpdateError("update directories must share one parent for atomic exchange")
-    encoded_first = os.fsencode(first)
-    encoded_second = os.fsencode(second)
-    library = ctypes.CDLL(None, use_errno=True)
-    result: int
-    if sys.platform == "darwin":
-        rename = library.renameatx_np
-        rename.argtypes = [
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_uint,
-        ]
-        rename.restype = ctypes.c_int
-        result = rename(-2, encoded_first, -2, encoded_second, 0x00000002)
-    elif sys.platform.startswith("linux"):
-        rename = library.renameat2
-        rename.argtypes = [
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_uint,
-        ]
-        rename.restype = ctypes.c_int
-        result = rename(-100, encoded_first, -100, encoded_second, 0x00000002)
-    else:  # pragma: no cover - Persome is macOS-only; Linux supports CI.
-        raise UpdateError(f"atomic virtualenv exchange is unavailable on {sys.platform}")
-    if result != 0:
-        error_number = ctypes.get_errno()
+    try:
+        paths.atomic_exchange(first, second)
+    except (OSError, ValueError) as exc:
         raise UpdateError(
-            "could not atomically exchange the active and candidate Runtime: "
-            f"{os.strerror(error_number)}"
-        )
+            f"could not atomically exchange the active and candidate Runtime: {exc}"
+        ) from exc
     _fsync_root()
 
 

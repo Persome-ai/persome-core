@@ -64,6 +64,7 @@ def test_model_build_loads_runtime_env_before_llm_work(
                 "roots": 1,
             },
             manifest_path=paths.model_build_manifest(),
+            human_path=None,
         )
 
     monkeypatch.setattr(model_mod, "run_model_build", fake_build)
@@ -74,6 +75,7 @@ def test_model_build_loads_runtime_env_before_llm_work(
     assert seen == [expected]
     assert "cross-domain: probed=8 deferred=3 limit=8" in result.output
     assert "Deferred pairs stay queued" in result.output
+    assert "HUMAN.md:" not in result.output
 
 
 def test_model_build_cli_reports_integrity_recovery_block(

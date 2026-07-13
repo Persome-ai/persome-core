@@ -15,7 +15,7 @@ from persome import integrity, paths
 from persome.evomem import backup
 from persome.evomem.models import MemoryLayer, MemoryNode
 from persome.evomem.store import NodeStore
-from persome.model import create_build_manifest, load_live_manifest
+from persome.model import create_build_manifest, load_live_manifest, sync_live_human_markdown
 from persome.store import entries, fts, relation_edges, schema_faces
 from persome.store import files as files_mod
 
@@ -115,12 +115,15 @@ def test_corrupt_db_replays_memory_and_invalidates_stale_model_build(ac_root: Pa
         paths.model_build_manifest(),
         json.dumps({"status": "complete", "build_id": "stale-build"}),
     )
+    sync_live_human_markdown()
+    assert paths.human_file().exists()
     paths.index_db().write_bytes(b"not-a-sqlite-database" * 100)
 
     recovered = integrity.check_and_recover()
 
     assert [item.kind for item in recovered] == ["database"]
     assert not paths.model_build_manifest().exists()
+    assert not paths.human_file().exists()
     with fts.cursor() as conn:
         row = conn.execute(
             "SELECT content FROM entries WHERE id=?",
@@ -640,11 +643,14 @@ def test_unknown_authority_invalidates_completed_model_manifest(ac_root: Path) -
         completed_at="2026-07-12T09:01:00+08:00",
     )
     paths.atomic_write_private_text(paths.model_build_manifest(), json.dumps(manifest))
+    unknown_human = "# My hand-authored HUMAN.md\n\nDo not replace this file.\n"
+    paths.atomic_write_private_text(paths.human_file(), unknown_human)
     paths.config_file().write_text("[[[ corrupt config", encoding="utf-8")
 
     integrity.check_and_recover()
 
     assert not paths.model_build_manifest().exists()
+    assert paths.human_file().read_text(encoding="utf-8") == unknown_human
     assert load_live_manifest()["status"] == "not_built"
     database = json.loads(paths.integrity_recovery_marker().read_text())["database_recovery"]
     assert database["status"] == "partial"

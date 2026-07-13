@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -622,10 +623,14 @@ def test_success_is_printed_and_uses_a_nonblocking_notification(
     assert calls == [(onboarding._NOTIFICATION_SCRIPT, {"timeout": 5})]
 
 
-def test_cli_onboard_reports_each_completed_gate(
+def test_cli_onboard_reports_each_completed_gate_and_syncs_human(
     ac_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from persome.model import human as human_mod
+
     capture_path = ac_root / "capture-buffer" / "fresh.json"
+    sync_human = MagicMock(return_value=paths.human_file())
+    monkeypatch.setattr(human_mod, "sync_live_human_markdown", sync_human)
     monkeypatch.setattr(
         onboarding,
         "onboard",
@@ -642,6 +647,7 @@ def test_cli_onboard_reports_each_completed_gate(
     result = CliRunner().invoke(app, ["onboard"])
 
     assert result.exit_code == 0, result.output
+    sync_human.assert_called_once_with()
     assert "Accessibility granted" in result.output
     assert "Screen Recording granted" in result.output
     assert "Isolated local OCR worker ready" in result.output
