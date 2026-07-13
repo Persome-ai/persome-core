@@ -37,6 +37,7 @@ uv run ruff format --check .
 uv run python scripts/secret_scan.py
 uv run python scripts/pii_scan.py
 uv run python scripts/language_scan.py
+uv run python scripts/generate_code_atlas.py --check
 
 persome doctor
 persome llm setup
@@ -94,6 +95,7 @@ cross-process idempotent. Do not add another session-modeling entrance.
 |---|---|
 | Installation and release verification | `README.md`, `VALIDATION.md` |
 | Public Runtime flow | `ARCHITECTURE.md` |
+| First-principles code/Dataflow atlas | `docs/code-atlas/README.md`, `docs/code-atlas/viewer.html` |
 | Snapshot contract | `MODEL_FORMAT.md`, `docs/model-contract.md` |
 | Public MCP contract | `MCP.md`, `docs/mcp.md` |
 | Capture through model build | `docs/architecture.md`, `docs/capture.md`, `docs/timeline.md`, `docs/session.md`, `docs/writer.md` |

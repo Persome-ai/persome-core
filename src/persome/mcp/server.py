@@ -4,11 +4,13 @@ Uses the official `mcp` Python SDK via FastMCP. Runs either standalone
 over stdio (`persome mcp`) or in-daemon over streamable-http / sse,
 depending on `[mcp] transport`. Exposes:
 
-  Compressed memory (Markdown layer):
+  Memory and model reads:
     list_memories, read_memory, search, verify_fact, behavior_patterns,
     get_model_snapshot, entity_graph, read_receipt, recent_activity
   Raw captures (S1 buffer):
-    current_context, search_captures, read_recent_capture
+    current_context, search_captures, read_recent_capture, attention_trajectory
+  Explicit audited writes:
+    remember, correct_memory
   Reference:
     get_schema
 """

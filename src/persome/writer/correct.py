@@ -11,8 +11,9 @@ add ∧ retract).
 
 Backprop framing: the error shows up at the OUTPUT (recall/apex said X, user says X is wrong);
 retrieval traces it back to the SOURCE facts (credit assignment); we supersede the source
-(update the weight), NOT the apex (the activation). Forward re-derivation (Face to Volume to Root) then
-propagates the fix. supersede-not-delete = a negative signal (shift recall away), receipts survive.
+(update the weight), NOT the apex (the activation). Targeted Face re-mining and Root
+re-synthesis are attempted immediately; Volumes wait for the normal structural build.
+supersede-not-delete = a negative signal (shift recall away), receipts survive.
 
 The update is logged as a feedback signal — a user's "this is wrong" is the most valuable label.
 """
@@ -189,11 +190,13 @@ def _apply_entity_op(
 
 
 def _reforward(cfg: Any, conn: sqlite3.Connection, files: set[str]) -> list[str]:
-    """Re-run the FORWARD pass on the affected path after a weight (fact) update — the closed
-    loop: update the weight → re-run forward so the change propagates to the resident apex NOW,
-    not on the next daily tick. For each file whose facts changed, re-derive its schema (targeted
-    re-mine, reading the CORRECTED ``entries`` projection so it sees the supersede), then
-    re-synthesize the level-3 root apex (top of the forward pass). Fail-open."""
+    """Re-run the available targeted FORWARD pass after a fact update.
+
+    For each changed file, re-mine its Face from the corrected ``entries``
+    projection, then re-synthesize the Root. This function deliberately does
+    not run the cross-domain sweeper, so any affected Volume is refreshed by
+    the next normal structural build. Fail-open.
+    """
     done: list[str] = []
     try:
         from ..writer import root_synthesis
@@ -228,7 +231,9 @@ def update_memory(
     implies (which beliefs to supersede/replace at the source, or an entity-level op) → applied
     through the SAME executor as observation (``delta_apply``, ⊖ supersede leg). ``source`` marks
     the update's authority (user = supervised label). Injectable ``llm_call`` for tests; ``dry_run``
-    previews. Never raises. Downstream Face, Volume, and Root structures re-derive from the updated truth."""
+    previews. Never raises. With ``reforward`` enabled, affected Face re-mining
+    and Root re-synthesis are attempted immediately; Volumes re-derive on the
+    next structural build."""
     signal = (signal or "").strip()
     if not signal:
         return UpdateResult("noop", reason="empty", ok=False)
@@ -275,8 +280,8 @@ def update_memory(
             applied += _apply_entity_op(entity_op, cfg, conn, signal=signal, source=source)
             kind = "entity_update" if not supersede else "update"
 
-        # Closed loop: weight update (backward) → re-run the forward pass on the affected path so
-        # the correction reaches the resident apex immediately (not on the next daily tick).
+        # Closed loop: update the source fact, then refresh its Face and the
+        # resident Root. Cross-domain Volumes remain the next structural build's job.
         if reforward and touched_files and any("superseded" in a for a in applied):
             applied += _reforward(cfg, conn, touched_files)
 

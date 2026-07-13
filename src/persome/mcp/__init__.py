@@ -1,1 +1,1 @@
-"""MCP server — read-only tools exposing the memory library."""
+"""MCP package for model/memory reads, capture context, and explicit audited writes."""

@@ -16,7 +16,8 @@ flowchart LR
     S1 --> CAP[("capture buffer and captures FTS")]
     CAP --> TL["one-minute timeline normalizer"]
     TL --> BL[("timeline_blocks")]
-    BL --> SES["three-rule session cutter"]
+    CAP -->|new event-triggered capture| SES["three-rule session cutter"]
+    BL --> RED
     SES --> RED["five-minute active reducer"]
     RED --> EVT[("event daily memory")]
     RED --> ACTIVE["active-window modeling"]
@@ -29,10 +30,10 @@ flowchart LR
     FIN --> PAT["repeated behavior memory"]
     APPLY --> EVO[("evomem, Markdown, FTS")]
     PAT --> EVO
-    EVO --> BUILD["case, schema, cross-domain, Root, layout"]
+    EVO --> BUILD["case, schema, cross-domain, Root, vectors"]
     BUILD --> SNAP["versioned personal model"]
     SNAP --> MCP["MCP"]
-    SNAP --> VIEW["localhost /model"]
+    SNAP --> VIEW["localhost /model; browser computes layout"]
 ```
 
 ### State formation
@@ -45,11 +46,15 @@ flowchart LR
 2. `capture/scheduler.py` builds an S1 record. AX is primary in daemon mode. When explicitly
    enabled and AX text is poor, a focused screenshot is sent to an isolated
    local OCR subprocess; its text is backfilled into `captures` FTS.
-3. `timeline/aggregator.py` consults both the capture JSON and OCR backfill,
-   removes UI repetition, preserves authored evidence, and writes wall-clock
-   aligned one-minute blocks.
-4. `session/manager.py` cuts work using idle-gap, single-app soft-cut, and
-   maximum-duration rules.
+3. `timeline/aggregator.py` independently consults both the capture JSON and OCR
+   backfill, removes UI repetition, preserves authored evidence, and writes
+   wall-clock aligned one-minute blocks.
+4. In parallel with timeline aggregation, `session/manager.py` receives a hook
+   only after a new event-triggered capture is committed, then cuts work using
+   idle-gap, single-app soft-cut, and maximum-duration rules. Heartbeat captures
+   use `trigger=None`: they may be persisted for timeline context, but do not
+   call `SessionManager.on_event` and therefore do not extend a session. A
+   content-deduplicated capture also fires no session hook.
 5. `writer/session_reducer.py` flushes active sessions every five minutes;
    `writer.agent.model_active_session` turns each new window into Points/Lines.
    Session end writes and models only the trailing range.
@@ -106,10 +111,13 @@ The finalizer runs:
 5. deterministic apply into current/historical Points and relation Lines.
 
 Each memory-delta window is persisted before apply. `apply_status` allows a
-crashed apply to resume without another LLM call or duplicate relation
-reinforcement. `delta_end` advances after successful active apply; the session
-receives `modeled_at` only after all terminal stages finish. A kernel
-`session-model.lock` coordinates daemon, retry, CLI, and model-build callers.
+crashed apply to resume without another LLM call. `delta_end` advances after the
+caller reports a successful active apply; the session receives `modeled_at`
+only after all terminal stages finish. A kernel `session-model.lock`
+coordinates daemon, retry, CLI, and model-build callers. Apply is currently a
+sequence of independently committing operations: per-item errors may be
+collected instead of raised, and an additive edge update can repeat after a
+mid-apply crash. The code-fact atlas records this boundary explicitly.
 
 ### Higher geometry
 
@@ -123,8 +131,11 @@ coordinator:
 4. mine stable per-domain Faces;
 5. synthesize repeated cross-domain Volumes;
 6. synthesize at most one Root;
-7. backfill vectors when an embeddings endpoint is configured;
-8. generate semantic coordinates for `/model`.
+7. backfill vectors when an embeddings endpoint is configured.
+
+The coordinator does not generate viewer coordinates. `/model` receives the
+versioned snapshot, and the packaged browser-side
+`resources/model_assets/layout.mjs` computes its deterministic 3D layout.
 
 Each stage records complete, skipped, or failed. Missing geometry or a failed
 enabled substage makes the build `degraded`. The build never fabricates an
@@ -149,8 +160,11 @@ The registry in `src/persome/daemon.py` is the authoritative task list.
 | `mcp` | Hosts streamable HTTP MCP, REST routes, and `/model`; restarts with backoff after a crash. |
 
 `--capture-only` keeps `capture`, `session`, `reducer-retry`, the daily safety
-net, and configured MCP. It disables timeline, flush, classifier, vectors, and
-schema/model processing. It is a diagnostic/embedding mode, not a second
+net, and configured MCP. It disables the periodic timeline, active-flush,
+classifier-tick, vector, and structural schema/model-build tasks. Session-end
+callbacks, reducer retry/boot recovery, and the daily safety net still send
+terminal reductions through the shared finalizer, so the mode is not a global
+writer/finalizer kill switch. It is a diagnostic/embedding mode, not a second
 ingestion architecture.
 
 ## Storage

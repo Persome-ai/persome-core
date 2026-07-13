@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Persome code atlas</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #f7f8fa;
+      --foreground: #17191d;
+      --surface: #ffffff;
+      --surface-alt: #eef1f5;
+      --muted: #5e6570;
+      --border: #cfd4dc;
+      --accent: #245cc7;
+      --accent-soft: #e4ecff;
+      --accent-foreground: #123368;
+      --warning: #8a4b00;
+      --warning-soft: #fff1d7;
+      --focus: #6c48c5;
+      --shadow: 0 8px 28px rgba(18, 24, 35, 0.09);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #111318;
+        --foreground: #edf0f5;
+        --surface: #191c23;
+        --surface-alt: #222631;
+        --muted: #aeb5c1;
+        --border: #3d4350;
+        --accent: #8fb2ff;
+        --accent-soft: #26395f;
+        --accent-foreground: #edf3ff;
+        --warning: #ffc06e;
+        --warning-soft: #49351e;
+        --focus: #bda6ff;
+        --shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    a { color: var(--accent); }
+    button, input, select { font: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      overflow-wrap: anywhere;
+    }
+    .shell { max-width: 1600px; margin: 0 auto; padding: 24px; }
+    .hero { margin-bottom: 20px; }
+    .hero h1 { margin: 0 0 6px; font-size: clamp(1.65rem, 3vw, 2.4rem); font-weight: 600; }
+    .hero p { margin: 0; color: var(--muted); max-width: 78ch; }
+    .metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .metric {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(150px, 1fr));
+      gap: 10px;
+      margin: 18px 0;
+    }
+    .control { display: grid; gap: 5px; }
+    .control label { color: var(--muted); font-size: 0.82rem; }
+    .control input, .control select {
+      width: 100%;
+      min-height: 40px;
+      background: var(--surface);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+    .panel-heading { padding: 14px 16px 0; }
+    .panel-heading h2 { font-size: 1.05rem; margin: 0; }
+    .panel-heading p { color: var(--muted); font-size: 0.86rem; margin: 4px 0 0; }
+    .lanes {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(128px, 1fr));
+      gap: 10px;
+      padding: 14px;
+      overflow-x: auto;
+    }
+    .lane { min-width: 128px; }
+    .lane h3 {
+      min-height: 44px;
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stage-list { display: grid; gap: 8px; }
+    .stage {
+      width: 100%;
+      min-height: 66px;
+      text-align: left;
+      background: var(--surface-alt);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px;
+      cursor: pointer;
+    }
+    .stage:hover { border-color: var(--accent); }
+    .stage[aria-pressed="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent-foreground);
+    }
+    .stage.is-neighbor { border-color: var(--accent); border-style: dashed; }
+    .stage[hidden] { display: none; }
+    .stage-name { display: block; font-size: 0.84rem; font-weight: 600; }
+    .stage-kind { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
+    .detail { padding: 16px; position: sticky; top: 12px; }
+    .detail h2 { margin: 0; font-size: 1.2rem; }
+    .detail .id { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+    .kind {
+      display: inline-block;
+      margin: 10px 0 2px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: var(--accent-soft);
+      color: var(--accent-foreground);
+      font-size: 0.78rem;
+    }
+    .detail h3 { margin: 16px 0 5px; font-size: 0.86rem; text-transform: uppercase; letter-spacing: 0.035em; color: var(--muted); }
+    .detail p { margin: 0; }
+    .detail ul { margin: 4px 0 0; padding-left: 20px; }
+    .detail li { margin: 3px 0; }
+    .failure { background: var(--warning-soft); color: var(--warning); padding: 9px 10px; border-radius: 8px; }
+    .edge-list { display: grid; gap: 6px; }
+    .edge { padding-left: 10px; border-left: 3px solid var(--border); font-size: 0.86rem; }
+    .modules { margin-top: 18px; }
+    .module-list { padding: 8px 14px 14px; }
+    .module {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.7fr) minmax(260px, 1.3fr);
+      gap: 12px;
+      padding: 10px 2px;
+      border-bottom: 1px solid var(--border);
+    }
+    .module:last-child { border-bottom: 0; }
+    .module-path { font-size: 0.83rem; }
+    .module-domain { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 3px; }
+    .module-summary { font-size: 0.88rem; }
+    .module-symbols { margin-top: 5px; color: var(--muted); font-size: 0.78rem; }
+    .empty { padding: 16px; color: var(--muted); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 1fr; }
+      .detail { position: static; }
+      .lanes { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .shell { padding: 14px; }
+      .toolbar { grid-template-columns: 1fr; }
+      .lanes { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+      .module { grid-template-columns: 1fr; gap: 5px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="atlas" class="shell">
+    <header class="hero">
+      <h1>Persome code atlas</h1>
+      <p>Move from observed screen context to evidence-backed personal geometry. Select a stage to inspect its algorithm, state boundary, source symbols, tests, and immediate dataflow neighbors.</p>
+      <div id="metrics" class="metrics" aria-label="Atlas coverage"></div>
+    </header>
+
+    <section class="toolbar" aria-label="Atlas filters">
+      <div class="control">
+        <label for="search">Search stages, modules, algorithms, or paths</label>
+        <input id="search" type="search" placeholder="e.g. delta_end, OCR, snapshot">
+      </div>
+      <div class="control">
+        <label for="lane-filter">Pipeline lane</label>
+        <select id="lane-filter"><option value="">All lanes</option></select>
+      </div>
+      <div class="control">
+        <label for="kind-filter">Evidence / transform type</label>
+        <select id="kind-filter"><option value="">All types</option></select>
+      </div>
+      <p id="filter-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+    </section>
+
+    <section class="workspace">
+      <div class="panel" aria-labelledby="flow-heading">
+        <div class="panel-heading">
+          <h2 id="flow-heading">Semantic runtime map</h2>
+          <p>Dashed outlines are immediate incoming or outgoing neighbors of the selected stage.</p>
+        </div>
+        <div id="lanes" class="lanes"></div>
+      </div>
+      <aside id="detail" class="panel detail" aria-label="Selected stage details"></aside>
+    </section>
+
+    <section class="panel modules" aria-labelledby="modules-heading">
+      <div class="panel-heading">
+        <h2 id="modules-heading">Complete Python module map</h2>
+        <p id="module-count"></p>
+      </div>
+      <div id="module-list" class="module-list"></div>
+    </section>
+  </main>
+
+  <script>
+    const data = __PERSOME_ATLAS_JSON__;
+    const root = document.getElementById("atlas");
+    const laneFilter = document.getElementById("lane-filter");
+    const kindFilter = document.getElementById("kind-filter");
+    const search = document.getElementById("search");
+    const lanesElement = document.getElementById("lanes");
+    const detailElement = document.getElementById("detail");
+    const moduleList = document.getElementById("module-list");
+    const moduleCount = document.getElementById("module-count");
+    const filterStatus = document.getElementById("filter-status");
+    const metrics = document.getElementById("metrics");
+    let selectedId = data.stages[0] ? data.stages[0].id : null;
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function sourceHref(path, line) {
+      const suffix = line ? `#L${line}` : "";
+      return `../../${encodeURI(path)}${suffix}`;
+    }
+
+    function addOptions(select, rows, valueKey, labelKey) {
+      rows.forEach((row) => {
+        const option = document.createElement("option");
+        option.value = row[valueKey];
+        option.textContent = row[labelKey];
+        select.appendChild(option);
+      });
+    }
+
+    const kinds = [...new Set(data.stages.map((stage) => stage.kind))].sort();
+    addOptions(laneFilter, [...data.lanes].sort((a, b) => a.order - b.order), "id", "label");
+    kinds.forEach((kind) => {
+      const option = document.createElement("option");
+      option.value = kind;
+      option.textContent = kind;
+      kindFilter.appendChild(option);
+    });
+
+    metrics.innerHTML = [
+      `${data.stages.length} semantic stages`,
+      `${data.edges.length} validated edges`,
+      `${data.modules.length} Python modules`,
+      `${data.domains.length} code domains`
+    ].map((value) => `<span class="metric">${escapeHtml(value)}</span>`).join("");
+
+    function normalizedSearch() {
+      return search.value.trim().toLocaleLowerCase();
+    }
+
+    function stageText(stage) {
+      return [
+        stage.id, stage.label, stage.kind, stage.summary, stage.algorithm, stage.trigger,
+        stage.state, stage.failure, ...stage.inputs, ...stage.outputs, ...stage.files,
+        ...stage.symbols, ...stage.tests
+      ].join(" ").toLocaleLowerCase();
+    }
+
+    function stageVisible(stage) {
+      const q = normalizedSearch();
+      return (!laneFilter.value || stage.lane === laneFilter.value)
+        && (!kindFilter.value || stage.kind === kindFilter.value)
+        && (!q || stageText(stage).includes(q));
+    }
+
+    function neighbors(id) {
+      const values = new Set();
+      data.edges.forEach((edge) => {
+        if (edge.from === id) values.add(edge.to);
+        if (edge.to === id) values.add(edge.from);
+      });
+      return values;
+    }
+
+    function renderLanes(visibleStageIds) {
+      const adjacent = neighbors(selectedId);
+      lanesElement.innerHTML = [...data.lanes]
+        .sort((a, b) => a.order - b.order)
+        .map((lane) => {
+          const stages = data.stages
+            .filter((stage) => stage.lane === lane.id)
+            .sort((a, b) => a.order - b.order);
+          return `<section class="lane" aria-labelledby="lane-${escapeHtml(lane.id)}">
+            <h3 id="lane-${escapeHtml(lane.id)}">${escapeHtml(lane.label)}</h3>
+            <div class="stage-list">${stages.map((stage) => {
+              const classes = ["stage"];
+              if (adjacent.has(stage.id)) classes.push("is-neighbor");
+              return `<button type="button" class="${classes.join(" ")}" data-stage="${escapeHtml(stage.id)}"
+                aria-pressed="${stage.id === selectedId ? "true" : "false"}"
+                ${visibleStageIds.has(stage.id) ? "" : "hidden"}>
+                <span class="stage-name">${escapeHtml(stage.label)}</span>
+                <span class="stage-kind">${escapeHtml(stage.kind)}</span>
+              </button>`;
+            }).join("")}</div>
+          </section>`;
+        }).join("");
+    }
+
+    function listHtml(values) {
+      return `<ul>${values.map((value) => `<li>${escapeHtml(value)}</li>`).join("")}</ul>`;
+    }
+
+    function linkList(paths) {
+      return `<ul>${paths.map((path) => `<li><a href="${sourceHref(path)}"><code>${escapeHtml(path)}</code></a></li>`).join("")}</ul>`;
+    }
+
+    function symbolList(stage) {
+      const resolved = new Map(
+        (stage.symbol_definitions || []).map((definition) => [definition.name, definition.locations])
+      );
+      return `<ul>${stage.symbols.map((symbol) => {
+        const locations = resolved.get(symbol) || [];
+        if (!locations.length) return `<li><code>${escapeHtml(symbol)}</code></li>`;
+        return `<li>${locations.map((location) =>
+          `<a href="${sourceHref(location.path, location.line)}"><code>${escapeHtml(symbol)}</code></a>`
+          + ` <span class="stage-kind">${escapeHtml(location.path)}:${location.line}</span>`
+        ).join("")}</li>`;
+      }).join("")}</ul>`;
+    }
+
+    function renderDetail() {
+      const stage = data.stages.find((candidate) => candidate.id === selectedId);
+      if (!stage) {
+        detailElement.innerHTML = '<p class="empty">No stage selected.</p>';
+        return;
+      }
+      const edgeRows = data.edges.filter((edge) => edge.from === stage.id || edge.to === stage.id);
+      detailElement.innerHTML = `
+        <h2>${escapeHtml(stage.label)}</h2>
+        <div class="id"><code>${escapeHtml(stage.id)}</code></div>
+        <span class="kind">${escapeHtml(stage.kind)}</span>
+        <h3>Purpose</h3><p>${escapeHtml(stage.summary)}</p>
+        <h3>Trigger</h3><p>${escapeHtml(stage.trigger)}</p>
+        <h3>Input</h3>${listHtml(stage.inputs)}
+        <h3>Output</h3>${listHtml(stage.outputs)}
+        <h3>Core algorithm</h3><p>${escapeHtml(stage.algorithm)}</p>
+        <h3>State / idempotency</h3><p>${escapeHtml(stage.state)}</p>
+        <h3>Failure semantics</h3><p class="failure">${escapeHtml(stage.failure)}</p>
+        <h3>Source files</h3>${linkList(stage.files)}
+        <h3>Key symbols</h3>${symbolList(stage)}
+        <h3>Test evidence</h3>${linkList(stage.tests)}
+        <h3>Immediate edges</h3>
+        <div class="edge-list">${edgeRows.map((edge) => {
+          const direction = edge.from === stage.id ? `→ ${edge.to}` : `${edge.from} →`;
+          return `<div class="edge"><code>${escapeHtml(direction)}</code><br>${escapeHtml(edge.payload)}<br><span class="stage-kind">${escapeHtml(edge.condition)}</span></div>`;
+        }).join("") || '<span class="stage-kind">No registered edge.</span>'}</div>`;
+    }
+
+    function moduleText(module) {
+      return [
+        module.path, module.module, module.domain, module.domain_label, module.status,
+        module.status_label, module.summary,
+        ...module.symbols.map((symbol) => symbol.name), ...module.imports, ...module.tests,
+        ...module.stages
+      ].join(" ").toLocaleLowerCase();
+    }
+
+    function renderModules() {
+      const q = normalizedSearch();
+      const lane = laneFilter.value;
+      const stageIdsInLane = new Set(data.stages.filter((stage) => !lane || stage.lane === lane).map((stage) => stage.id));
+      const kindStageIds = new Set(data.stages.filter((stage) => !kindFilter.value || stage.kind === kindFilter.value).map((stage) => stage.id));
+      const filtered = data.modules.filter((module) => {
+        const matchesSearch = !q || moduleText(module).includes(q);
+        const matchesLane = !lane || module.stages.some((stage) => stageIdsInLane.has(stage));
+        const matchesKind = !kindFilter.value || module.stages.some((stage) => kindStageIds.has(stage));
+        return matchesSearch && matchesLane && matchesKind;
+      });
+      moduleCount.textContent = `${filtered.length} of ${data.modules.length} modules match the current filters.`;
+      if (!filtered.length) {
+        moduleList.innerHTML = '<p class="empty">No modules match. Clear or broaden the filters.</p>';
+        return 0;
+      }
+      moduleList.innerHTML = filtered.map((module) => {
+        const symbols = module.symbols.slice(0, 5).map((symbol) =>
+          `<a href="${sourceHref(module.path, symbol.line)}"><code>${escapeHtml(symbol.name)}</code></a>`
+        ).join(" · ") || "package marker";
+        return `<article class="module">
+          <div class="module-path">
+            <a href="${sourceHref(module.path)}"><code>${escapeHtml(module.path)}</code></a>
+            <span class="module-domain">${escapeHtml(module.domain_label)} · ${escapeHtml(module.status_label)}</span>
+          </div>
+          <div class="module-summary">${escapeHtml(module.summary)}
+            <div class="module-symbols">${symbols}</div>
+          </div>
+        </article>`;
+      }).join("");
+      return filtered.length;
+    }
+
+    function renderAll() {
+      const visibleStages = data.stages.filter(stageVisible);
+      if (!visibleStages.some((stage) => stage.id === selectedId)) {
+        selectedId = visibleStages[0] ? visibleStages[0].id : null;
+      }
+      renderLanes(new Set(visibleStages.map((stage) => stage.id)));
+      renderDetail();
+      const visibleModuleCount = renderModules();
+      filterStatus.textContent = `${visibleStages.length} of ${data.stages.length} stages and `
+        + `${visibleModuleCount} of ${data.modules.length} modules match the current filters.`;
+    }
+
+    root.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-stage]");
+      if (!button) return;
+      selectedId = button.dataset.stage;
+      renderAll();
+    });
+    [search, laneFilter, kindFilter].forEach((control) => control.addEventListener("input", renderAll));
+    renderAll();
+  </script>
+</body>
+</html>

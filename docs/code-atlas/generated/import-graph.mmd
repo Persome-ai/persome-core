@@ -1,0 +1,52 @@
+%% Generated package-domain import graph. Edge labels are distinct module-import pairs.
+flowchart LR
+    runtime_control["Runtime and lifecycle"]
+    configuration["Configuration and observability"]
+    observation["Capture, parsers, and privacy"]
+    state_formation["Timeline and session state"]
+    semantic_writing["Reducers and model writers"]
+    storage_evolution["Storage and evolution graph"]
+    model_projection["Model build and snapshot"]
+    local_access["Retrieval, API, MCP, and security"]
+    configuration -->|"3"| runtime_control
+    local_access -->|"15"| configuration
+    local_access -->|"2"| model_projection
+    local_access -->|"10"| observation
+    local_access -->|"6"| runtime_control
+    local_access -->|"4"| semantic_writing
+    local_access -->|"2"| state_formation
+    local_access -->|"24"| storage_evolution
+    model_projection -->|"3"| configuration
+    model_projection -->|"3"| observation
+    model_projection -->|"2"| runtime_control
+    model_projection -->|"9"| semantic_writing
+    model_projection -->|"3"| state_formation
+    model_projection -->|"15"| storage_evolution
+    observation -->|"19"| configuration
+    observation -->|"2"| runtime_control
+    observation -->|"2"| storage_evolution
+    runtime_control -->|"23"| configuration
+    runtime_control -->|"7"| local_access
+    runtime_control -->|"2"| model_projection
+    runtime_control -->|"26"| observation
+    runtime_control -->|"8"| semantic_writing
+    runtime_control -->|"7"| state_formation
+    runtime_control -->|"33"| storage_evolution
+    semantic_writing -->|"35"| configuration
+    semantic_writing -->|"2"| local_access
+    semantic_writing -->|"2"| observation
+    semantic_writing -->|"7"| runtime_control
+    semantic_writing -->|"17"| state_formation
+    semantic_writing -->|"80"| storage_evolution
+    state_formation -->|"8"| configuration
+    state_formation -->|"3"| model_projection
+    state_formation -->|"10"| observation
+    state_formation -->|"2"| runtime_control
+    state_formation -->|"11"| semantic_writing
+    state_formation -->|"18"| storage_evolution
+    storage_evolution -->|"31"| configuration
+    storage_evolution -->|"2"| model_projection
+    storage_evolution -->|"1"| observation
+    storage_evolution -->|"9"| runtime_control
+    storage_evolution -->|"4"| semantic_writing
+    storage_evolution -->|"6"| state_formation

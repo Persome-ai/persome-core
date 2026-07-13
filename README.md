@@ -380,12 +380,16 @@ local, cross-app, auditable model that multiple agents can query.
 ```mermaid
 flowchart LR
   AX[macOS AX watcher] --> S0[S0 debounce]
-  OCR[Optional local OCR] --> S1[S1 normalized capture]
+  ING[Trusted ingest] --> S1[S1 normalized capture]
   S0 --> S1
-  S1 --> BUF[Capture buffer]
+  S1 --> BUF[Capture JSON and search index]
+  S1 -->|AX-poor observation| OCR[Optional local OCR]
+  OCR -.->|asynchronous text backfill| BUF
   BUF --> TL[1-minute timeline]
-  TL --> SES[Deterministic sessions]
-  SES --> DELTA[5-minute memory delta]
+  BUF -->|post-commit activity trigger| SES[Deterministic sessions]
+  TL --> RED[Windowed reducer]
+  SES -.->|flush or end range| RED
+  RED --> DELTA[5-minute memory delta]
   DELTA --> PL[Points and Lines]
   PL --> FV[Faces and Volumes]
   FV --> ROOT[Root]
@@ -399,7 +403,8 @@ Every modeled object keeps source receipts and bitemporal history. A sparse
 store can truthfully contain Points and Lines without a Face, Volume, or Root.
 The viewer shows that incomplete state rather than fabricating one.
 
-Read [Runtime architecture](ARCHITECTURE.md), the
+Read the [code-fact atlas](docs/code-atlas/README.md),
+[Runtime architecture](ARCHITECTURE.md), the
 [model contract](MODEL_FORMAT.md), and the detailed
 [maintainer architecture](docs/architecture.md).
 

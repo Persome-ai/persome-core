@@ -12,8 +12,9 @@ persome start
 # http://127.0.0.1:8742/mcp
 ```
 
-HTTP requires the owner bearer token stored in `<PERSOME_ROOT>/env`. Prefer
-the stdio installer commands below; they do not duplicate the credential.
+HTTP requires the owner bearer token stored in `<PERSOME_ROOT>/env`, except for
+the two exact browser-safe GETs described under Security boundary. Prefer the
+stdio installer commands below; they do not duplicate the credential.
 
 Stdio runs one server process for the client:
 
@@ -97,8 +98,13 @@ use streamable HTTP or stdio.
 
 - The HTTP server accepts loopback bind addresses only; browser Host/Origin
   guards also reject non-loopback access.
-- HTTP MCP requires the dedicated `PERSOME_LOCAL_API_TOKEN` bearer. Canonical
-  `GET /health` is the only unauthenticated liveness route.
+- HTTP MCP and REST require the dedicated `PERSOME_LOCAL_API_TOKEN` bearer.
+  Exactly two canonical GET routes bypass the bearer middleware:
+  `GET /health`, and `GET /auth/browser-bootstrap?nonce=...`. The latter is not
+  an open data route: it consumes a 60-second, single-use nonce issued only by
+  the bearer-authenticated `POST /auth/browser-bootstrap`, sets a model-only
+  cookie, and redirects to an unguessable viewer path. Method, slash, or encoded
+  path variants are not exempt.
 - `persome install claude-code`, `codex`, `claude-desktop`, and `opencode`
   register owner-local stdio subprocesses by default.
 - MCP results contain personal data and must be treated as untrusted content by
@@ -108,8 +114,9 @@ use streamable HTTP or stdio.
 - `remember` and `correct_memory` are deliberate writes with audit history.
 
 The daemon HTTP endpoint also serves `/model`. Open the
-viewer with `persome model open`; it uses a short-lived, one-time browser
-capability rather than placing the long-lived token in a URL.
+viewer with `persome model open`; it uses the authenticated POST to mint the
+short-lived, one-time browser capability, then opens the nonce-protected GET
+without placing the long-lived token in a URL.
 
 See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) for the full data and egress
 model. The implementation-oriented reference remains

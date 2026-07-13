@@ -23,6 +23,7 @@ this directory explains operation and implementation details.
 | Document | Purpose |
 |---|---|
 | [`architecture.md`](architecture.md) | Detailed pipeline, task registry, storage, and code map. |
+| [`code-atlas/README.md`](code-atlas/README.md) | First-principles Runtime ontology, source-linked Dataflow, complete module/file inventory, and interactive explorer. |
 | [`capture.md`](capture.md) | AX/OCR ingestion and attention extraction. |
 | [`timeline.md`](timeline.md) | Minute-window aggregation and evidence preservation. |
 | [`session.md`](session.md) | Session cuts, active flush, retry, and trailing finalization. |

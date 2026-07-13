@@ -99,7 +99,10 @@ persome timeline tick         # synchronous: build all closed windows now
 persome timeline list -n 24   # last 24 blocks, oldest → newest
 ```
 
-Production is idempotent — manual ticks are always safe.
+Stored windows are idempotent: a unique `(start_time,end_time)` key and
+`INSERT OR IGNORE` keep one row, so sequential manual ticks are safe. This is
+not an execution-cost guarantee; concurrent producers can both perform the
+normalizer/LLM call before only one insert wins.
 
 ## Interaction with the S2 reducer
 

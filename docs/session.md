@@ -7,14 +7,16 @@ session alive.
 
 ## Boundary rules
 
-`session/manager.py` applies three deterministic rules on every written capture
-and every `session.tick_seconds` check:
+`session/manager.py` applies three deterministic rules after every successfully
+committed, non-duplicate capture whose original trigger is non-null, and on
+every `session.tick_seconds` check:
 
 1. **Idle gap:** no meaningful capture for `gap_minutes` (default 5) closes at
    the last event time.
-2. **Single-app soft cut:** one unrelated app holds focus for
+2. **Single-app soft cut:** a different bundle ID remains current for
    `soft_cut_minutes` (default 3), unless at least two apps appeared in the
-   preceding two minutes.
+   preceding two minutes. This is app-switch timing, not a semantic
+   relatedness classifier.
 3. **Maximum duration:** `max_session_hours` (default 2) force-cuts a runaway
    session.
 
@@ -31,7 +33,7 @@ stateDiagram-v2
     active --> active: flush event memory + model Point/Line window
     active --> ended: cut or force-end
     ended --> failed: terminal reducer failed
-    failed --> failed: persisted 5/15/30/60/120 minute retry
+    failed --> failed: persisted 5/15/30/60 minute retry
     ended --> reduced: terminal reduce/no-new-block
     failed --> reduced: recovered or heuristic fallback
     reduced --> reduced: terminal finalizer retry
@@ -64,7 +66,9 @@ task runs every `classifier.interval_minutes` and advances `classified_end`.
 
 Terminal reducer failures set `status=failed`, increment `retry_count`, retain
 `last_error`, and write `next_retry_at`. The `reducer-retry` daemon task checks
-once per minute. The retry schedule is 5, 15, 30, 60, and 120 minutes.
+once per minute. Failed attempts one through four schedule 5, 15, 30, and 60
+minutes respectively. The fifth failed attempt immediately exhausts into the
+fallback; the declared 120-minute tuple entry is currently unreachable.
 
 After the fifth failed attempt, the reducer writes an auditable `heuristic`
 event entry and marks the session reduced. This is degraded state formation,
@@ -98,9 +102,11 @@ enabled stage sets `modeled_at`.
 
 Each window's memory-delta audit row is the retry boundary. A later active or
 terminal pass reuses its post-gate payload and retries only deterministic apply;
-it does not pay for a second LLM extraction or reinforce successful edges twice.
-Terminal finalization starts at `delta_end`, so it only catches the trailing
-unmodeled range.
+it does not pay for a second LLM extraction. Terminal finalization starts at
+`delta_end`, so it only catches the trailing unmodeled range. Deterministic does
+not currently mean whole-delta atomic: per-item errors are collected and some
+relation operations commit independently, so a mid-apply crash can replay an
+additive reinforcement. See `docs/code-atlas/verified-gaps.md`.
 
 ## Session columns
 

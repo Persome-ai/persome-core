@@ -29,19 +29,36 @@ The following two sources apply to daemon capture mode.
 
 **Heartbeat timer** (fallback). Every `heartbeat_minutes` (default 10), the scheduler fires a capture even if no event arrived — so long idle periods leave a trail. Set `heartbeat_minutes = 0` to disable entirely (watcher-only); values `>0` are clamped to a 60-second floor.
 
-Both funnel into `capture_once` in `capture/scheduler.py`, which runs:
+Both enter the production `_CaptureRunner` in `capture/scheduler.py`. The runner
+serializes events and performs this sequence:
 
-1. `ax_capture.capture_frontmost(focused_window_only=True)` — one-shot invocation of `mac-ax-helper` for the current window, pruned to `ax_depth` layers.
-2. `s1_parser.enrich()` — extracts `focused_element`, `visible_text`, and `url` from the AX tree (see [S1 fields](#s1-fields) below).
-3. `cmux_source.maybe_inject()` — when the frontmost bundle is cmux, appends the real terminal text read over cmux's local socket RPC (see [cmux signal source](#cmux-signal-source) below); a successful injection skips step 4's OCR fallback for this window.
-4. OCR fallback — when the AX render produced no usable content and `enable_ocr_fallback` is on, submit a focused-window screenshot to an isolated local worker.
-5. `screenshot.grab()` — unless `include_screenshot = false`.
-6. `window_meta.active_window()` — app name, title, bundle_id via `NSRunningApplication`.
-7. Write `{iso8601_safe}.json` to the buffer.
+1. reject paused/locked capture before acquisition;
+2. call `window_meta.active_window()` (AppleScript `System Events`) for app,
+   title, and bundle ID;
+3. invoke `mac-ax-helper` for the focused AX tree, pruned to `ax_depth`;
+4. optionally grab the primary-monitor screenshot for persistence, attaching it
+   only through encrypt-or-omit policy;
+5. if a secure input is focused, strip AX, text, URL, screenshot, and OCR
+   opportunity while retaining timestamp/window metadata;
+6. run `s1_parser.enrich()` and optional bounded cmux text injection;
+7. when AX remains poor and OCR is enabled, hold one private focused-window JPEG
+   for deferred local OCR;
+8. content-deduplicate, atomically write private JSON, then index its S1 fields;
+9. publish a capture receipt, start asynchronous OCR-to-FTS backfill, and only
+   then invoke the session hook when the original trigger is non-null.
 
-The filename is ISO-8601 with `:` → `-` and `+` → `p` / `-` → `m` for the TZ offset. Example: `2026-04-21T17-07-32p08-00.json`.
+Trusted ingest constructs the same raw candidate and joins at finalization; the
+CLI `capture-once` helper is a forced one-shot writer, not the production loop.
 
-The same capture scheduler also invokes `SessionManager.on_event` (wired as a `pre_capture_hook` in `daemon.py`), so the session cutter sees every written, non-duplicate observation without a separate subscription path.
+New daemon filenames use fixed-width UTC ISO-8601 with `:` → `-` and `+` → `p`.
+For example, `2026-04-21T09-07-32.123456p00-00.json`. Historical local-offset
+filenames remain readable through the timestamp compatibility parser; a
+negative offset's `-` is not rewritten to `m`.
+
+The session hook is post-commit despite its historical `_pre_capture_hook`
+name. Initial/heartbeat/onboarding-forced captures can persist with an original
+`trigger=None`; they enter timeline evidence but do not start or extend a
+session. A content duplicate writes nothing and also fires no hook.
 
 ## Local OCR fallback
 
@@ -93,15 +110,15 @@ Four time-based knobs throttle the event firehose (`capture/event_dispatcher.py`
 | Knob | Default | What it does |
 |---|---|---|
 | `debounce_seconds` | 3.0 | `AXValueChanged` events within this window collapse — only the last triggers a capture. Prevents one-capture-per-keystroke during typing. |
-| `dedup_interval_seconds` | 1.0 | Same `(event_type, app)` pair within this window is dropped outright. |
-| `min_capture_gap_seconds` | 2.0 | Hard floor between consecutive `capture_once` calls, regardless of event reason. |
+| `dedup_interval_seconds` | 1.0 | Same `(event_type, bundle_id, window_title)` tuple within this window is dropped outright. |
+| `min_capture_gap_seconds` | 2.0 | Floor between non-focus capture triggers; focused-window/app-activation changes bypass it. |
 | `same_window_dedup_seconds` | 5.0 | Non-focus-change events in the same `(bundle_id, title)` pair collapse within this window. Focus changes always bypass it. |
 
 Tune these if you see `capture.log` flooded; the defaults produce a few hundred captures per work-day, comfortably under the buffer retention.
 
 ### Content dedup (no time window)
 
-On top of the time-based knobs, the scheduler compares each built capture against the previous one by a content fingerprint (`hash(bundle + title + focused_element.value + visible_text + url)`, in `capture/scheduler.py`). If the fingerprint matches, the capture is **not** written and the session manager's `pre_capture_hook` is **not** fired.
+On top of the time-based knobs, the scheduler compares each built capture against the previous one by a content fingerprint (`hash(bundle + title + focused_element.role + focused_element.value + visible_text + url)`, in `capture/scheduler.py`). If the fingerprint matches, the capture is **not** written and the session manager hook is **not** fired.
 
 This catches the case the time knobs can't: a screen that doesn't change (lock screen overnight, a paused video, an idle IDE) keeps generating AX events with the same content indefinitely. Without content-dedup those would both fill the buffer and keep the current session from ever idling out. Timestamps, triggers, and screenshots are excluded from the fingerprint so only meaningful changes count.
 
@@ -167,7 +184,11 @@ A 10×+ ratio means there's content past depth 30 you'd miss.
 }
 ```
 
-`trigger` is `{"event_type": "heartbeat"}` for timer captures and `{"event_type": "manual"}` for `capture-once`. Screenshot is omitted entirely when `include_screenshot = false`.
+`trigger` is rendered as `{"event_type": "heartbeat"}` whenever the builder's
+original trigger is absent. That includes timer/initial captures and the
+current CLI `capture-once` helper; the stored display value does not mean the
+session hook received a trigger. Screenshot is omitted entirely when
+`include_screenshot = false`.
 
 Secure fields (password inputs) are replaced with `"[REDACTED]"` at the helper level — the Python side never sees them.
 

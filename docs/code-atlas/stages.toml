@@ -1,0 +1,1158 @@
+version = 1
+
+# This registry is deliberately semantic. The generator validates every path and
+# symbol, while the descriptions below are maintained by code review.
+
+[[lanes]]
+id = "control"
+label = "Control plane"
+order = 0
+definition = "Owns process lifetime, policy, configuration, permissions, locks, and recovery. It changes when work may run, not the person's modeled state directly."
+
+[[lanes]]
+id = "observation"
+label = "Observation"
+order = 1
+definition = "Turns a permitted macOS or trusted-ingest signal into a bounded, source-attributed capture. These are observations, not yet durable personal claims."
+
+[[lanes]]
+id = "state"
+label = "State formation"
+order = 2
+definition = "Compresses captures into minute blocks and independently cuts work sessions. It creates bounded temporal state without creating higher-order personal geometry."
+
+[[lanes]]
+id = "memory"
+label = "Evidence-backed memory"
+order = 3
+definition = "Reduces bounded state, proposes semantic claims, applies deterministic evidence gates, and records Points and Lines with audit history."
+
+[[lanes]]
+id = "structure"
+label = "Structural modeling"
+order = 4
+definition = "Induces reusable cases and progressively higher geometry from already accepted evidence: Faces, Volumes, and at most one Root."
+
+[[lanes]]
+id = "projection"
+label = "Projection and retrieval"
+order = 5
+definition = "Builds read-only, versioned views over current and historical model state and retrieves evidence without creating a second model."
+
+[[lanes]]
+id = "access"
+label = "Local access and correction"
+order = 6
+definition = "Exposes owner-local CLI, REST, viewer, and MCP surfaces. Read paths project state; explicit write paths remain authenticated and audited."
+
+[[domains]]
+id = "runtime-control"
+label = "Runtime and lifecycle"
+order = 1
+definition = "CLI entry points, daemon orchestration, onboarding, lifecycle ownership, native setup, update, and diagnostics."
+globs = [
+  "src/persome/__init__.py",
+  "src/persome/__main__.py",
+  "src/persome/cli.py",
+  "src/persome/daemon.py",
+  "src/persome/doctor.py",
+  "src/persome/integrity.py",
+  "src/persome/launchagent.py",
+  "src/persome/ocr_setup.py",
+  "src/persome/onboarding.py",
+  "src/persome/runtime_pid.py",
+  "src/persome/updater.py",
+]
+
+[[domains]]
+id = "configuration"
+label = "Configuration and observability"
+order = 2
+definition = "Path authority, typed configuration, secret-file loading, provider selection, structured logs, and request correlation."
+globs = [
+  "src/persome/config.py",
+  "src/persome/env_file.py",
+  "src/persome/llm_setup.py",
+  "src/persome/logger.py",
+  "src/persome/paths.py",
+  "src/persome/providers.py",
+  "src/persome/trace.py",
+]
+
+[[domains]]
+id = "observation"
+label = "Capture, parsers, and privacy"
+order = 3
+definition = "Native AX/OCR observation, app-specific parsing, screenshot policy, privacy scrubbing, capture commit, and retention."
+globs = [
+  "src/persome/capture/*.py",
+  "src/persome/parsers/*.py",
+  "src/persome/privacy/*.py",
+]
+
+[[domains]]
+id = "state-formation"
+label = "Timeline and session state"
+order = 4
+definition = "Minute-window normalization, attention metadata, deterministic session boundary state, persisted watermarks, ticks, and recovery."
+globs = [
+  "src/persome/timeline/*.py",
+  "src/persome/session/*.py",
+]
+
+[[domains]]
+id = "semantic-writing"
+label = "Reducers and model writers"
+order = 5
+definition = "LLM-mediated proposals, deterministic memory gates/application, pattern/case/schema synthesis, corrections, compaction, and model-stage utilities."
+globs = [
+  "src/persome/writer/*.py",
+  "src/persome/prompts/*.py",
+]
+
+[[domains]]
+id = "storage-evolution"
+label = "Storage and evolution graph"
+order = 6
+definition = "SQLite/FTS/Markdown persistence, evomem bitemporal chains, identity, relation evidence, projections, integrity, backup, and restore."
+globs = [
+  "src/persome/store/*.py",
+  "src/persome/evomem/*.py",
+]
+
+[[domains]]
+id = "model-projection"
+label = "Model build and snapshot"
+order = 7
+definition = "Locked structural-build coordination, reproducibility manifest, model-source adapters, snapshot validation, export, and status."
+globs = [
+  "src/persome/model/*.py",
+  "src/persome/vectors_tick.py",
+]
+
+[[domains]]
+id = "local-access"
+label = "Retrieval, API, MCP, and security"
+order = 8
+definition = "Hybrid/associative retrieval, provenance chains, owner-local HTTP and MCP tools, request limits, bearer/capability security, and explicit writes."
+globs = [
+  "src/persome/api/*.py",
+  "src/persome/mcp/*.py",
+  "src/persome/retrieval/*.py",
+  "src/persome/security/*.py",
+]
+
+[[statuses]]
+id = "production"
+label = "default production path"
+definition = "Imported by the default Runtime path or a shared implementation used by it."
+default = true
+globs = []
+
+[[statuses]]
+id = "conditional"
+label = "operator-triggered or feature-gated"
+definition = "Real production/operations code reached only by an explicit command, recovery flow, or disabled-by-default/configured feature."
+default = false
+globs = [
+  "src/persome/doctor.py",
+  "src/persome/integrity.py",
+  "src/persome/launchagent.py",
+  "src/persome/llm_setup.py",
+  "src/persome/ocr_setup.py",
+  "src/persome/onboarding.py",
+  "src/persome/updater.py",
+  "src/persome/vectors_tick.py",
+  "src/persome/evomem/as_of.py",
+  "src/persome/evomem/backfill.py",
+  "src/persome/evomem/backup.py",
+  "src/persome/evomem/edge_audit.py",
+  "src/persome/evomem/relation_extractor.py",
+  "src/persome/evomem/restore.py",
+  "src/persome/evomem/retype.py",
+  "src/persome/store/contradictions.py",
+  "src/persome/store/index_md.py",
+  "src/persome/writer/compact.py",
+  "src/persome/writer/contradiction_check.py",
+  "src/persome/writer/correct.py",
+  "src/persome/writer/memory_decay.py",
+  "src/persome/writer/orphan_reaper.py",
+]
+
+[[statuses]]
+id = "compatibility"
+label = "compatibility or debug path"
+definition = "Retained for an older configuration/data shape or a narrow diagnostic entrance; not the documented default writer."
+default = false
+globs = [
+  "src/persome/writer/classifier.py",
+  "src/persome/writer/chat_extractor.py",
+]
+
+[[statuses]]
+id = "tooling"
+label = "repository tooling"
+definition = "Imported by maintenance scripts/tests rather than the live Runtime."
+default = false
+globs = [
+  "src/persome/store/schema_dump.py",
+]
+
+[[statuses]]
+id = "dormant-public"
+label = "dormant or public-only adapter"
+definition = "No current internal live caller was found; kept as a public adapter, legacy surface, or candidate for explicit keep/remove review."
+default = false
+globs = [
+  "src/persome/evomem/reconciler.py",
+  "src/persome/model/schema_reader.py",
+]
+
+[[stages]]
+id = "startup-recovery"
+label = "Startup integrity and recovery gate"
+lane = "control"
+kind = "deterministic-gate"
+order = 5
+summary = "Before an offline CLI opens mutable Runtime state or starts the daemon, resolves incomplete recovery journals and repairs or quarantines a damaged config/database under one explicit authority decision."
+trigger = "CLI `_init`, only when no daemon owns the Runtime lock"
+inputs = ["config TOML", "live SQLite plus WAL/SHM", "verified backups", "Markdown memory", "recovery journals", "last model manifest"]
+outputs = ["healthy or recovered Runtime state", "forensic quarantine copy", "recovery journal/marker", "rebuilt retrieval projection", "invalidated derived geometry when authority changed"]
+algorithm = "Parse config and run a capped SQLite integrity check; repair purely derived FTS damage in place, otherwise journal the phase, invalidate the model manifest, quarantine the live DB, restore the newest verified backup, resolve Markdown versus evomem authority, rebuild projections, and clear regenerable geometry whose evidence source changed."
+state = "The pending recovery journal is a durable fail-closed gate for memory writes, model builds, and Runtime start until recovery converges or an operator resolves authority."
+failure = "A failed real recovery keeps the journal and forensic artifacts instead of guessing between divergent authorities; live-daemon initialization does not race this offline repair path."
+files = ["src/persome/cli.py", "src/persome/integrity.py", "src/persome/model/build.py", "src/persome/evomem/backup.py", "src/persome/evomem/integrity.py"]
+symbols = ["_init", "check_and_recover", "run_model_build", "verify_snapshot"]
+tests = ["tests/test_integrity.py", "tests/test_cli_lifecycle.py", "tests/test_model_snapshot.py"]
+
+[[stages]]
+id = "runtime-orchestration"
+label = "Daemon task registry"
+lane = "control"
+kind = "orchestration"
+order = 10
+summary = "Starts exactly the configured capture, state, model, maintenance, and local-access loops and makes their enablement visible in one registry."
+trigger = "`persome start`, foreground daemon run, or LaunchAgent ownership"
+inputs = ["typed `Config`", "capture-only flag", "runtime generation and ownership locks"]
+outputs = ["named asyncio tasks", "owner-only runtime-state receipt", "graceful or bounded shutdown"]
+algorithm = "Build a declarative `TaskDefinition` registry, evaluate each enable predicate, create named asyncio tasks, attach crash callbacks, and cancel/drain them under a bounded shutdown deadline."
+state = "One daemon holds `.daemon.lock`; `.runtime-state.json` binds PID to a random generation. Task loops own their narrower locks/watermarks."
+failure = "Unexpected task exits are logged; MCP restarts with exponential backoff; ambiguous live ownership fails closed instead of starting a second writer."
+files = ["src/persome/daemon.py", "src/persome/session/tick.py", "src/persome/timeline/tick.py"]
+symbols = ["TaskDefinition", "_build_task_registry", "_create_tasks_from_registry", "run_daily_safety_net"]
+tests = ["tests/test_daemon.py", "tests/test_daemon_teardown.py", "tests/test_tick_retention_wiring.py"]
+
+[[stages]]
+id = "lifecycle-policy"
+label = "Configuration, paths, permission, and lifecycle authority"
+lane = "control"
+kind = "deterministic-gate"
+order = 20
+summary = "Defines where Runtime state may live, which capture policy is effective, which native principals need permission, and which process may be signaled or replaced."
+trigger = "CLI/onboarding/update/lifecycle request or daemon preflight"
+inputs = ["`config.toml`", "owner-only `env`", "macOS permission probes", "PID/process/LaunchAgent receipts"]
+outputs = ["resolved runtime policy", "private paths and tokens", "permission/readiness receipts", "safe lifecycle action"]
+algorithm = "Resolve typed config and secrets separately; derive all paths through `paths.py`; revalidate user, executable, start time, generation, and LaunchAgent ownership before signaling; update by atomic same-filesystem venv exchange with rollback markers."
+state = "Owner-only config/env/state files, immutable source-digest native helpers, daemon/update/model locks, and fsynced update transaction markers."
+failure = "Invalid tokens, unsafe bind hosts, missing permissions, or ambiguous process identity stop the privileged action while leaving local data intact."
+files = ["src/persome/config.py", "src/persome/paths.py", "src/persome/onboarding.py", "src/persome/runtime_pid.py", "src/persome/updater.py", "src/persome/security/auth.py"]
+symbols = ["Config", "ensure_dirs", "onboard", "ProcessIdentity", "UpdateTransaction", "LocalAPIAuthMiddleware"]
+tests = ["tests/test_config.py", "tests/test_onboarding.py", "tests/test_cli_lifecycle.py", "tests/test_updater.py", "tests/test_local_api_auth.py"]
+
+[[stages]]
+id = "daily-maintenance"
+label = "Daily recovery, projection, forgetting, and survivability"
+lane = "control"
+kind = "orchestration"
+order = 30
+summary = "Runs the production daily safety sequence that closes stranded work, repairs the retrieval projection, applies optional forgetting/contradiction policy, bounds operational state, and verifies recoverability."
+trigger = "Configured local daily safety-net time (23:55 by default), including capture-only mode"
+inputs = ["open/pending session state", "current evo_nodes and entries projections", "contradiction/decay/orphan feature gates", "WAL, telemetry, backup, integrity, and projection receipts"]
+outputs = ["force-ended/caught-up sessions", "rebuilt evomem-to-entries projection", "optional contradiction/decay/orphan mutations", "truncated WAL and telemetry", "verified backup/integrity/edit findings"]
+algorithm = "In order: force-end the open session and run writer catch-up; rebuild entries/FTS from evomem when delta apply is active; optionally mark contradictions, decay old never-read clusters, and retire orphan Points; truncate the WAL; prune parser/retrieval telemetry; optionally create a verified retained backup and run integrity handling; finally detect manual edits under evomem authority."
+state = "Each mutation keeps its own receipts/status; feature gates default conservative, backups have retention, integrity may freeze writes, and failures are logged per side channel so later maintenance can continue."
+failure = "Most tail substages fail open to the remainder of the tick and never fabricate replacement state. An exception from force-end or writer catch-up skips that day's entire maintenance tail, and there is no durable missed-run journal. Projection also runs before optional orphan retirement; these ordering/recovery boundaries are recorded as verified gaps."
+files = ["src/persome/session/tick.py", "src/persome/store/entries.py", "src/persome/writer/contradiction_check.py", "src/persome/writer/memory_decay.py", "src/persome/writer/orphan_reaper.py", "src/persome/store/fts.py", "src/persome/evomem/backup.py", "src/persome/evomem/integrity.py", "src/persome/evomem/inversion.py"]
+symbols = ["run_daily_safety_net", "_rebuild_from_evo_nodes", "run_contradiction_check", "run_memory_decay", "run_orphan_reap", "checkpoint", "run_daily_backup", "check_and_handle", "run_daily_manual_edit_check"]
+tests = ["tests/test_session_tick.py", "tests/test_memory_decay.py", "tests/test_orphan_reaper.py", "tests/test_evomem_survivability.py", "tests/test_contradiction_check.py", "tests/test_evomem/test_inversion_manual_edit.py", "tests/test_tick_retention_wiring.py"]
+
+[[stages]]
+id = "ax-event-gate"
+label = "AX event debounce and dedup"
+lane = "observation"
+kind = "deterministic"
+order = 10
+summary = "Converts high-frequency macOS Accessibility notifications into bounded capture triggers without treating repeated UI noise as new evidence."
+trigger = "Native watcher emits a focus, value, selection, window, or heartbeat event in daemon capture mode"
+inputs = ["newline-delimited watcher events", "event kind/bundle/window identity", "debounce and minimum-gap configuration"]
+outputs = ["capture-worthy trigger", "suppressed duplicate/noise event"]
+algorithm = "Parse watcher JSON, compute event identity, suppress same-key duplicates, debounce bursts, and enforce a minimum capture gap before dispatching to the scheduler."
+state = "In-memory last-event keys, timers, and watcher subprocess state; no personal-model write occurs here."
+failure = "Watcher crashes or malformed lines are logged/restarted; heartbeat capture may still persist an observation but does not necessarily advance session activity."
+files = ["resources/mac-ax-watcher.swift", "src/persome/capture/watcher.py", "src/persome/capture/event_dispatcher.py"]
+symbols = ["AXWatcherProcess", "EventDispatcher", "on_event"]
+tests = ["tests/test_watcher.py", "tests/test_ax_capture.py", "tests/test_daemon.py"]
+
+[[stages]]
+id = "trusted-ingest"
+label = "Trusted local ingest"
+lane = "observation"
+kind = "source"
+order = 15
+summary = "Allows an authenticated local producer to supply observation payloads while preserving the same sanitize/commit path as daemon capture."
+trigger = "Authenticated `POST /captures/ingest` when `capture.source=ingest`"
+inputs = ["bounded ingest JSON", "local bearer authentication", "optional encrypted pixel payload"]
+outputs = ["normalized capture candidate", "capture ID and readiness receipt"]
+algorithm = "Validate the request model and source mode, sanitize timestamps and payload fields, construct the same S1-shaped record, then enter the scheduler's finalization and commit path."
+state = "No watcher process in ingest mode; committed captures use the same JSON/FTS stores and retention rules."
+failure = "Ingest without authenticated HTTP transport is rejected at daemon preflight; malformed or policy-forbidden payloads fail before commit."
+files = ["src/persome/api/routes.py", "src/persome/api/models.py", "src/persome/capture/scheduler.py"]
+symbols = ["CaptureIngestBody", "ingest_capture", "build_ingest_capture"]
+tests = ["tests/test_captures_ingest_api.py", "tests/test_capture_privacy_gating.py", "tests/test_api_payload_limits.py"]
+
+[[stages]]
+id = "s1-observation"
+label = "AX/window capture candidate"
+lane = "observation"
+kind = "deterministic"
+order = 20
+summary = "Acquires the frontmost window, raw AX evidence, and policy-gated full-screen pixels as one in-memory candidate before focused normalization."
+trigger = "Scheduler accepts a daemon capture trigger"
+inputs = ["AX helper", "frontmost macOS process/window", "capture trigger", "optional persistent screenshot policy"]
+outputs = ["timestamped raw capture candidate", "window metadata", "AX tree/metadata or explicit unavailable flag", "optional encrypted screenshot"]
+algorithm = "Check pre-capture eligibility, resolve or compile the source-digest-keyed Swift AX helper, query frontmost window metadata, capture the focused AX tree, optionally grab and resize the primary monitor, and attach pixels only through encrypt-or-omit policy."
+state = "Native helper path is keyed by architecture and source digest; the candidate stays in memory until focused normalization and commit."
+failure = "A locked screen skips the candidate; AX or Screen Recording failure preserves only available metadata and never fabricates text or pixels."
+files = ["src/persome/capture/scheduler.py", "src/persome/capture/ax_capture.py", "src/persome/capture/window_meta.py", "src/persome/capture/screenshot.py"]
+symbols = ["_build_capture", "MacAXHelperProvider", "active_window", "grab"]
+tests = ["tests/test_ax_capture.py", "tests/test_capture_privacy_gating.py", "tests/test_onboarding.py"]
+
+[[stages]]
+id = "privacy-pixel-gate"
+label = "Privacy and pixel gate"
+lane = "observation"
+kind = "deterministic-gate"
+order = 30
+summary = "Skips collection behind a locked screen, strips content from secure-input observations while retaining metadata, removes structural placeholders, and encrypts or omits persisted pixels."
+trigger = "Before capture acquisition, during candidate finalization, and when screenshot/OCR content is attached"
+inputs = ["screen lock and secure-input state", "raw capture candidate", "AX placeholders", "screenshot policy and key"]
+outputs = ["skipped capture or metadata-only secure observation", "placeholder-sanitized evidence", "encrypted/omitted pixel payload"]
+algorithm = "Fail closed before acquisition when the screen is locked; for a focused secure field remove AX, screenshot, text, URL, and OCR opportunity but retain timestamp/window metadata; sanitize confirmed structural placeholder values; encrypt screenshots with AES-256-GCM only when a valid install-generated key exists. Secret-pattern scrubbing is a separate snapshot/export boundary, not a capture-time operation."
+state = "Pixel policy and OCR choice are durable config; screenshot keys live only in the owner-only env file."
+failure = "Missing/invalid screenshot key omits pixels rather than writing plaintext; a positive secure-input signal yields a persisted metadata-only record, while uncertain lock state skips the whole capture."
+files = ["src/persome/capture/scheduler.py", "src/persome/capture/screen_state.py", "src/persome/capture/placeholder.py", "src/persome/capture/screenshot_crypto.py"]
+symbols = ["capture_gate_reason", "is_secure_input_active", "sanitize_ax_tree", "sanitize_ocr_text", "encrypt"]
+tests = ["tests/test_capture_privacy_gating.py", "tests/test_capture_retention_provenance.py", "tests/test_screenshot_crypto.py", "tests/test_storage_security.py"]
+
+[[stages]]
+id = "s1-normalization"
+label = "Focused S1 normalization"
+lane = "observation"
+kind = "deterministic"
+order = 35
+summary = "Turns a privacy-gated AX/window candidate into the smallest useful focused observation: focused element, visible text, URL, application identity, and parser evidence."
+trigger = "A daemon or ingest candidate survives the capture/privacy gates"
+inputs = ["privacy-gated AX candidate", "optional cmux terminal text", "application parser registry", "bounded field policy"]
+outputs = ["focused element", "visible text", "URL", "sanitized AX tree", "content fingerprint candidate"]
+algorithm = "Sanitize the AX tree, locate the focused element, select an app-specific parser or generic renderer, extract and cap visible text/URL, inject bounded cmux terminal text when configured, and leave AX-poor candidates eligible for OCR."
+state = "The normalized fields are still observation evidence; no personal claim exists until later evidence-gated modeling."
+failure = "Missing AX content degrades to metadata and optional OCR; a parser decline falls back to bounded generic evidence without inventing content."
+files = ["src/persome/capture/s1_parser.py", "src/persome/capture/generic_render.py", "src/persome/capture/cmux_source.py", "src/persome/capture/placeholder.py", "src/persome/parsers/__init__.py"]
+symbols = ["enrich", "resolve_app", "maybe_inject", "sanitize_capture", "parser_for_capture"]
+tests = ["tests/test_s1_parser.py", "tests/test_generic_render.py", "tests/test_cmux_source.py", "tests/test_captures_ingest_api.py"]
+
+[[stages]]
+id = "ocr-fallback"
+label = "Isolated local OCR fallback"
+lane = "observation"
+kind = "source"
+order = 40
+summary = "Recovers text from AX-poor focused windows without moving image inference or image bytes outside the local machine."
+trigger = "OCR is explicitly/effectively enabled and S1 text quality for the focused application is insufficient"
+inputs = ["focused-window JPEG bytes", "vendored PP-OCRv6 models", "OCR tier and timeout"]
+outputs = ["ordered OCR text and boxes", "structured app view", "asynchronous FTS backfill"]
+algorithm = "Length-prefix image requests to a single subprocess worker, run local PaddleOCR, row-group boxes by geometry, apply app-specific structuring, sanitize placeholders, and backfill the capture row after the base capture commit."
+state = "One restartable worker client; model assets are bundled in the wheel; OCR text is joined to capture ID in FTS."
+failure = "Timeout or worker death restarts/fails open to AX-only capture; the daemon continues and never substitutes invented text."
+files = ["src/persome/capture/ocr_subprocess.py", "src/persome/capture/ocr_worker.py", "src/persome/capture/ocr_local.py", "src/persome/capture/ocr_structure.py", "src/persome/capture/ocr_protocol.py", "src/persome/capture/scheduler.py"]
+symbols = ["OCRWorkerClient", "serve", "recognize_detailed", "structure", "encode_request", "_submit_ocr_async"]
+tests = ["tests/test_ocr_subprocess.py", "tests/test_ocr_local.py", "tests/test_ocr_structure.py", "tests/test_scheduler_ocr.py"]
+
+[[stages]]
+id = "capture-commit"
+label = "Capture JSON and FTS commit"
+lane = "observation"
+kind = "store"
+order = 50
+summary = "Creates the bounded raw evidence record that every later stage can audit back to, while retaining only policy-allowed content."
+trigger = "A sanitized daemon or ingest capture passes content deduplication and policy gates"
+inputs = ["S1 observation", "content fingerprint", "optional encrypted screenshot", "capture timestamp"]
+outputs = ["`capture-buffer/<id>.json`", "`captures`/`captures_fts` row", "capture receipt"]
+algorithm = "Hash canonical visible content for deduplication, atomically write private JSON, index searchable fields in WAL-mode SQLite, then asynchronously attach OCR and enforce age/count/screenshot retention."
+state = "The private JSON is the capture authority; its file stem joins the rebuildable FTS/OCR projection and receipt provenance. Retention removes file/index pairs and restores an index row if unlink fails."
+failure = "An initial index failure is logged while authoritative JSON remains available to `rebuild-captures-index`; OCR failure leaves the base record; retention never promotes raw captures into model claims."
+files = ["src/persome/capture/scheduler.py", "src/persome/store/fts.py", "src/persome/paths.py"]
+symbols = ["_write_capture", "_index_capture", "insert_capture", "cleanup_buffer"]
+tests = ["tests/test_capture_scheduler_fts.py", "tests/test_captures_fts.py", "tests/test_capture_retention_provenance.py"]
+
+[[stages]]
+id = "timeline-block"
+label = "One-minute timeline block"
+lane = "state"
+kind = "llm-proposal"
+order = 10
+summary = "Normalizes a wall-clock minute of captures into a small chronological block while retaining raw focus evidence for later modeling."
+trigger = "Timeline tick closes a wall-clock-aligned minute not already present"
+inputs = ["capture JSON in `[start,end)`", "OCR backfill from FTS", "app parser output", "timeline prompt"]
+outputs = ["`timeline_blocks` row", "normalized entries", "focus excerpt/structured attention metadata", "source capture IDs"]
+algorithm = "Select at most the newest 30 captures, prioritize focused text or terminal/chat tails, render structured app evidence, ask the timeline LLM for ordered self-contained lines, validate hints, and fall back to deterministic per-app lines on failure."
+state = "`UNIQUE(start_time,end_time)` plus `INSERT OR IGNORE` makes the stored block idempotent; block carries source capture IDs and parser telemetry."
+failure = "Malformed/failed LLM output degrades to heuristic entries. Concurrent producers can both spend the timeline LLM call before only one row wins the unique insert."
+files = ["src/persome/timeline/tick.py", "src/persome/timeline/aggregator.py", "src/persome/timeline/store.py", "src/persome/timeline/attention_locus.py"]
+symbols = ["run_forever", "produce_block_for_window", "TimelineBlock", "resolve_locus"]
+tests = ["tests/test_timeline_blocks.py", "tests/test_timeline_parallel.py", "tests/test_attention_locus.py", "tests/test_parsers_feishu.py"]
+
+[[stages]]
+id = "session-cut"
+label = "Deterministic session cutter"
+lane = "state"
+kind = "deterministic"
+order = 20
+summary = "Maintains work-session boundaries from capture-worthy activity so reducers receive bounded temporal ranges."
+trigger = "Capture-worthy event calls `on_event`, or the 30-second cut tick calls `check_cuts`"
+inputs = ["event timestamp and bundle ID", "idle gap", "recent app-switch history", "maximum duration"]
+outputs = ["active/ended `sessions` row", "session start/end callbacks", "reduction/modeling watermarks"]
+algorithm = "Under one thread lock, start on the first activity event; hard-cut after idle gap, soft-cut after sustained single-app focus unless recent switching indicates one multi-app task, and timeout at maximum duration."
+state = "Session UUID plus start/end/status, flush/classified/pattern/delta watermarks, retry metadata, and `modeled_at` live in SQLite."
+failure = "Startup recovery ends stranded active rows; callback errors are logged without corrupting the boundary state. Heartbeat/initial captures with no trigger do not advance the session."
+files = ["src/persome/session/manager.py", "src/persome/session/store.py", "src/persome/session/tick.py", "src/persome/capture/scheduler.py"]
+symbols = ["SessionManager", "check_cuts", "SessionRow", "recover_stranded_sessions", "_commit"]
+tests = ["tests/test_session_manager.py", "tests/test_session_tick.py", "tests/test_watcher.py"]
+
+[[stages]]
+id = "active-reducer"
+label = "Incremental session reducer"
+lane = "memory"
+kind = "llm-proposal"
+order = 10
+summary = "Turns the newly flushed portion of an active or ended session into human-readable event memory without rewriting prior windows."
+trigger = "Five-minute flush, terminal session callback, retry tick, recovery CLI, model build, or nightly safety net"
+inputs = ["timeline blocks in `(flush_end, window_end]`", "preceding event entries", "session reduce prompts"]
+outputs = ["append-only `event-YYYY-MM-DD.md` entry", "advanced `flush_end` or reduced status", "retry/fallback audit"]
+algorithm = "Lock the session window, format chronological blocks, call the reducer for a summary and timestamped subtasks, validate schema, append one event entry, and advance the watermark only after the write. After the configured terminal attempt limit, emit one coarse heuristic subtask per observed app."
+state = "`flush_end`, terminal status, attempt count, and `next_retry_at` make reduction resumable; event daily files are reducer-owned."
+failure = "Malformed/transient output persists exponential retry; the fifth failed attempt writes the deterministic heuristic, so the documented 120-minute sixth delay is not reached."
+files = ["src/persome/writer/session_reducer.py", "src/persome/session/store.py", "src/persome/writer/llm.py"]
+symbols = ["flush_active_session", "reduce_session", "_reduce_window_locked", "_heuristic_payload"]
+tests = ["tests/test_session_reducer.py", "tests/test_reducer_with_fake_llm.py", "tests/test_output_recovery.py"]
+
+[[stages]]
+id = "active-window-modeling"
+label = "Shared windowed modeling entrance"
+lane = "memory"
+kind = "orchestration"
+order = 20
+summary = "Ensures active flushes, terminal finalization, retry, recovery, and explicit build all enter the same Point/Line modeling service."
+trigger = "Successful active flush, session terminal finalizer, writer recovery, or model build catch-up"
+inputs = ["session ID", "unmodeled `[delta_end, window_end]` range", "timeline blocks and event memory"]
+outputs = ["stored memory delta", "deterministic apply result", "advanced `delta_end` or terminal `modeled_at`"]
+algorithm = "Take the cross-process `session-model.lock`, re-read session state, compute the unmodeled window, reuse any stored delta for that exact range, run/apply it, and advance watermarks only after the configured completion condition."
+state = "Kernel lock coordinates all processes; `delta_end` is the active watermark and `modeled_at` is the terminal completion marker."
+failure = "If extraction/apply raises, watermarks remain retryable; terminal errors keep `modeled_at` null. Current additive apply lacks a per-item idempotency key, documented in verified gaps."
+files = ["src/persome/writer/agent.py", "src/persome/session/store.py", "src/persome/store/memory_deltas.py"]
+symbols = ["model_active_session", "finalize_session", "_model_delta_range", "latest_for_window"]
+tests = ["tests/test_writer_agent.py", "tests/test_memory_delta.py", "tests/test_delta_apply.py"]
+
+[[stages]]
+id = "terminal-finalizer"
+label = "Session-end trailing finalizer"
+lane = "memory"
+kind = "orchestration"
+order = 30
+summary = "Catches every terminal stage after reduction, including sessions whose event window was already fully flushed or whose reducer exhausted into a heuristic."
+trigger = "A session reaches reduced terminal state or recovery finds `modeled_at IS NULL`"
+inputs = ["reduced session row", "event daily file", "classified/pattern/delta watermarks", "trailing unmodeled range"]
+outputs = ["classifier compatibility result", "pattern result", "trailing delta/apply", "terminal modeled marker"]
+algorithm = "Under the shared session-model lock, run classifier catch-up, repeated-pattern detection, and one trailing memory-delta range independently; record each stage watermark and mark modeled only when all enabled stages succeed or benignly skip."
+state = "`classified_end`, `pattern_detected_end`, `delta_end`, and `modeled_at` allow narrow recovery instead of replaying the whole session."
+failure = "Each stage error is accumulated and leaves terminal completion open; retry/recovery re-enters this same function."
+files = ["src/persome/writer/agent.py", "src/persome/writer/classifier.py", "src/persome/writer/pattern_detector.py", "src/persome/session/store.py"]
+symbols = ["finalize_session", "classify_after_reduce", "detect_after_classify", "mark_modeled"]
+tests = ["tests/test_writer_agent.py", "tests/test_classifier.py", "tests/test_pattern_detector.py", "tests/test_session_tick.py"]
+
+[[stages]]
+id = "memory-delta"
+label = "Evidence-scoped memory delta proposal"
+lane = "memory"
+kind = "llm-proposal"
+order = 40
+summary = "Proposes only the entities, assertions, events, relations, and owner aliases supported by one bounded session window."
+trigger = "Shared windowed modeler finds no stored delta for the exact session range"
+inputs = ["timeline blocks and structured focus evidence", "identity roster", "event memory", "closed relation predicate vocabulary"]
+outputs = ["canonical candidate delta", "owner alias candidates", "gate/drop telemetry"]
+algorithm = "Render a bounded evidence window, exclude Persome's own localhost model output, call one structured LLM extraction, canonicalize item shapes, and retain quoted evidence so deterministic gates can verify every proposal."
+state = "The raw/canonical delta is persisted before deterministic apply and keyed to session/window range."
+failure = "Invalid JSON or provider failure leaves the range retryable; no claim is applied directly by the LLM."
+files = ["src/persome/writer/memory_delta.py", "src/persome/prompts/memory_delta.md", "src/persome/evomem/identity.py"]
+symbols = ["run_after_session", "ensure_active_window", "_ensure_window", "load_roster"]
+tests = ["tests/test_memory_delta.py", "tests/test_owner_identity.py", "tests/test_llm_retry.py"]
+
+[[stages]]
+id = "delta-gate"
+label = "Deterministic evidence and identity gate"
+lane = "memory"
+kind = "deterministic-gate"
+order = 50
+summary = "Separates an LLM proposal from accepted personal state by checking quoted evidence, known identities, predicates, polarity, confidence, and owner-alias rules."
+trigger = "A candidate memory delta returns from the LLM"
+inputs = ["candidate delta", "normalized session evidence", "reserved self and roster", "predicate/confidence policy"]
+outputs = ["clean accepted delta", "dropped-item reasons", "pending/promoted/rejected owner aliases"]
+algorithm = "Require verbatim normalized evidence quotes, resolve canonical identities, reject unsupported relation predicates or low-confidence items, and quarantine non-explicit owner aliases until independent-session evidence crosses the promotion threshold."
+state = "Alias candidate evidence is bounded and auditable; accepted aliases point to reserved `self` and duplicate projections are retired without deleting history."
+failure = "Unsupported items are dropped and counted rather than guessed; a failed gate yields an empty/no-op delta."
+files = ["src/persome/writer/memory_delta.py", "src/persome/evomem/identity.py", "src/persome/evomem/owner_identity.py"]
+symbols = ["gate_delta", "gate_owner_alias_candidates", "resolve_identity", "record_candidate"]
+tests = ["tests/test_memory_delta.py", "tests/test_owner_identity.py", "tests/test_person_graph.py"]
+
+[[stages]]
+id = "delta-apply"
+label = "Deterministic Point and Line apply"
+lane = "memory"
+kind = "store"
+order = 60
+summary = "Turns a clean evidence delta into current/historical entity and assertion Points, supersede chains, and observed/shadow relation Lines."
+trigger = "A gated delta is persisted with `apply_status=pending`, or recovery resumes a pending/failed delta"
+inputs = ["clean delta", "EvoMemory write entrance", "identity/entity type map", "relation evidence policy"]
+outputs = ["entity/assertion evo nodes", "supersedes and relation edges", "event endpoint IDs plus participant Lines (no direct event Point mint here)", "apply audit status"]
+algorithm = "In source order, apply supersedes first, then entity Points, optional assertion Points, the direct self-engagement floor, semantic relations, and deterministic event endpoint IDs with participant Lines; then let the caller set delta status and advance the session watermark."
+state = "`memory_deltas.apply_status` records pending/applied/failed and evomem preserves bitemporal chains. Relation observations reinforce shadow candidates until promotion gates pass."
+failure = "A raised transaction error is retryable, but current code can mark a delta applied despite per-item `ApplyResult.errors`, and partial additive reinforcement may replay after a crash; both are recorded as verified gaps."
+files = ["src/persome/writer/delta_apply.py", "src/persome/store/memory_deltas.py", "src/persome/evomem/engine.py", "src/persome/store/relation_edges.py"]
+symbols = ["apply_delta", "ApplyResult", "set_apply_status", "EvoMemory"]
+tests = ["tests/test_delta_apply.py", "tests/test_memory_delta.py", "tests/test_relation_edges_store.py", "tests/test_evomem/test_engine_write_entrances.py"]
+
+[[stages]]
+id = "memory-authority"
+label = "Markdown / evomem / SQLite authority and projections"
+lane = "memory"
+kind = "store"
+order = 70
+summary = "Coordinates two accepted write entrances—public entry writes and direct deterministic evomem writes—plus their differently timed Markdown, FTS, and model projections."
+trigger = "Any accepted model write, explicit correction, rebuild, backup, or projection repair"
+inputs = ["accepted entry/node operation", "configured write authority", "evidence receipts and temporal bounds"]
+outputs = ["private Markdown files", "WAL-mode `index.db`", "evomem chains", "FTS/vector projection hooks"]
+algorithm = "Route public `store.entries` writes through the configured Markdown/evomem authority, but apply observation deltas, cases, and PersonGraph nodes directly through `EvoMemory.add_direct`; rebuild SQLite entries/FTS from evomem on the safety net, and write physical Markdown only through the explicit projector or the evomem-authority public entry path."
+state = "`write_authority` governs the public entries choke point, not every production writer. Direct Points may be immediately visible to snapshots, later visible to search after DB projection, and absent from physical Markdown until an explicit projection."
+failure = "Integrity violations can freeze writes; projection lag can make `list_memories` expose a DB-only file that disk-based `read_memory` cannot open; repair/rebuild preserves receipts instead of inventing state."
+files = ["src/persome/store/entries.py", "src/persome/store/files.py", "src/persome/store/fts.py", "src/persome/store/projector.py", "src/persome/evomem/engine.py", "src/persome/evomem/store.py"]
+symbols = ["append_entry", "rebuild_index", "cursor", "project_all", "EvoMemory", "NodeStore"]
+tests = ["tests/test_store.py", "tests/test_rebuild_temporal.py", "tests/test_evomem/test_projector.py", "tests/test_evomem/test_restore_and_rebuild.py"]
+
+[[stages]]
+id = "behavior-pattern"
+label = "Repeated behavior memory"
+lane = "memory"
+kind = "llm-proposal"
+order = 80
+summary = "Distills recurring observed behavior into auditable skill memory without proposing or executing automation."
+trigger = "Terminal finalizer after classifier compatibility catch-up"
+inputs = ["repeated event evidence", "existing skill memory", "pattern prompt"]
+outputs = ["`memory/skills/skill-*.md` observation", "pattern watermark"]
+algorithm = "Deterministically prefilter recurrence candidates, require more than one occurrence, ask the LLM to validate the repeated behavior, and append an evidence-backed `stage: observed` skill entry."
+state = "Skill Markdown has its own narrow writer path and evidence links; session pattern watermark prevents full replay."
+failure = "Single occurrences, unsupported patterns, or provider failures produce no skill; no script or task is executed."
+files = ["src/persome/writer/pattern_detector.py", "src/persome/prompts/pattern_detector.md", "src/persome/session/store.py"]
+symbols = ["detect_after_classify", "set_pattern_detected_end", "DetectResult"]
+tests = ["tests/test_pattern_detector.py", "tests/test_writer_agent.py"]
+
+[[stages]]
+id = "legacy-compaction"
+label = "Compatibility-only Markdown compaction"
+lane = "memory"
+kind = "orchestration"
+order = 90
+summary = "Compacts files explicitly marked `needs_compact` only on the legacy classifier cadence; the default memory-delta writer deliberately never enters this path."
+trigger = "Successful terminal legacy-classifier commit when `memory_delta.apply_enabled=false`, every configured completed-session cadence"
+inputs = ["full marked Markdown file", "completed-session counter", "compaction prompt", "current write authority"]
+outputs = ["preservation-gated replacement Markdown", "one batch retrieval rebuild", "best-effort evomem repair"]
+algorithm = "Increment a persisted completion counter, and at each cadence ask the LLM to return a complete replacement for every pending file; reject candidates missing frontmatter or more than five percent of unique tokens, atomically replace accepted files, rebuild once after the batch, and repair evomem from the new Markdown."
+state = "`system_state.completed_session_count` drives cadence; evomem authority defers this Markdown-owned path; module status is compatibility, not the shipped production writer."
+failure = "LLM/gate failure preserves the source file; a post-replacement evomem repair failure cannot roll back already accepted Markdown and is reported for later rebuild."
+files = ["src/persome/writer/classifier.py", "src/persome/writer/compact.py", "src/persome/store/entries.py"]
+symbols = ["_check_and_trigger_compaction", "compact_file", "run_pending", "rebuild_index"]
+tests = ["tests/test_consolidation_cadence.py", "tests/test_compact_batch_rebuild.py", "tests/test_compact_evomem_repair.py"]
+
+[[stages]]
+id = "model-build"
+label = "Locked structural model build"
+lane = "structure"
+kind = "orchestration"
+order = 10
+summary = "Runs state catch-up and higher-geometry stages in one dependency order and records what completed, skipped, or degraded."
+trigger = "Dirty-gated refresh, unconditional 00:15 schedule, `persome model build`, or explicit recovery"
+inputs = ["current config", "accepted Points/Lines", "pending reducer/modeling work", "build lock"]
+outputs = ["stage outcomes", "model build manifest", "snapshot statistics", "dirty watermark update"]
+algorithm = "Acquire `model-build.lock`, atomically mark building, catch up state formation, initialize evomem when required, run enrichment/Faces/Volumes/Root/vectors in order, collect every stage result, validate geometry, and atomically write a reproducibility manifest."
+state = "Kernel `flock` serializes CLI and daemon callers; the manifest hashes commit, one prompt directory, config, input window, mode, a configured model-stage list, and completion state."
+failure = "Enabled stage errors mark the build degraded while later independent stages still record outcomes; an empty/failed build never fabricates or overwrites a valid Root. Current manifest metadata omits the memory-delta/embedding model names and the evomem schema-miner prompt hash."
+files = ["src/persome/model/build.py", "src/persome/model/manifest.py", "src/persome/session/tick.py"]
+symbols = ["ModelBuildCoordinator", "_run_pipeline", "create_build_manifest", "run_model_refresh_tick"]
+tests = ["tests/test_runtime_model_e2e.py", "tests/test_model_snapshot.py", "tests/test_schema_tick.py"]
+
+[[stages]]
+id = "entity-case-relation"
+label = "Entity, case, and relation enrichment"
+lane = "structure"
+kind = "llm-proposal"
+order = 20
+summary = "Adds typed people/entities, reusable error-resolution cases, and evidence-counted relation candidates before higher geometry is mined."
+trigger = "Enabled structural build enrichment stage or maintenance tick"
+inputs = ["accepted terminal activity/events", "durable facts", "identity roster", "error-to-resolution windows"]
+outputs = ["typed entity/event Points", "reusable L5 case Points", "observed or shadow relation Lines"]
+algorithm = "Resolve people through PersonGraph, deterministically find supported error→resolution windows before LLM distillation, and combine deterministic co-occurrence/activity passes with a bounded semantic relation pass."
+state = "All nodes/edges retain evidence sources; unresolved errors mint no case; shadow relation candidates promote only after evidence thresholds."
+failure = "Each enrichment substage records its own error so partial enrichment cannot be reported complete; unsupported candidates are skipped."
+files = ["src/persome/evomem/person_graph.py", "src/persome/writer/case_extractor.py", "src/persome/evomem/relation_extractor.py", "src/persome/store/relation_edges.py"]
+symbols = ["PersonGraph", "find_candidates", "run_case_extraction", "run_relation_extraction"]
+tests = ["tests/test_person_graph.py", "tests/test_case_extraction.py", "tests/test_relation_extractor.py", "tests/test_relation_edges_store.py"]
+
+[[stages]]
+id = "face-mining"
+label = "Level-1 Face mining"
+lane = "structure"
+kind = "llm-proposal"
+order = 30
+summary = "Mines a domain-local schema candidate and lets a separate emergent cross-domain signal complete the two-provenance activation gate for a Face."
+trigger = "Schema stage of an enabled structural build"
+inputs = ["durable fact bundles by memory domain", "minimum bundle size", "stable confidence threshold"]
+outputs = ["forming or active level-1 schema Face", "member/source receipts", "superseded prior version"]
+algorithm = "Read active durable facts (directly from evomem on the default delta path), exclude derived entity/event noise, group per domain, skip bundles below four facts, ask the schema LLM for proposition/support/inferences/confidence, record a mined shadow Face, then promote only after mined+emergent provenance, at least two observations and footprints, and minimum pairwise footprint Jaccard of 0.6."
+state = "`schema_faces` keeps observations, provenance, footprints, status, level, members, receipts, and supersede lineage. The emergent signal is contributed by a stable cross-domain collision involving the parent Face."
+failure = "A mined schema alone remains shadow/forming; small, empty, low-confidence, or single-signal candidates stay outside the active snapshot."
+files = ["src/persome/writer/schema_miner_stage.py", "src/persome/store/schema_faces.py", "src/persome/prompts/schema.md"]
+symbols = ["collect_fact_bundles", "mine_schemas_for_user", "record_face", "maybe_promote"]
+tests = ["tests/test_schema_miner_stage.py", "tests/test_schema_faces.py", "tests/test_schema_tick.py"]
+
+[[stages]]
+id = "volume-synthesis"
+label = "Level-2 cross-domain Volume synthesis"
+lane = "structure"
+kind = "llm-proposal"
+order = 40
+summary = "Finds stable behavior shared by topic-distinct non-person Faces while bounding LLM work and preventing rejected pairs from starving unseen pairs."
+trigger = "Cross-domain stage of an enabled structural build"
+inputs = ["stable level-1 Faces", "behavior signatures", "topic distinction", "probe history and per-build budget"]
+outputs = ["forming or active level-2 Volume", "pair probe history", "aggregated source receipts"]
+algorithm = "Compute normalized app/time/verb behavior signatures, prefilter by distance and topic distinction, priority-order promotable then unseen then retry pairs, use a bounded LLM collision judge, and require two stable observations for promotion."
+state = "Probe history and forming/active status persist locally; source receipts inherit from member Faces; a stable collision also contributes the emergent signal needed by its level-1 parent Faces; person schemas are ineligible."
+failure = "Negative/failed/low-confidence retries move behind unseen finite pairs; deferred pairs remain eligible; forming collisions stay outside active snapshots."
+files = ["src/persome/writer/cross_domain_sweeper.py", "src/persome/store/schema_faces.py", "src/persome/prompts/cross_domain_sweeper.md"]
+symbols = ["BehaviorSignature", "_signature_distance", "_candidate_priority", "sweep_cross_domain"]
+tests = ["tests/test_cross_domain_sweeper.py", "tests/test_schema_faces.py"]
+
+[[stages]]
+id = "root-synthesis"
+label = "Level-3 Root synthesis"
+lane = "structure"
+kind = "llm-proposal"
+order = 50
+summary = "Compresses the strongest active personal structure into at most one apex without erasing a previously valid Root when evidence is insufficient."
+trigger = "Root stage of an enabled structural build"
+inputs = ["active Faces and Volumes", "profile evidence", "token budget", "root prompt"]
+outputs = ["zero or one active level-3 Root", "superseded prior Root", "source receipt closure"]
+algorithm = "Rank and budget active geometry/profile evidence, synthesize one concise signature, validate non-empty support, and upsert/supersede through the schema store's one-live-root rule."
+state = "Exactly zero or one live level-3 row; prior versions and aggregated receipts remain auditable."
+failure = "No evidence, provider error, or invalid response returns a degraded reason and never replaces a valid Root with empty content."
+files = ["src/persome/writer/root_synthesis.py", "src/persome/store/schema_faces.py", "src/persome/prompts/root_synthesis.md"]
+symbols = ["fit_budget", "synthesize_root", "run_root_synthesis", "upsert_root"]
+tests = ["tests/test_root_synthesis.py", "tests/test_schema_faces.py", "tests/test_runtime_model_e2e.py"]
+
+[[stages]]
+id = "vector-index"
+label = "Optional vector backfill"
+lane = "structure"
+kind = "projection"
+order = 60
+summary = "Adds an optional local similarity projection over accepted live entries without becoming a new write authority."
+trigger = "Sixty-second embed tick or final stage of model build when hybrid retrieval is configured"
+inputs = ["pending live entry IDs/text", "configured embeddings endpoint/model", "batch limits"]
+outputs = ["packed float vectors", "queue state", "cached live matrix"]
+algorithm = "Enqueue accepted entries, batch the provider call, validate response cardinality, pack each float array with its recorded dimension into SQLite, garbage-collect orphan vectors, and cache a validity-token keyed live matrix while excluding incompatible dimensions at read time."
+state = "Vector rows are a rebuildable projection linked to entry IDs; the queue is durable and credentials remain in the env file."
+failure = "Without credentials the stage is a no-op/degraded semantic capability; BM25 and the accepted model remain available."
+files = ["src/persome/vectors_tick.py", "src/persome/store/vectors.py", "src/persome/writer/embeddings_client.py"]
+symbols = ["run_embed_once", "backfill", "save_vectors", "live_matrix"]
+tests = ["tests/test_vectors.py", "tests/test_embeddings_client.py"]
+
+[[stages]]
+id = "snapshot-projection"
+label = "Versioned model snapshot"
+lane = "projection"
+kind = "projection"
+order = 10
+summary = "Projects the current/historical Point, Line, Face, Volume, Root, receipt, and build state into one validated public contract without mutating it."
+trigger = "Model graph/status/export request or build completion"
+inputs = ["all non-archived evomem nodes, including history/shadow", "supersede and active/open relation edges", "active schemas", "valid build manifest", "redaction policy"]
+outputs = ["schema-versioned snapshot", "build/stats object", "redacted owner-only export"]
+algorithm = "Query all non-archived evolution Points, derive supersedes Lines, include only active/open relation Lines and active geometry, close receipts through membership, enforce at-most-one Root and manifest invariants, redact exports deterministically, and write them atomically mode 0600."
+state = "Snapshot is read-only and reproducible for fixed data/time/manifest; HTTP/MCP/CLI share the same contract."
+failure = "Contract inconsistency raises instead of guessing; absent/invalid completed manifest reports `not_built`; export defaults to redaction."
+files = ["src/persome/model/snapshot.py", "src/persome/model/schema_reader.py", "src/persome/model/activity_source.py", "src/persome/model/entity_source.py", "src/persome/model/manifest.py", "src/persome/privacy/scrub.py"]
+symbols = ["build_snapshot", "validate_snapshot", "model_status", "export_snapshot", "scan"]
+tests = ["tests/test_model_snapshot.py", "tests/test_activity_source.py", "tests/test_entity_source.py", "tests/test_runtime_model_e2e.py"]
+
+[[stages]]
+id = "associative-retrieval"
+label = "Hybrid associative retrieval"
+lane = "projection"
+kind = "projection"
+order = 20
+summary = "Retrieves current evidence across lexical, temporal, relation, and optional vector cues and can expand it into auditable chains."
+trigger = "MCP/CLI/API memory or context query"
+inputs = ["query distilled into time/scene/term slots", "FTS BM25 pools", "relation/window pools", "optional dense vectors"]
+outputs = ["RRF-fused and MMR/breadth-cut entry hits", "retrieval counters", "evidence chains"]
+algorithm = "Distill a multi-slot query, run weighted lexical/contains/time/relation/dense pools, fuse ranks with reciprocal-rank fusion, apply recency and optional character-bigram MMR, then reconstruct bounded oriented relation-edge chains to self."
+state = "Reads increment retrieval counts that protect used memory from decay; vectors and FTS remain rebuildable projections. With the default `relation_include_shadow=true`, audited shadow relations may influence recall at half relation-pool weight even though snapshots hide them."
+failure = "Missing vector capability falls back to lexical pools; bounded limits prevent a query from expanding the whole personal store."
+files = ["src/persome/retrieval/associative.py", "src/persome/retrieval/chains.py", "src/persome/store/fts.py", "src/persome/store/vectors.py"]
+symbols = ["distill_q", "associative_read", "search_associative", "pull_chains"]
+tests = ["tests/test_retrieval_associative.py", "tests/test_associative_read_cutover.py", "tests/test_retrieval_chains.py", "tests/test_retrieval_tracking.py"]
+
+[[stages]]
+id = "local-read-surfaces"
+label = "REST, viewer, MCP, and CLI reads"
+lane = "access"
+kind = "surface"
+order = 10
+summary = "Makes the same owner-local runtime/model facts available to humans and agent clients without introducing product dashboards or a second model."
+trigger = "Authenticated owner-local HTTP/MCP request or local CLI command"
+inputs = ["snapshot/retrieval projection", "owner bearer or one-use viewer capability", "bounded request arguments"]
+outputs = ["REST JSON", "local Three.js `/model`", "MCP tool response", "CLI text/JSON"]
+algorithm = "Protect every route except canonical health with bearer/capability middleware, validate body/tool limits, call shared snapshot/retrieval functions, render packaged local viewer assets, and watchdog MCP parent/process lifetime."
+state = "Loopback is the default bind; bearer-authenticated POST issues a one-use nonce, whose bearer-exempt GET exchange creates a path-scoped HttpOnly browser session; no model content is uploaded by the viewer."
+failure = "Unsafe bind, missing/invalid bearer or capability, oversized input, or absent build fails explicitly. Canonical health and the nonce-protected bootstrap GET are the only bearer-exempt routes."
+files = ["src/persome/mcp/server.py", "src/persome/api/routes.py", "src/persome/api/model_view.py", "src/persome/security/auth.py", "src/persome/mcp/limits.py", "src/persome/cli.py"]
+symbols = ["build_server", "model_graph", "render_memory_view", "LocalAPIAuthMiddleware", "bounded_text", "app"]
+tests = ["tests/test_mcp_tools.py", "tests/test_model_routes.py", "tests/test_api_routes.py", "tests/test_local_api_auth.py", "tests/test_cli_model.py"]
+
+[[stages]]
+id = "explicit-correction"
+label = "Explicit audited correction"
+lane = "access"
+kind = "explicit-write"
+order = 20
+summary = "Lets the owner correct, supersede, retype, merge, reject an alias, or revoke state through a narrow auditable entrance."
+trigger = "Explicit CLI/MCP correction request"
+inputs = ["bounded user signal", "candidate search results", "requested operation", "local authorization"]
+outputs = ["supersede/retype/merge/revoke operation", "audit log", "targeted Face re-mine and Root re-synthesis"]
+algorithm = "Bound and authenticate the request, retrieve a small candidate set, plan an allowed operation, execute through deterministic store/evomem entrances, log source/reason/applied IDs, then targeted-remine affected Faces and immediately resynthesize Root."
+state = "Corrections preserve prior history/provenance and remain eligible for the next full structural build. The immediate re-forward path does not run the cross-domain sweeper."
+failure = "Ambiguous or invalid operations are rejected rather than free-form editing; a corrected Face can temporarily coexist with stale Volumes, and the immediately resynthesized Root can therefore still consume old Volume state."
+files = ["src/persome/writer/correct.py", "src/persome/evomem/engine.py", "src/persome/store/entries.py"]
+symbols = ["update_memory", "EvoMemory", "supersede_entry"]
+tests = ["tests/test_update_memory.py", "tests/test_entity_retype.py", "tests/test_evomem/test_inversion_manual_edit.py"]
+
+[[stages]]
+id = "agent-remember"
+label = "Agent finding write-back"
+lane = "access"
+kind = "explicit-write"
+order = 30
+summary = "Appends an authorized agent finding to one dedicated durable memory file with immutable source/run provenance, without invoking the correction planner or structural re-forward path."
+trigger = "Authorized local MCP `remember` call"
+inputs = ["non-empty bounded content", "optional caller tags", "optional agent run ID"]
+outputs = ["entry in `topic-agent-findings.md`", "`source:agent-run` and optional `run:<id>` tags", "entry ID"]
+algorithm = "Create the dedicated finding file on first use, force provenance tags ahead of caller tags, and append through the canonical `store.entries.append_entry` integrity/write-authority choke point."
+state = "The entry follows the configured public write authority and remains distinguishable from observed or user-authored memory."
+failure = "Empty content is rejected; integrity or storage failures propagate and no free-form correction, Face re-mine, or Root synthesis is attempted."
+files = ["src/persome/mcp/memory_write.py", "src/persome/store/entries.py"]
+symbols = ["remember", "append_entry"]
+tests = ["tests/test_memory_write.py", "tests/test_mcp_tools.py"]
+
+[[stages]]
+id = "explicit-secure-erasure"
+label = "Explicit secure erasure"
+lane = "access"
+kind = "explicit-write"
+order = 40
+summary = "Deletes the operator-selected capture, timeline, memory, or entire local Runtime scope across live, backup, quarantine, export, Markdown, and SQLite/FTS copies instead of deleting only the visible primary file."
+trigger = "Confirmed `persome clean captures|timeline|memory|all` while the daemon is stopped"
+inputs = ["selected deletion scope", "live database and sidecars", "capture/memory files", "backups and quarantines", "exports and recovery artifacts"]
+outputs = ["securely purged scope", "vacuumed/truncated SQLite and FTS", "removed derived snapshots/markers", "explicit failure receipt when any retained copy cannot be scrubbed"]
+algorithm = "Require stopped-daemon ownership and confirmation, remove canonical files and rows, scrub matching tables from backups/quarantines, enable SQLite/FTS secure deletion, rebuild indexes, truncate WAL, VACUUM, and delete derived model/export/recovery artifacts for the chosen scope."
+state = "Erasure is an operator-only destructive boundary; scope-specific helpers count removed artifacts and never reuse normal retention as proof of secure purge."
+failure = "Busy WAL, unsafe retained copies, or scrub/remove failures fail loudly; the command does not claim success while a known local copy still contains the selected data."
+files = ["src/persome/cli.py", "src/persome/evomem/backup.py", "src/persome/store/fts.py"]
+symbols = ["_require_stopped_for_clean", "_clean_captures", "_clean_timeline", "_clean_memory", "scrub_database_copies", "purge_deleted_content"]
+tests = ["tests/test_clean_cli.py", "tests/test_storage_security.py"]
+
+[[edges]]
+from = "startup-recovery"
+to = "runtime-orchestration"
+kind = "control"
+payload = "recovered/verified local state and cleared journal"
+condition = "Runtime start proceeds only when the offline recovery gate is clear"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "ax-event-gate"
+kind = "control"
+payload = "capture task lifetime"
+condition = "daemon capture mode"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "timeline-block"
+kind = "control"
+payload = "60-second timeline tick"
+condition = "not capture-only"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "session-cut"
+kind = "control"
+payload = "session cut and flush ticks"
+condition = "always cut; flush unless capture-only"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "active-reducer"
+kind = "control"
+payload = "active flush and one-minute reducer-retry task lifetimes"
+condition = "flush unless capture-only; retry in every mode"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "daily-maintenance"
+kind = "control"
+payload = "daily safety-net task lifetime"
+condition = "all daemon modes, including capture-only"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "vector-index"
+kind = "control"
+payload = "60-second embedding queue drain"
+condition = "hybrid retrieval configured and not capture-only"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "model-build"
+kind = "control"
+payload = "dirty refresh and unconditional daily build task lifetimes"
+condition = "schema/model processing enabled and not capture-only"
+
+[[edges]]
+from = "runtime-orchestration"
+to = "local-read-surfaces"
+kind = "control"
+payload = "MCP/HTTP process lifetime and restart backoff"
+condition = "MCP enabled"
+
+[[edges]]
+from = "ax-event-gate"
+to = "s1-observation"
+kind = "data"
+payload = "capture-worthy trigger"
+condition = "daemon capture mode"
+
+[[edges]]
+from = "trusted-ingest"
+to = "privacy-pixel-gate"
+kind = "data"
+payload = "validated raw ingest candidate"
+condition = "authenticated ingest mode"
+
+[[edges]]
+from = "s1-observation"
+to = "privacy-pixel-gate"
+kind = "data"
+payload = "raw window/AX/pixel candidate"
+condition = "pre-capture lock gate remains open"
+
+[[edges]]
+from = "privacy-pixel-gate"
+to = "s1-normalization"
+kind = "data"
+payload = "privacy-gated candidate, possibly metadata-only"
+condition = "candidate was not skipped for screen lock"
+
+[[edges]]
+from = "s1-normalization"
+to = "ocr-fallback"
+kind = "data"
+payload = "AX-poor focused observation plus private window pixels"
+condition = "explicit/effective OCR enabled and AX text poor"
+
+[[edges]]
+from = "s1-normalization"
+to = "capture-commit"
+kind = "data"
+payload = "normalized S1 capture"
+condition = "content is not a duplicate"
+
+[[edges]]
+from = "ocr-fallback"
+to = "capture-commit"
+kind = "feedback"
+payload = "asynchronous OCR text backfill by capture ID"
+condition = "worker succeeds after base commit"
+
+[[edges]]
+from = "capture-commit"
+to = "timeline-block"
+kind = "data"
+payload = "capture JSON plus FTS/OCR projection"
+condition = "capture timestamp falls in a closed minute"
+
+[[edges]]
+from = "capture-commit"
+to = "session-cut"
+kind = "data"
+payload = "capture-worthy activity trigger"
+condition = "successful non-duplicate commit with original trigger not null"
+
+[[edges]]
+from = "timeline-block"
+to = "active-reducer"
+kind = "data"
+payload = "blocks queried by session time range"
+condition = "flush or terminal reduction reads the range"
+
+[[edges]]
+from = "session-cut"
+to = "active-reducer"
+kind = "control"
+payload = "session ID, flush window, terminal callback"
+condition = "five-minute flush or session end"
+
+[[edges]]
+from = "active-reducer"
+to = "active-window-modeling"
+kind = "control"
+payload = "successful active/terminal reduction result"
+condition = "active flush or terminal finalization"
+
+[[edges]]
+from = "session-cut"
+to = "terminal-finalizer"
+kind = "control"
+payload = "ended/reduced session"
+condition = "session end, retry, or recovery"
+
+[[edges]]
+from = "daily-maintenance"
+to = "terminal-finalizer"
+kind = "control"
+payload = "force-ended and stranded session catch-up"
+condition = "reducer enabled or pending terminal work exists"
+
+[[edges]]
+from = "terminal-finalizer"
+to = "active-window-modeling"
+kind = "control"
+payload = "unmodeled trailing range"
+condition = "delta_end precedes session end"
+
+[[edges]]
+from = "active-window-modeling"
+to = "memory-delta"
+kind = "data"
+payload = "bounded unmodeled evidence window"
+condition = "no stored exact-window delta"
+
+[[edges]]
+from = "memory-delta"
+to = "delta-gate"
+kind = "data"
+payload = "quoted candidate entities/assertions/events/relations"
+condition = "LLM returns parseable structured output"
+
+[[edges]]
+from = "delta-gate"
+to = "delta-apply"
+kind = "data"
+payload = "clean accepted delta"
+condition = "after persist-before-apply audit insert"
+
+[[edges]]
+from = "delta-apply"
+to = "memory-authority"
+kind = "data"
+payload = "Point/Line write operations"
+condition = "accepted items exist"
+
+[[edges]]
+from = "terminal-finalizer"
+to = "behavior-pattern"
+kind = "data"
+payload = "repeated terminal event evidence"
+condition = "pattern detector enabled"
+
+[[edges]]
+from = "terminal-finalizer"
+to = "legacy-compaction"
+kind = "control"
+payload = "successful legacy classifier commit and persisted cadence counter"
+condition = "compatibility only: memory_delta.apply_enabled=false"
+
+[[edges]]
+from = "memory-authority"
+to = "model-build"
+kind = "control"
+payload = "dirty Point/Line watermark"
+condition = "debounced, daily, or explicit build"
+
+[[edges]]
+from = "memory-authority"
+to = "daily-maintenance"
+kind = "data"
+payload = "current evomem, entries, retrieval, temporal, and receipt state"
+condition = "daily safety-net"
+
+[[edges]]
+from = "daily-maintenance"
+to = "memory-authority"
+kind = "feedback"
+payload = "projection repair, optional retirement/decay, integrity and backup receipts"
+condition = "enabled substages complete"
+
+[[edges]]
+from = "legacy-compaction"
+to = "memory-authority"
+kind = "feedback"
+payload = "preservation-gated Markdown replacement, retrieval rebuild, evomem repair"
+condition = "compatibility cadence accepts one or more files"
+
+[[edges]]
+from = "behavior-pattern"
+to = "memory-authority"
+kind = "data"
+payload = "evidence-backed observed skill entry"
+condition = "repeated-pattern detector accepts a pattern"
+
+[[edges]]
+from = "model-build"
+to = "entity-case-relation"
+kind = "control"
+payload = "enrichment stage"
+condition = "one or more enrichment features enabled"
+
+[[edges]]
+from = "entity-case-relation"
+to = "face-mining"
+kind = "data"
+payload = "accepted durable Points and Lines"
+condition = "schema mining enabled"
+
+[[edges]]
+from = "face-mining"
+to = "volume-synthesis"
+kind = "data"
+payload = "active stable non-person Faces"
+condition = "cross-domain synthesis enabled"
+
+[[edges]]
+from = "volume-synthesis"
+to = "root-synthesis"
+kind = "data"
+payload = "active Faces, Volumes, and inherited receipts"
+condition = "root synthesis enabled"
+
+[[edges]]
+from = "root-synthesis"
+to = "snapshot-projection"
+kind = "data"
+payload = "optional current Root"
+condition = "a live Root exists"
+
+[[edges]]
+from = "memory-authority"
+to = "snapshot-projection"
+kind = "data"
+payload = "all non-archived Points and active/open Lines"
+condition = "status/view/export request or build completion"
+
+[[edges]]
+from = "model-build"
+to = "snapshot-projection"
+kind = "control"
+payload = "build outcome, active geometry, and manifest"
+condition = "snapshot builds even when higher geometry is degraded or absent"
+
+[[edges]]
+from = "model-build"
+to = "vector-index"
+kind = "control"
+payload = "vector backfill stage"
+condition = "always enqueue; embed only when configured"
+
+[[edges]]
+from = "memory-authority"
+to = "associative-retrieval"
+kind = "data"
+payload = "current FTS/evolution/relation state"
+condition = "read query"
+
+[[edges]]
+from = "vector-index"
+to = "associative-retrieval"
+kind = "data"
+payload = "optional dense similarity pool"
+condition = "hybrid retrieval enabled"
+
+[[edges]]
+from = "snapshot-projection"
+to = "local-read-surfaces"
+kind = "data"
+payload = "versioned model snapshot and provenance"
+condition = "authorized local request"
+
+[[edges]]
+from = "associative-retrieval"
+to = "local-read-surfaces"
+kind = "data"
+payload = "bounded evidence hits and chains"
+condition = "authorized local query"
+
+[[edges]]
+from = "explicit-correction"
+to = "memory-authority"
+kind = "feedback"
+payload = "audited supersede/retype/merge/revoke"
+condition = "explicit authorized request"
+
+[[edges]]
+from = "agent-remember"
+to = "memory-authority"
+kind = "data"
+payload = "provenance-tagged agent finding"
+condition = "authorized non-empty write-back"
+
+[[edges]]
+from = "lifecycle-policy"
+to = "explicit-secure-erasure"
+kind = "control"
+payload = "stopped-daemon ownership proof and operator confirmation"
+condition = "explicit clean command"
+
+[[edges]]
+from = "capture-commit"
+to = "explicit-secure-erasure"
+kind = "data"
+payload = "capture JSON/index/backup copies selected for deletion"
+condition = "clean captures or all"
+
+[[edges]]
+from = "timeline-block"
+to = "explicit-secure-erasure"
+kind = "data"
+payload = "timeline rows selected for deletion"
+condition = "clean timeline or all"
+
+[[edges]]
+from = "memory-authority"
+to = "explicit-secure-erasure"
+kind = "data"
+payload = "canonical and derived memory/model copies selected for deletion"
+condition = "clean memory or all"

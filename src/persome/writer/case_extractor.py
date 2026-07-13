@@ -221,8 +221,10 @@ def run_case_extraction(
 ) -> CaseResult:
     """Extract ``{problem, solution}`` cards from the recent timeline → L5 evomem.
 
-    Off by default: a no-op (``skipped_reason='disabled'``) unless
-    ``cfg.case_extraction_enabled`` is truthy.
+    The shipped :class:`~persome.config.Config` enables this stage. It is a
+    no-op (``skipped_reason='disabled'``) when
+    ``cfg.case_extraction_enabled`` is false; compatibility config objects that
+    omit the attribute also take that disabled fallback.
 
     ``llm_call`` / ``memory`` are injectable seams for testing; the live defaults
     use provider-aware ``llm_mod.call_llm`` and a fresh ``EvoMemory`` (its

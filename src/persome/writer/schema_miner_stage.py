@@ -423,11 +423,12 @@ def mine_schemas_for_user(
 ) -> SchemaRunResult:
     """Top-level, testable entry point: collect fact bundles, mine, and land them.
 
-    This is the function a scheduled tick or manual model build calls. It
-    wires :func:`collect_fact_bundles` (the per-file MVP clustering) into
-    :func:`mine_bundles_and_write`. Wiring it into the daemon registry is a later
-    step — keeping it a plain function here makes the whole chain unit-testable
-    with an injected ``llm_call`` and no daemon.
+    This is the function the shared model-build coordinator calls. Both the
+    daily ``schema-tick`` and dirty-gated ``model-refresh`` daemon tasks invoke
+    that coordinator, as does ``persome model build``. It wires
+    :func:`collect_fact_bundles` (the per-file clustering) into
+    :func:`mine_bundles_and_write` while remaining testable with an injected
+    ``llm_call`` and no daemon.
     """
 
     from_evomem = bool(getattr(getattr(cfg, "memory_delta", None), "apply_enabled", False))

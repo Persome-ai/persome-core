@@ -65,13 +65,19 @@ remain outside the offline gate.
 ## 4. Verify generated contracts
 
 ```bash
-uv run pytest tests/test_openapi_drift.py tests/test_db_schema_drift.py -q
+uv run pytest \
+  tests/test_openapi_drift.py \
+  tests/test_db_schema_drift.py \
+  tests/test_code_atlas.py -q
+uv run python scripts/generate_code_atlas.py --check
 ```
 
 `openapi.json` must byte-match the Runtime schema. The database dump documents
 the fresh-install schema. After an intentional contract change, regenerate with
 `scripts/regen_openapi.py` or `scripts/regen_db_schema.py` and rerun the
-drift tests.
+drift tests. After a source/module/Dataflow change, update the curated semantic
+facts in `docs/code-atlas/stages.toml` when needed, then run
+`uv run python scripts/generate_code_atlas.py` and review the generated diff.
 
 ## 5. Build and inspect a local model
 

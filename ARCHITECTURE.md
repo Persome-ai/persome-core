@@ -9,23 +9,24 @@ task dashboards, and evaluation harnesses are outside this repository.
 
 ```text
 macOS AX watcher ─┐
-optional local OCR├─> capture buffer -> timeline blocks -> sessions
-trusted ingest API┘                              |
-                                                   v
-                                five-minute reducer -> event memory
-                                                   |
-                                                   v
-                             incremental memory_delta/apply
-                                                   |
-                                 session-end trailing finalizer
-                                  classifier + pattern catch-up
-                                                   |
-                                                   v
-                   Points/Lines -> schema Faces -> Volumes -> Root
-                                                   |
-                            ┌──────────────────────┼──────────────────────┐
-                            v                      v                      v
-                     model snapshot              MCP                 /model
+optional local OCR├─> capture commit -> capture buffer -> timeline blocks ─┐
+trusted ingest API┘          |                                               |
+                             └-> non-heartbeat event -> sessions ────────────┤
+                                                                             v
+                                                  five-minute reducer -> event memory
+                                                                             |
+                                                                             v
+                                                   incremental memory_delta/apply
+                                                                             |
+                                                       session-end trailing finalizer
+                                                        classifier + pattern catch-up
+                                                                             |
+                                                                             v
+                                         Points/Lines -> schema Faces -> Volumes -> Root
+                                                                             |
+                                                      ┌──────────────────────┼──────────────────────┐
+                                                      v                      v                      v
+                                               model snapshot              MCP                 /model
 ```
 
 The capture path is macOS-only. The storage, model projection, and offline
@@ -41,13 +42,19 @@ tests can run on Linux with macOS-marked tests deselected.
    PP-OCRv6 as a fallback when an app exposes no usable AX text; AX remains the
    primary daemon-mode signal.
 2. `parsers/` normalizes app-specific structures into capture records.
-3. `timeline/` groups records into one-minute blocks and preserves authored
-   evidence.
-4. `session/` cuts bounded work sessions using deterministic rules.
+3. `timeline/` independently consumes committed records, groups them into
+   one-minute blocks, and preserves authored evidence.
+4. In parallel, `session/` consumes only successful event-triggered capture
+   notifications and cuts bounded work sessions using deterministic rules.
+   Heartbeat captures still enter the capture buffer and timeline, but their
+   absent event trigger does not call the session manager or extend its idle
+   deadline. Content-deduplicated captures do neither.
 5. `writer/` reduces the active window every five minutes by default and applies
    an evidence-gated memory delta to durable model state. Session end processes
    only the trailing window and detects repeated behavior. The shared service
-   is idempotent across daemon, retry, CLI, and build callers.
+   is cross-process serialized and range-resumable across daemon, retry, CLI,
+   and build callers. The current per-item apply path is not one atomic
+   transaction; its replay caveat is recorded in the code-fact atlas.
 
 The detailed stage behavior lives in
 [`docs/capture.md`](docs/capture.md),
@@ -105,6 +112,18 @@ substage before surfacing a partial failure, so the manifest cannot call a
 partially failed stage complete. Missing geometry marks the build degraded and
 never overwrites an existing good Root with an empty result. The manifest is
 written atomically with owner-only permissions.
+
+The build emits model geometry and a snapshot, not viewer coordinates. The
+packaged browser module `resources/model_assets/layout.mjs` computes the
+deterministic three-dimensional layout when `/model` renders that snapshot.
+
+## Capture-only mode
+
+`--capture-only` disables the periodic timeline, active-flush, classifier-tick,
+vector, and structural-build tasks. It still keeps capture, session cutting,
+the reducer retry/boot-recovery path, the daily safety net, and configured MCP.
+Session-end and recovery reductions therefore still enter the shared terminal
+finalizer; capture-only is not a global writer/finalizer kill switch.
 
 ## Storage
 

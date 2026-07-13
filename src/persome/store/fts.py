@@ -842,9 +842,11 @@ def set_contains_rerank(enabled: bool) -> None:
 
 
 def set_relation_shadow(enabled: bool) -> None:
-    """§7-3 gain unlock: let audited-clean SHADOW edges join relation-head
-    traversal (downweighted ×0.5). Default OFF — flipped by config
-    ``[search] relation_include_shadow`` once the sweep verdict clears."""
+    """Let SHADOW-only relation reach join traversal at half relation weight.
+
+    The shipped config enables it; ``[search] relation_include_shadow`` is the
+    explicit kill switch. Active-edge reach remains in the full-weight pool.
+    """
     _POOL_WEIGHTS["relation_shadow"] = bool(enabled)
 
 

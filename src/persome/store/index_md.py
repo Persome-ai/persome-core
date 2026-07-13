@@ -1,4 +1,4 @@
-"""Rebuild memory/index.md from the `files` table after every writer commit."""
+"""Render ``memory/index.md`` on demand from current files/entries projections."""
 
 from __future__ import annotations
 

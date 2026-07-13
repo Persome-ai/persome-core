@@ -10,7 +10,7 @@ Root.
 | Writer | Input | Output |
 |---|---|---|
 | session reducer | timeline blocks | `event-YYYY-MM-DD.md` |
-| memory delta + apply | one newly flushed session window | owner-alias evidence plus entities, assertions, events, and relation Lines in evomem/FTS/Markdown projection |
+| memory delta + apply | one newly flushed session window | owner-alias evidence; entity/assertion Points in `evo_nodes`; relation and event-participation Lines in relation tables |
 | pattern detector | repeated event evidence | `memory/skills/skill-*.md` |
 | case extractor | error followed by supported resolution | reusable L5 knowledge Points |
 | schema miner | repeated durable facts | level-1 Face candidates |
@@ -82,9 +82,12 @@ per-identity fan-out cap.
 
 Persist-before-apply is deliberate. `apply_status` is `pending`, `applied`, or
 `failed`; a retry reuses the stored window payload and only resumes apply.
-`sessions.delta_end` advances only after success, keeping cost and
-relation-observation counts idempotent. Terminal finalization processes only
-the remaining tail.
+`sessions.delta_end` advances only after the caller reports success, keeping the
+LLM extraction cost bounded. The apply heads are not one transaction:
+`ApplyResult.errors` can be collected without failing the window, and an
+independently committed additive relation update can repeat after a mid-apply
+crash. Terminal finalization processes only the remaining tail. The verified
+gap and required fault-injection tests are recorded in the code-fact atlas.
 
 When `apply_enabled=false`, the delta remains an audit artifact and the legacy
 classifier regains the terminal durable-fact role. This is a compatibility and
@@ -117,7 +120,8 @@ The dirty-gated 30-minute refresh, `persome model build`, and the unconditional
 
 `case_extractor` deterministically finds error-to-resolution windows, then asks
 the LLM to distill supported problem/solution cards. Unresolved errors are not
-minted. Cards enter the public deterministic evomem write entrance.
+minted. Cards enter `EvoMemory.add_direct`, the same deterministic evomem write
+entrance used for new entity/assertion Points.
 
 ### Faces
 
@@ -172,12 +176,30 @@ Reads reinforce memory: retrieved entries are protected from decay.
 
 ## Authority and projections
 
-All writes converge on `store/entries.py` or deterministic evomem entrances.
+There are two deliberately different write sequences:
+
+- `store/entries.py` writers honor `write_authority`. With the default
+  `markdown`, they atomically replace the Markdown file first, update the
+  `files`/`entries`/temporal DB projection while holding the same file lock, and
+  then run the best-effort evomem shadow hook. With `evomem`, the same verbs
+  commit the canonical `evo_nodes` change first, synchronously update the DB
+  retrieval projection, and finally attempt the readable Markdown projection;
+  a Markdown projection miss does not roll back canonical evomem state.
+- Direct evomem writers (`delta_apply`, `case_extractor`, and PersonGraph) call
+  `EvoMemory.add_direct`/`NodeStore` directly. The new Point is immediately in
+  `evo_nodes`, but that call does **not** also write `entries` or `memory/*.md`.
+  With the shipped delta-apply path, the daily safety net rebuilds the DB
+  `entries` projection from `evo_nodes`. Markdown is a separate projection and
+  is produced only by an entries-routed evomem-authority write or an explicit
+  `persome evomem-project-markdown` run; the daily DB reprojection does not
+  write Markdown.
 
 - `write_authority="markdown"` (default): Markdown is truth; the shadow hook
-  mirrors current entries into evomem.
-- `write_authority="evomem"`: evomem is truth; FTS and Markdown are projections.
-  Event files and skill Markdown retain their narrow legacy path.
+  mirrors entries-routed writes into evomem. Direct evomem writers remain
+  canonical in `evo_nodes` as described above.
+- `write_authority="evomem"`: evomem is truth for entries-routed writes; DB
+  retrieval rows are synchronous and Markdown is best-effort. Event files and
+  skill Markdown retain their narrow legacy path.
 
 Never add another independent truth store. Rebuild commands regenerate the
 selected projections and preserve receipts/history.
@@ -202,6 +224,6 @@ cuts, retries, and finalization; `logs/compact.log` records preservation checks.
 
 ```bash
 persome writer run    # catch up reductions and terminal modeling
-persome model build   # then build Face/Volume/Root/layout
+persome model build   # then build Face/Volume/Root and vector state
 persome model status
 ```

@@ -14,9 +14,10 @@ persome start
 persome mcp
 ```
 
-The daemon endpoint requires `Authorization: Bearer <PERSOME_LOCAL_API_TOKEN>`.
-The token is provisioned in the owner-only Runtime env file. Stdio does not
-need or copy that bearer.
+The daemon endpoint requires `Authorization: Bearer <PERSOME_LOCAL_API_TOKEN>`,
+apart from the two exact browser-safe GETs described below. The token is
+provisioned in the owner-only Runtime env file. Stdio does not need or copy that
+bearer.
 
 Example stdio client configuration:
 
@@ -76,8 +77,13 @@ port = 8742
 ## Security and privacy
 
 - The HTTP transport is loopback-only by default.
-- HTTP MCP uses the same required bearer boundary as REST; only
-  canonical `GET /health` is public.
+- HTTP MCP and REST share the bearer boundary. Exactly two canonical GETs are
+  bearer-exempt: `GET /health`, and
+  `GET /auth/browser-bootstrap?nonce=...`. The bootstrap GET is still protected
+  by a 60-second, single-use nonce that only the bearer-authenticated
+  `POST /auth/browser-bootstrap` can issue; it exchanges that nonce for a
+  model-only cookie and unguessable viewer path. Method, slash, and encoded-path
+  variants are not exempt.
 - MCP returns local personal data, including raw screen text from capture tools;
   only connect trusted clients.
 - The MCP server does not forward results to a model provider by itself. A
@@ -87,5 +93,6 @@ port = 8742
 - Write tools are explicit and auditable; the removed computer-use tools are
   not part of this server.
 
-The same loopback ASGI app serves `/model` and the authenticated REST
-routes. Use `persome model open` for a one-time browser bootstrap.
+The same loopback ASGI app serves `/model` and the authenticated REST routes.
+Use `persome model open` to perform the bearer-authenticated nonce issuance and
+then open the one-time browser bootstrap GET.
