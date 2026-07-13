@@ -11,6 +11,7 @@ person, and serves that model to MCP agents.
 [![License: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-blue)](LICENSE)
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black)](#platform-support)
 [![MCP](https://img.shields.io/badge/interface-MCP-0b7285)](MCP.md)
+[![Official MCP Registry](https://img.shields.io/badge/Official_MCP_Registry-Persome-6f42c1)](https://registry.modelcontextprotocol.io/?q=Persome)
 
 **[Star Persome on GitHub](https://github.com/Intuition-Lab/personal-model)** to
 follow the Runtime and help prioritize the next MCP integrations.
@@ -264,6 +265,15 @@ capture and session pipeline. OCR is a fallback, not a parallel cloud recorder.
   `get_model_snapshot`
 
 ## Connect an MCP client
+
+Persome is verified in the
+[Official MCP Registry](https://registry.modelcontextprotocol.io/?q=Persome) as
+`io.github.Intuition-Lab/personal-model`. An MCP host can launch the registered
+PyPI entry directly without a persistent tool install:
+
+```bash
+uvx --from personal-model personal-model mcp
+```
 
 Register an owner-local stdio server. These clients launch it on demand, so the
 daemon does not need to be running and no bearer is copied into their config:
