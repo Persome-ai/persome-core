@@ -147,15 +147,15 @@ def test_pending_owner_alias_never_mints_person(ac_root):
     with fts.cursor() as conn:
         owner_alias_store.record_evidence(
             conn,
-            alias="Singularity-tian",
+            alias="Casey-Example",
             session_id="owner-session-1",
             source_kind=owner_alias_store.SOURCE_OWNED_ACCOUNT,
-            quote="own GitHub account Singularity-tian",
+            quote="own GitHub account Casey-Example",
             confidence=0.9,
         )
 
     graph = PersonGraph(_mem(), cfg=_on(), name_source=_StaticSource([]))
-    assert graph.record(PersonEvent(name="Singularity-tian", summary="opened a PR")) is None
+    assert graph.record(PersonEvent(name="Casey-Example", summary="opened a PR")) is None
     assert graph.list_persons() == []
 
 

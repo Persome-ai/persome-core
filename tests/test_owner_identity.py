@@ -19,18 +19,18 @@ def test_owned_account_requires_two_independent_sessions(ac_root) -> None:
     with fts.cursor() as conn:
         first = owner_identity.record_candidate(
             conn,
-            alias="Singularity-tian",
+            alias="Casey-Example",
             session_id="session-1",
             source_kind=alias_store.SOURCE_OWNED_ACCOUNT,
-            quote="Opened the user's own GitHub account Singularity-tian",
+            quote="Opened the user's own GitHub account Casey-Example",
             confidence=0.91,
         )
         duplicate = owner_identity.record_candidate(
             conn,
-            alias="Singularity-tian",
+            alias="Casey-Example",
             session_id="session-1",
             source_kind=alias_store.SOURCE_OWNED_ACCOUNT,
-            quote="Opened the user's own GitHub account Singularity-tian",
+            quote="Opened the user's own GitHub account Casey-Example",
             confidence=0.94,
         )
         assert first is not None and first.status == alias_store.STATUS_PENDING
@@ -38,26 +38,26 @@ def test_owned_account_requires_two_independent_sessions(ac_root) -> None:
 
         second = owner_identity.record_candidate(
             conn,
-            alias="Singularity-tian",
+            alias="Casey-Example",
             session_id="session-2",
             source_kind=alias_store.SOURCE_OWNED_ACCOUNT,
-            quote="Returned to own repositories for Singularity-tian",
+            quote="Returned to own repositories for Casey-Example",
             confidence=0.9,
         )
 
     assert second is not None and second.status == alias_store.STATUS_ACTIVE
     assert second.evidence_count == 2 and second.activated_now
-    assert owner_identity.active_aliases(_cfg()) == ["Singularity-tian"]
+    assert owner_identity.active_aliases(_cfg()) == ["Casey-Example"]
 
 
 def test_explicit_authored_identity_promotes_immediately(ac_root) -> None:
     with fts.cursor() as conn:
         state = owner_identity.record_candidate(
             conn,
-            alias="\u5f20\u5929\u7fca",
+            alias="\u793a\u4f8b\u7532",
             session_id="session-explicit",
             source_kind=alias_store.SOURCE_EXPLICIT_SELF,
-            quote="\u6211\u53eb\u5f20\u5929\u7fca",
+            quote="\u6211\u53eb\u793a\u4f8b\u7532",
             confidence=0.96,
         )
 
@@ -118,15 +118,15 @@ def test_stale_pending_alias_no_longer_blocks_person_graph(ac_root) -> None:
 def test_promotion_retires_existing_person_and_derived_schema(ac_root) -> None:
     memory = EvoMemory()
     memory.add_direct(
-        "Singularity-tian",
+        "Casey-Example",
         layer=MemoryLayer.L5_KNOWLEDGE,
-        file_name="person-singularity-tian",
+        file_name="person-casey-example",
         tags="person-entity",
     )
     memory.add_direct(
         "The person iterates on pull requests.",
         layer=MemoryLayer.L6_SCHEMA,
-        file_name="schema-person-singularity-tian",
+        file_name="schema-person-casey-example",
         tags="schema stable",
     )
 
@@ -134,21 +134,21 @@ def test_promotion_retires_existing_person_and_derived_schema(ac_root) -> None:
         for session_id in ("session-1", "session-2"):
             owner_identity.record_candidate(
                 conn,
-                alias="Singularity-tian",
+                alias="Casey-Example",
                 session_id=session_id,
                 source_kind=alias_store.SOURCE_OWNED_ACCOUNT,
-                quote="own GitHub account Singularity-tian",
+                quote="own GitHub account Casey-Example",
                 confidence=0.91,
             )
         active = conn.execute(
             "SELECT file_name FROM evo_nodes WHERE is_latest=1 AND status='active'"
-            " AND file_name IN ('person-singularity-tian.md',"
-            " 'schema-person-singularity-tian.md')"
+            " AND file_name IN ('person-casey-example.md',"
+            " 'schema-person-casey-example.md')"
         ).fetchall()
         retired = conn.execute(
             "SELECT COUNT(*) FROM evo_nodes WHERE status='shadow' AND is_latest=0"
-            " AND file_name IN ('person-singularity-tian.md',"
-            " 'schema-person-singularity-tian.md')"
+            " AND file_name IN ('person-casey-example.md',"
+            " 'schema-person-casey-example.md')"
         ).fetchone()[0]
 
     assert active == [] and retired == 2

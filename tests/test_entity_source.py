@@ -104,13 +104,13 @@ def test_memory_person_source_filters_configured_owner_alias(ac_root) -> None:
     NodeStore().save(
         MemoryNode(
             node_id=node_id,
-            content="Singularity-tian opened a pull request.",
+            content="Casey-Example opened a pull request.",
             layer=MemoryLayer.L2_FACT,
-            file_name="person-singularity-tian.md",
+            file_name="person-casey-example.md",
             confidence="high",
         )
     )
-    cfg = SimpleNamespace(memory_delta=SimpleNamespace(owner_aliases=["Singularity-tian"]))
+    cfg = SimpleNamespace(memory_delta=SimpleNamespace(owner_aliases=["Casey-Example"]))
 
     assert MemoryPersonNameSource(cfg=cfg).events() == []
 
@@ -119,9 +119,9 @@ def test_memory_person_source_filters_learned_owner_alias(ac_root) -> None:
     NodeStore().save(
         MemoryNode(
             node_id="point-person-learned-owner",
-            content="Singularity-tian opened a pull request.",
+            content="Casey-Example opened a pull request.",
             layer=MemoryLayer.L2_FACT,
-            file_name="person-singularity-tian.md",
+            file_name="person-casey-example.md",
             confidence="high",
         )
     )
@@ -129,10 +129,10 @@ def test_memory_person_source_filters_learned_owner_alias(ac_root) -> None:
         for session_id in ("owner-1", "owner-2"):
             owner_identity.record_candidate(
                 conn,
-                alias="Singularity-tian",
+                alias="Casey-Example",
                 session_id=session_id,
                 source_kind=owner_alias_store.SOURCE_OWNED_ACCOUNT,
-                quote="own account Singularity-tian",
+                quote="own account Casey-Example",
                 confidence=0.9,
             )
     cfg = SimpleNamespace(memory_delta=SimpleNamespace(owner_aliases=[]))

@@ -142,20 +142,20 @@ def test_entity_op_can_merge_identity_into_reserved_self(ac_root):
         res = C.update_memory(
             _cfg(),
             conn,
-            "Singularity-tian is my GitHub handle",
+            "Casey-Example is my GitHub handle",
             llm_call=_llm(
                 {
                     "supersede": [],
-                    "entity_op": {"op": "merge_into_self", "entity": "Singularity-tian"},
+                    "entity_op": {"op": "merge_into_self", "entity": "Casey-Example"},
                     "reason": "owner handle",
                 }
             ),
         )
         row = conn.execute(
-            "SELECT status, decision_source FROM owner_aliases WHERE alias_key='singularity-tian'"
+            "SELECT status, decision_source FROM owner_aliases WHERE alias_key='casey-example'"
         ).fetchone()
 
-    assert res.ok and "merged Singularity-tian → self" in res.applied
+    assert res.ok and "merged Casey-Example → self" in res.applied
     assert tuple(row) == ("active", "user")
 
 
@@ -185,18 +185,18 @@ def test_owner_alias_correction_preserves_agent_provenance(ac_root):
         res = C.update_memory(
             _cfg(),
             conn,
-            "Singularity-tian is the owner's GitHub handle",
+            "Casey-Example is the owner's GitHub handle",
             source="agent",
             llm_call=_llm(
                 {
                     "supersede": [],
-                    "entity_op": {"op": "merge_into_self", "entity": "Singularity-tian"},
+                    "entity_op": {"op": "merge_into_self", "entity": "Casey-Example"},
                     "reason": "owner handle",
                 }
             ),
         )
         source = conn.execute(
-            "SELECT decision_source FROM owner_aliases WHERE alias_key='singularity-tian'"
+            "SELECT decision_source FROM owner_aliases WHERE alias_key='casey-example'"
         ).fetchone()[0]
 
     assert res.ok and source == "agent"
