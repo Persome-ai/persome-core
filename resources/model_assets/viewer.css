@@ -602,6 +602,58 @@ button {
 .swatch.volume { color: var(--volume); border: 1px solid var(--volume); background: transparent; }
 .swatch.root { color: var(--root); background: var(--root); transform: rotate(45deg); border-radius: 2px; }
 
+.line-explorer {
+  position: absolute;
+  z-index: 20;
+  top: 12px;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  transform: translateX(-50%);
+}
+
+.line-explorer:focus-within {
+  display: grid;
+  width: min(420px, calc(100vw - 32px));
+  height: auto;
+  padding: 12px;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 13px;
+  background: var(--surface-strong);
+  clip-path: none;
+  gap: 6px;
+}
+
+.line-explorer label {
+  color: var(--dim);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.line-explorer select {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: #12101d;
+  color: var(--text);
+  font: 10px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+}
+
+.line-explorer select:focus-visible {
+  border-color: var(--line);
+  outline: 2px solid color-mix(in srgb, var(--line) 65%, transparent);
+  outline-offset: 2px;
+}
+
 .detail {
   position: absolute;
   z-index: 14;
@@ -630,6 +682,7 @@ button {
 
 .detail[data-kind="point"] { --detail-accent: var(--point); }
 .detail[data-kind="context"] { --detail-accent: var(--muted); }
+.detail[data-kind="line"] { --detail-accent: var(--line); }
 .detail[data-kind="face"] { --detail-accent: var(--face); }
 .detail[data-kind="volume"] { --detail-accent: var(--volume); }
 .detail[data-kind="root"] { --detail-accent: var(--root); }

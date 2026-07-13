@@ -24,6 +24,13 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
 </head>
 <body>
   <main id="viewer" aria-label="Persome personal model explorer">
+    <div id="line-explorer" class="line-explorer" hidden>
+      <label for="line-select">Open a model line</label>
+      <select id="line-select">
+        <option value="">Choose a relationship…</option>
+      </select>
+    </div>
+
     <div id="canvas"></div>
 
     <header class="topbar">

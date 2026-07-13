@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   evidenceBreadcrumb,
   evidenceOverview,
+  linePresentation,
   nodeEvidenceCards,
   nodeHistoryCards,
   relationLabel,
@@ -57,4 +58,23 @@ test("labels version history and drill-down breadcrumbs with content", () => {
   assert.equal(relationLabel(history.relation), "Previous version");
   assert.equal(history.label, "The user checked the original evidence.");
   assert.equal(evidenceBreadcrumb({ label: history.label }), history.label);
+});
+
+test("presents line endpoints without exposing raw node IDs or replacing the predicate", () => {
+  const relation = linePresentation({
+    id: "relation-private-7",
+    kind: "relation",
+    label: "maintains",
+    predicate: "participates_in",
+    source: "point-current",
+    target: "private-context-id",
+  }, model);
+
+  assert.equal(relation.title, "maintains");
+  assert.equal(relation.label, "maintains");
+  assert.equal(relation.predicate, "participates_in");
+  assert.equal(relation.source, "The user prefers auditable answers.");
+  assert.equal(relation.target, "Context node");
+  assert.ok(!JSON.stringify(relation).includes("point-current"));
+  assert.ok(!JSON.stringify(relation).includes("private-context-id"));
 });

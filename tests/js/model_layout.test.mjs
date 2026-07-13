@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   computeClusterLayout,
   layoutMath,
+  pickScreenTarget,
   zoomMath,
 } from "../../resources/model_assets/layout.mjs";
 
@@ -137,4 +138,62 @@ test("steps fitted zoom predictably through rapid actions and clamps its range",
   assert.equal(zoomMath.nextPercent(113, -1), 100);
   assert.equal(zoomMath.nextPercent(50, -1), 50);
   assert.equal(zoomMath.nextPercent(400, 1), 400);
+});
+
+test("gives small nodes a stable screen-space hit target ahead of crossing lines", () => {
+  const pointTarget = { id: "point" };
+  const lineTarget = { id: "line" };
+  const hit = pickScreenTarget(
+    { x: 111, y: 100 },
+    [{ x: 100, y: 100, depth: 0.4, target: pointTarget }],
+    [{
+      start: { x: 80, y: 100 },
+      end: { x: 140, y: 100 },
+      depth: 0.2,
+      target: lineTarget,
+    }],
+  );
+
+  assert.equal(hit, pointTarget);
+});
+
+test("selects relationship lines near their rendered segment without widening raycasts", () => {
+  const lineTarget = { id: "relation" };
+  const hit = pickScreenTarget(
+    { x: 70, y: 56 },
+    [],
+    [{
+      start: { x: 20, y: 50 },
+      end: { x: 120, y: 50 },
+      depth: 0.3,
+      target: lineTarget,
+    }],
+  );
+  const miss = pickScreenTarget(
+    { x: 70, y: 62 },
+    [],
+    [{
+      start: { x: 20, y: 50 },
+      end: { x: 120, y: 50 },
+      depth: 0.3,
+      target: lineTarget,
+    }],
+  );
+
+  assert.equal(hit, lineTarget);
+  assert.equal(miss, null);
+});
+
+test("chooses the nearest projected node when hit targets overlap", () => {
+  const near = { id: "near" };
+  const far = { id: "far" };
+  const hit = pickScreenTarget(
+    { x: 100, y: 100 },
+    [
+      { x: 100, y: 100, depth: 0.7, target: far },
+      { x: 100, y: 100, depth: 0.1, target: near },
+    ],
+  );
+
+  assert.equal(hit, near);
 });

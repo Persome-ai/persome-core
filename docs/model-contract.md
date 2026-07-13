@@ -87,9 +87,14 @@ Visible node labels and their Point, Face, Volume, Root, or context meshes open 
 detail panel. Overview summarizes the evidence footprint, Evidence presents human-readable source
 cards with drill-down breadcrumbs, and History keeps Point predecessor/successor versions separate
 from derivation sources. Raw IDs, paths, and receipts stay collapsed under technical details. Labels
-and tabs are keyboard-focusable; Escape closes the selection. Lines remain visual evidence of
-evolution, relation, and hierarchy and are intentionally excluded from pointer picking.
-`window.__persomeInteractionState` exposes aggregate interaction counts for local smoke tests.
+and tabs are keyboard-focusable; Escape closes the selection. Nodes retain a 12-pixel minimum
+screen-space hit target so distant geometry stays selectable. Evolution and relation Lines open
+their own human-readable endpoint, exact predicate, and evidence detail through an 8-pixel
+screen-space hit target; node hits always win where geometry overlaps. Keyboard focus reveals a
+line picker with the same detail action. Raw line and endpoint IDs remain inside collapsed technical
+details. Derived hierarchy connectors remain visual-only.
+`window.__persomeInteractionState` exposes aggregate interaction counts and hit-target bounds for
+local smoke tests.
 
 Zoom is relative to the fitted model: the visible minus, percentage, and plus controls cover 50%
 through 400%, the percentage resets to 100%, and the plus, minus, and zero keys provide the same

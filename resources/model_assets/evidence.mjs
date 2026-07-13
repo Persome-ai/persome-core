@@ -116,4 +116,42 @@ export function evidenceBreadcrumb(data) {
   return compactText(data?.label || data?.summary, humanizePath(data?.path) || data?.kind || "Evidence", 72);
 }
 
+function modelNodeLabel(id, model) {
+  if (id === "self") return "You";
+  const candidates = [
+    ["point", model?.points || [], "Observed point"],
+    ["face", model?.faces || [], "Model pattern"],
+    ["volume", model?.volumes || [], "Model structure"],
+    ["root", model?.root ? [model.root] : [], "Personal model"],
+  ];
+  for (const [, nodes, fallback] of candidates) {
+    const node = nodes.find((item) => item.id === id);
+    if (node) {
+      return compactText(
+        node.content || node.signature || node.label || node.title,
+        fallback,
+        88,
+      );
+    }
+  }
+  return "Context node";
+}
+
+export function linePresentation(line, model) {
+  const fallbackPredicate = line?.kind === "evolution" ? "supersedes" : "relation";
+  const predicate = compactText(line?.predicate, fallbackPredicate, 72);
+  const label = String(line?.label || "").replace(/\s+/g, " ").trim().slice(0, 88);
+  const source = modelNodeLabel(line?.source, model);
+  const target = modelNodeLabel(line?.target, model);
+  const title = label || predicate;
+  return {
+    title,
+    predicate,
+    label: label && label !== predicate ? label : "",
+    source,
+    target,
+    option: `${title}: ${source} → ${target}`,
+  };
+}
+
 export const evidenceText = { compactText, humanizePath, parseReceipt };

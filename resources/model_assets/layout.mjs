@@ -438,6 +438,64 @@ export function computeClusterLayout(model) {
 
 export const layoutMath = { distance, magnitude, stableHash };
 
+function pointSegmentDistanceSquared(pointer, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= Number.EPSILON) {
+    return (pointer.x - start.x) ** 2 + (pointer.y - start.y) ** 2;
+  }
+  const projection = Math.max(0, Math.min(1, (
+    (pointer.x - start.x) * dx + (pointer.y - start.y) * dy
+  ) / lengthSquared));
+  const closestX = start.x + projection * dx;
+  const closestY = start.y + projection * dy;
+  return (pointer.x - closestX) ** 2 + (pointer.y - closestY) ** 2;
+}
+
+export function pickScreenTarget(
+  pointer,
+  nodes = [],
+  lines = [],
+  { nodeRadius = 12, lineRadius = 8 } = {},
+) {
+  let bestNode = null;
+  nodes.forEach((candidate) => {
+    const radius = Math.max(nodeRadius, Number(candidate.radius || 0));
+    const distanceSquared = (pointer.x - candidate.x) ** 2 + (pointer.y - candidate.y) ** 2;
+    if (distanceSquared > radius * radius) return;
+    if (
+      !bestNode
+      || distanceSquared < bestNode.distanceSquared
+      || (
+        Math.abs(distanceSquared - bestNode.distanceSquared) <= Number.EPSILON
+        && Number(candidate.depth || 0) < Number(bestNode.candidate.depth || 0)
+      )
+    ) {
+      bestNode = { candidate, distanceSquared };
+    }
+  });
+  if (bestNode) return bestNode.candidate.target;
+
+  let bestLine = null;
+  lines.forEach((candidate) => {
+    const radius = Math.max(lineRadius, Number(candidate.radius || 0));
+    const distanceSquared = pointSegmentDistanceSquared(pointer, candidate.start, candidate.end);
+    if (distanceSquared > radius * radius) return;
+    if (
+      !bestLine
+      || distanceSquared < bestLine.distanceSquared
+      || (
+        Math.abs(distanceSquared - bestLine.distanceSquared) <= Number.EPSILON
+        && Number(candidate.depth || 0) < Number(bestLine.candidate.depth || 0)
+      )
+    ) {
+      bestLine = { candidate, distanceSquared };
+    }
+  });
+  return bestLine?.candidate.target || null;
+}
+
 function clampZoomPercent(value, minPercent = 50, maxPercent = 400) {
   return Math.max(minPercent, Math.min(maxPercent, Math.round(value)));
 }
