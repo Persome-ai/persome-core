@@ -1,5 +1,3 @@
-<h1 align="center">Readme</h1>
-
 <p align="center"><b>About</b>: <b>Build your HUMAN.md.</b></p>
 
 <h2 align="center">[Personal Model]</h2>
@@ -10,7 +8,7 @@
 
 <p align="center">The open-source personal model that makes every AI yours.</p>
 
-Persome learns how you actually think and work from everything you see, say, hear, and do—then gives Codex, Claude Code, and any MCP agent the context to pick up where you left off, understand what matters, and work while you sleep.
+Persome learns how you actually think and work from the activity captured on your Mac—then gives Codex, Claude Code, and any MCP agent the context to pick up where you left off, understand what matters, and work while you sleep.
 
 <p align="center"><img src="docs/assets/readme/personal-model.png" alt="图片展示了Persome个人模型的界面，左侧有“LIVE PERSONAL MODEL”及“THE SHAPE OF YOU”等文字，强调系统思维创始人将个人上下文转化为可检验产品、证据支持决策和可持续动量。右侧是模型可视化界面，显示了1012个点、326条线、18个面、6个体积和1个根节点，还呈现了可调整的货币、原型先探索等信号，以及反馈循环、投资判断平衡等概念。右侧还配有如何阅读模型的说明，如点代表观察到的事实，线代表演变或关系等。" width="100%"></p>
 
@@ -18,7 +16,7 @@ Persome learns how you actually think and work from everything you see, say, hea
 
 ---
 
-## What is it？
+## What is it?
 
 Your `HUMAN.md`
 
@@ -36,7 +34,7 @@ New evidence can strengthen, revise, or overturn an earlier inference. Every imp
 
 ---
 
-## Use case
+## Use cases
 
 ### 1. One Root — A Model of You
 
@@ -58,21 +56,21 @@ Two people can give the same AI the same prompt and deserve different answers. Y
 
 The same prompt should not produce the same answer for everyone. Give AI a model of you.
 
-### 3. One MCP - Trun coding agent into proactive agent
+### 3. One MCP — Turn coding agents into proactive agents
 
 <p align="center"><img src="docs/assets/readme/one-mcp.png" alt="" width="100%"></p>
 
-**Your coding agent finds its own work body**
+**Your coding agent finds its own work**
 
 Connect Persome once through MCP. Codex, Claude Code, and other trusted agents can use the same model of your goals, priorities, working patterns, and boundaries.
 
 Persome identifies unfinished work, ranks it against your priorities, and separates safe local tasks from decisions that need you. The connected agent executes; you keep authority over external actions.
 
-#### -Continue where you left off
+#### Continue where you left off
 
 <p align="center"><img src="docs/assets/readme/continue-where-you-left-off.png" alt="这张图片展示了Persome作为编程代理的功能场景，核心呈现“继续未完工作”的能力。页面左侧标注了三个待处理任务，分别为README、Onboarding和MCP，附带对应时间；右侧CODEX区域显示已恢复的工作状态，即此前准备Persome的启动事宜，当前目标是让Personal Model在五分钟内可见，下一步工作为修复新用户引导的验证，同时呈现了当前项目目录、git状态及未暂存的文件改动，印证该工具可将个人工作模型同步给编程代理，帮助用户从断点处继续推进工作。" width="100%"></p>
 
-#### -Work while you sleep
+#### Work while you sleep
 
 <p align="center"><img src="docs/assets/readme/work-while-you-sleep.png" alt="图片展示了Persome的“Work While You Sleep”功能界面。左侧“30 OPEN LOOPS”部分，呈现了Personal Model、Tests、Dependencies、Codebase、Docs等模块及对应数值。中间“5 SAFE TO COMPLETE”部分，有Safe Task Filter，可筛选权限范围、数据访问、网络、命令、外部动作等。右侧“MORNING REPORT”部分，列出已完成本地任务、等待决策任务、外部动作等，还展示了权限边界设置。该图与上下文介绍的Persome功能相呼应，直观呈现其工作模式。" width="100%"></p>
 
