@@ -394,9 +394,15 @@ def test_related_events_returns_overlapping_blocks_and_nearest_captures(ac_root)
         out = mcp_server._related_events(conn, entry_id="e-ev1")
         assert out["entry"]["id"] == "e-ev1"
         assert out["anchor"] == "2026-06-01T10:00:00+08:00"
+        assert out["anchor_source"] == "timestamp"
+        assert out["association"]["kind"] == "time_adjacent_context"
+        assert out["association"]["provenance"] == "observed"
+        assert out["association"]["is_evidence"] is False
         assert [e["apps_used"] for e in out["events"]] == [["Feishu"]]
         assert out["events"][0]["focus_excerpt"] == "Feishu focus"
+        assert out["events"][0]["provenance"] == "observed"
         assert [c["id"] for c in out["captures"]] == ["cap-near"]
+        assert out["captures"][0]["provenance"] == "observed"
         assert fts.get_retrieval_count(conn, "e-ev1") == 1
 
 
@@ -430,9 +436,38 @@ def test_related_events_anchors_on_occurred_at_over_write_time(ac_root):
         )
         out = mcp_server._related_events(conn, entry_id="e-ev2")
         assert out["anchor"] == "2026-06-01T10:00:00+08:00"
+        assert out["anchor_source"] == "occurred_at"
         assert out["entry"]["occurred_at"] == "2026-06-01T10:00:00+08:00"
         # Anchored on occurred_at: the morning block, not the write-time one.
         assert [e["apps_used"] for e in out["events"]] == [["Feishu"]]
+
+
+def test_related_events_invalid_occurred_at_falls_back_to_write_time(ac_root):
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        timeline_store.ensure_schema(conn)
+        _insert(
+            conn,
+            id="e-bad-occurred",
+            ts="2026-06-01T18:00:00+08:00",
+            content="still readable",
+        )
+        # Writer metadata is deliberately tolerant of malformed model output.
+        fts.set_entry_metadata(conn, "e-bad-occurred", occurred_at="not-an-iso-time")
+        timeline_store.insert(
+            conn,
+            _evt_block(
+                datetime(2026, 6, 1, 17, 59, tzinfo=_EVT_TZ),
+                app="Xcode",
+                entry="[Xcode] write-time context",
+            ),
+        )
+        out = mcp_server._related_events(conn, entry_id="e-bad-occurred")
+
+    assert out["anchor"] == "2026-06-01T18:00:00+08:00"
+    assert out["anchor_source"] == "timestamp"
+    assert out["entry"]["occurred_at"] == "not-an-iso-time"
+    assert [event["apps_used"] for event in out["events"]] == [["Xcode"]]
 
 
 def test_related_events_honest_miss_and_superseded_no_bump(ac_root):

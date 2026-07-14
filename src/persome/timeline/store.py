@@ -231,19 +231,57 @@ def query_overlapping(
     window_end: datetime,
     limit: int = 50,
 ) -> list[TimelineBlock]:
-    """Blocks OVERLAPPING [window_start, window_end], chronological order.
+    """Nearest blocks overlapping ``[window_start, window_end)``, chronological.
 
-    Interval overlap (``end_time >= window_start AND start_time <= window_end``),
-    not the containment ``query_range`` applies — a block straddling a window
-    boundary still counts. This is the entry→events association read: given a
-    memory's anchor moment, return every activity block that was live around it.
+    Timeline windows are half-open throughout the Runtime.  Use strict overlap
+    (``end_time > window_start AND start_time < window_end``), not the
+    containment ``query_range`` applies: a block straddling a boundary counts,
+    while one that merely touches a boundary does not.
+
+    The interval midpoint is the association anchor.  When more rows overlap
+    than ``limit``, retain the rows nearest that anchor, then return that subset
+    in chronological order.  Taking the first chronological rows would bias a
+    symmetric window toward its oldest edge and could omit the anchor itself.
     """
+    start_epoch = window_start.timestamp()
+    end_epoch = window_end.timestamp()
+    if end_epoch <= start_epoch:
+        return []
+    anchor_epoch = start_epoch + ((end_epoch - start_epoch) / 2.0)
     rows = conn.execute(
-        "SELECT * FROM timeline_blocks "
-        "WHERE persome_epoch(end_time) >= persome_epoch(?) "
-        "AND persome_epoch(start_time) <= persome_epoch(?) "
-        "ORDER BY persome_epoch(start_time) ASC LIMIT ?",
-        (window_start.isoformat(), window_end.isoformat(), min(limit, 200)),
+        """
+        WITH candidates AS MATERIALIZED (
+            SELECT *,
+                   persome_epoch(start_time) AS _start_epoch,
+                   persome_epoch(end_time) AS _end_epoch
+              FROM timeline_blocks
+             WHERE persome_epoch(end_time) > ?
+               AND persome_epoch(start_time) < ?
+        ),
+        nearest AS (
+            SELECT *
+              FROM candidates
+             ORDER BY
+                   CASE
+                       WHEN _end_epoch <= ? THEN ? - _end_epoch
+                       WHEN _start_epoch >= ? THEN _start_epoch - ?
+                       ELSE 0.0
+                   END ASC,
+                   _start_epoch ASC,
+                   id ASC
+             LIMIT ?
+        )
+        SELECT * FROM nearest ORDER BY _start_epoch ASC, id ASC
+        """,
+        (
+            start_epoch,
+            end_epoch,
+            anchor_epoch,
+            anchor_epoch,
+            anchor_epoch,
+            anchor_epoch,
+            max(0, min(limit, 200)),
+        ),
     ).fetchall()
     return [_row_to_block(r) for r in rows]
 
