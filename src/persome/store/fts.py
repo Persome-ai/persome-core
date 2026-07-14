@@ -18,6 +18,18 @@ from ..logger import get
 
 logger = get("persome.store")
 
+
+class CorruptDatabaseError(sqlite3.DatabaseError):
+    """The index database file itself is damaged (bad header / malformed image).
+
+    Subclasses ``sqlite3.DatabaseError`` so every existing handler still
+    matches; the message adds the recovery path so an MCP client or a log
+    reader sees what to do instead of a bare ``file is not a database``.
+    """
+
+
+_CORRUPTION_SIGNATURES = ("file is not a database", "database disk image is malformed")
+
 _MIN_SECURE_FTS_SQLITE = (3, 42, 0)
 _FTS_TABLES = ("entries", "captures_fts")
 _SECURE_FTS_MIGRATION_VERSION = 20260711
@@ -364,6 +376,28 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
             paths.ensure_private_file(artifact)
     conn = sqlite3.connect(db_path, isolation_level=None, timeout=10.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # sqlite3.connect is lazy: a damaged header only surfaces on first use,
+    # as a bare "file is not a database" with no recovery path — which MCP
+    # agents and tick logs then repeat verbatim for hours. Probe page 1 now
+    # and turn corruption into one actionable, still-DatabaseError signal.
+    try:
+        conn.execute("SELECT 1 FROM sqlite_master LIMIT 1")
+    except sqlite3.DatabaseError as exc:
+        conn.close()
+        if any(sig in str(exc) for sig in _CORRUPTION_SIGNATURES):
+            if db_path.resolve() == paths.index_db().resolve():
+                recovery = (
+                    "Run `persome stop` if the daemon is running, then `persome start` "
+                    "to quarantine it and restore from the latest verified snapshot plus "
+                    "Markdown replay; memory Markdown files are unaffected."
+                )
+            else:
+                recovery = (
+                    "Replace or rebuild this database from a verified source; automatic "
+                    "daemon-start recovery applies only to the live index.db."
+                )
+            raise CorruptDatabaseError(f"{db_path.name} is damaged ({exc}). {recovery}") from exc
+        raise
     # SQLite's built-in date parser does not understand every ISO form Python's
     # historical ingest accepted (notably basic ISO), and interprets naive
     # values as UTC instead of local wall time. Keep one shared parser for all

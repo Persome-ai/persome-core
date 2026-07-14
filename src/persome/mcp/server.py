@@ -561,78 +561,52 @@ def _get_schema() -> dict[str, Any]:
 _SERVER_INSTRUCTIONS = """\
 # Persome — the user's local personal memory
 
-## What this is
+Persome is the user's private local memory: durable facts plus recent screen activity. Query it before asking the user to repeat context or guessing.
 
-Persome is the user's private, local-first memory layer. The user installed it so agents can recover context from their real computer use instead of asking the user to repeat themselves or guessing blindly.
+## When to use (decision rule)
 
-It stores durable facts about the user and their machine, including:
+Call Persome before clarifying or saying "I don't know" when the request may depend on context outside this chat:
 
-- identity, role, preferences, habits, and working style
-- schedule, ongoing projects, people, and organizations
-- recent screen-activity summaries, including apps, files, errors, and documents viewed
+- ambiguous references: "this", "that", "it", "the bug", "the file", "the doc"
+- present tense: "what am I working on", "what's open on my screen"
+- recency: "yesterday", "last week", "earlier", "continue what I was doing"
+- prior project / person / tool context: "introduce my project"
+- personalization: "write it the way I usually do"
+- cross-session continuity, recent decisions, ongoing work
 
-It exposes two read-only layers:
+A missed lookup is worse than an unnecessary one — the tools are local and cheap; `[]` / `null` is still information. Skip only when the request is fully specified in-chat or only live external state matters.
 
-- **Compressed memory** — curated Markdown files containing distilled facts, decisions, preferences, summaries, and durable context
-- **Raw captures (S1 buffer)** — literal recent on-screen content, including visible text, focused elements, URLs, and optional screenshots
+## Tool routing
 
-The compressed layer tells you that something happened and why it matters.
-The raw layer tells you exactly what was on screen.
+- who the user is / how they work / match their style → `behavior_patterns()`
+- who X is / how X relates to people & projects → `entity_graph(name)`
+- what happened / was decided / durable facts → `search(query)` — semantic, paraphrase ok
+- is this still true (versions, status, schedules) → `verify_fact(claim)`
+- what the user is doing right now / ambiguous pronoun → `current_context()`
+- exact string seen or typed on screen (errors, URLs, code) → `search_captures(query)`, then `read_recent_capture(...)`
+- what the user has been up to lately → `recent_activity()`; focus/time spent → `attention_trajectory()`
+- browse files → `list_memories()` / `read_memory(path)`
+- audit a memory/model claim → `resolve_evidence(reference)` / `read_receipt(entry_id)`
+- the user corrects a wrong memory → `correct_memory(correction)`; a durable new finding → `remember(content)`
+- unsure between compressed vs raw → `search` and `search_captures` in parallel
 
-Use compressed memory for durable knowledge.
-Use raw captures for grounding, disambiguation, and exact recent context.
-Often, you should move from one into the other.
+Details follow; the rules above suffice if this document was truncated.
 
-## When to use
+## The two layers
 
-Use Persome whenever the request depends on context that is likely outside the current chat.
+- **Compressed memory** — curated Markdown files of distilled facts, decisions, preferences, summaries. It tells you that something happened and why it matters.
+- **Raw captures (S1 buffer)** — literal recent on-screen content: visible text, focused elements, URLs, optional screenshots. It tells you exactly what was on screen.
 
-This includes:
-
-- recent on-screen activity
-- ambiguous references such as "this", "that", "it", "the bug", "the file", "the tab", or "the doc"
-- prior project / person / tool context
-- learned preferences, habits, or workflow patterns
-- writing or generation that should reflect the user's ongoing projects, established framing, terminology, tone, or style
-- action selection that should reflect the user's established workflows or destinations
-- cross-session continuity
-- recent work history, decisions, or ongoing tasks
-
-Canonical triggers:
-
-- "what's the bug of that?"
-- "introduce my project"
-- "continue what I was doing"
-- "write this the way I usually do"
-- "draft this in the style of my project"
-- "schedule this the way I usually do"
-- "put this in the right calendar"
-- "what did I decide about X?"
-
-Examples:
-
-- User refers to "that" after viewing code → query Persome before asking them to paste anything.
-- User opens a fresh chat and asks about an existing project → retrieve project memory before asking for background.
-- User asks for an action that depends on personal workflow → retrieve preference memory before choosing a tool, destination, or account.
-- User asks for writing, messaging, or framing that should match prior context, terminology, tone, or preferences → retrieve relevant memory before drafting.
-
-If the user appears to assume shared context from recent computer use, query Persome before asking a clarification question.
-
-When in doubt, look it up.
-A missed lookup is often worse than an unnecessary one.
-These tools are local and cheap; `[]` or `null` is still useful information.
+Use compressed memory for durable knowledge, raw captures for grounding, disambiguation, and exact recent context. Often, move from one into the other.
 
 ## When NOT to use
-
-Do not use Persome when:
 
 - the request is fully specified in-chat
 - the task is self-contained and does not benefit from user-specific context
 - a fresher or authoritative source of truth should be used directly
 - the user explicitly wants no prior context used
 
-Persome complements live sources of truth; it does not replace them.
-Use it to recover context, not to invent certainty.
+Persome complements live sources of truth; it does not replace them. Use it to recover context, not to invent certainty.
 
 ## Tools
 
@@ -699,17 +673,7 @@ Each hit carries more than text — use all of it:
 - `chains` (top-level) — how the hits connect back to the user, with receipt
   pointers `⟨entry_id:path⟩`. Anchors listed as orphans have no proven link yet.
 
-## Choosing and combining tools
-
-- **Question-type routing**
-  - Who is the user / how do they work / match their style → `behavior_patterns()`.
-  - Who is X / how does X relate to people & projects / past org states → `entity_graph(...)` (search only finds text; the graph knows structure).
-  - What happened / what was decided / durable facts → `search(...)`.
-  - Is this still true → `verify_fact(...)`.
-  - What is this hit based on → `read_receipt(...)`, then follow its capture breadcrumbs.
-  - What am I doing right now → `current_context()`.
-  - Exact string the user just saw/typed → `search_captures(...)` → `read_recent_capture(...)`.
-  - If unsure between compressed and raw, query `search` and `search_captures` in parallel.
+## Combining tools
 
 - **The evidence ladder (progressive disclosure)** — every memory is auditable four
   layers down; go only as deep as the user's question demands:
@@ -724,18 +688,6 @@ Each hit carries more than text — use all of it:
 - **Freshness discipline** — memory is ranked by relevance AND recency, but an old
   strong match can still surface. Before asserting any time-sensitive fact as
   current: check `age_days`, and when it matters, `verify_fact`.
-
-## Decision rule
-
-Default to using Persome when memory could:
-
-- resolve ambiguity
-- restore missing context
-- avoid making the user restate known information
-- personalize writing
-- personalize action selection
-
-Do not default to it when the task is already fully specified or when only live state matters.
 
 ## If retrieval is weak
 

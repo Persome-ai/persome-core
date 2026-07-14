@@ -289,6 +289,61 @@ class TestMcpLoop:
         sleep.assert_awaited_once()
         assert calls["n"] == 2
 
+    async def test_uvicorn_systemexit_wrapping_eaddrinuse_retries(self) -> None:
+        # uvicorn converts bind failures into SystemExit(3); letting it escape
+        # took down the whole daemon and left launchd crash-looping into the
+        # still-bound port. The loop must unwrap it and back off like a plain
+        # EADDRINUSE.
+        calls = {"n": 0}
+
+        async def run_async(cfg: Config) -> None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                try:
+                    raise OSError(errno.EADDRINUSE, "address in use")
+                except OSError:
+                    # mirrors uvicorn's sys.exit(STARTUP_FAILURE): __context__
+                    # carries the bind error even with display suppressed
+                    raise SystemExit(3) from None
+            return
+
+        with (
+            patch("persome.mcp.server.run_async", side_effect=run_async),
+            patch("persome.daemon.asyncio.sleep") as sleep,
+        ):
+            await _mcp_loop(Config())
+        sleep.assert_awaited_once()
+        assert calls["n"] == 2
+
+    async def test_uvicorn_systemexit_other_bind_error_returns_immediately(self) -> None:
+        async def run_async(cfg: Config) -> None:
+            try:
+                raise PermissionError(1, "operation not permitted")
+            except PermissionError:
+                raise SystemExit(3) from None
+
+        with (
+            patch("persome.mcp.server.run_async", side_effect=run_async),
+            patch("persome.daemon.asyncio.sleep") as sleep,
+            patch("persome.daemon.logger") as log,
+        ):
+            await _mcp_loop(Config())
+        # Hard failure: log + return with the daemon still alive, no backoff.
+        log.error.assert_called_once()
+        sleep.assert_not_awaited()
+
+    @pytest.mark.parametrize("code", [0, 3])
+    async def test_non_uvicorn_systemexit_propagates(self, code: int) -> None:
+        async def run_async(cfg: Config) -> None:
+            raise SystemExit(code)
+
+        with (
+            patch("persome.mcp.server.run_async", side_effect=run_async),
+            pytest.raises(SystemExit) as raised,
+        ):
+            await _mcp_loop(Config())
+        assert raised.value.code == code
+
     async def test_cancellation_propagates(self) -> None:
         async def run_async(cfg: Config) -> None:
             raise asyncio.CancelledError

@@ -102,6 +102,8 @@ async def _mcp_loop(cfg: Config) -> None:
     """Host the MCP server inside the daemon. On crash, back off and restart."""
     import errno as _errno
 
+    from uvicorn.server import STARTUP_FAILURE as _UVICORN_STARTUP_FAILURE
+
     from .mcp import server as mcp_server
 
     delay = 2.0
@@ -131,6 +133,38 @@ async def _mcp_loop(cfg: Config) -> None:
                     cfg.mcp.host,
                     cfg.mcp.port,
                     exc,
+                )
+                return
+        except SystemExit as exc:
+            # uvicorn converts transport startup failures (a port it cannot
+            # bind, EPERM from macOS local-network privacy) into
+            # SystemExit(STARTUP_FAILURE), which sails past the OSError and
+            # Exception arms, kills the whole daemon — capture included — and
+            # leaves the supervisor restarting us into the same wall. Unwrap
+            # the original bind error and apply the same policy as above.
+            cause = exc.__context__
+            # SystemExit is a control-flow signal, not a normal server crash.
+            # Handle only uvicorn's documented bind-failure shape; an
+            # intentional exit (including SystemExit(3) without an OSError
+            # context) must keep its normal process-level semantics.
+            if exc.code != _UVICORN_STARTUP_FAILURE or not isinstance(cause, OSError):
+                raise
+            if cause.errno == _errno.EADDRINUSE:
+                logger.warning(
+                    "mcp server failed to bind %s:%d — address in use, retrying in %.0fs",
+                    cfg.mcp.host,
+                    cfg.mcp.port,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60.0)
+            else:
+                logger.error(
+                    "mcp server startup failed (exit code %s) on %s:%d — %s",
+                    exc.code,
+                    cfg.mcp.host,
+                    cfg.mcp.port,
+                    cause,
                 )
                 return
         except Exception as exc:  # noqa: BLE001
