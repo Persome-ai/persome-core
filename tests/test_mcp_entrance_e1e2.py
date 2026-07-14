@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from persome.evomem import identity as identity_mod
@@ -9,6 +11,7 @@ from persome.mcp import server as mcp_server
 from persome.retrieval import associative as assoc_mod
 from persome.store import fts
 from persome.store import relation_edges as edges_store
+from persome.timeline import store as timeline_store
 
 
 @pytest.fixture()
@@ -333,3 +336,151 @@ def test_level1_faces_carry_level_field(ac_root, _roster_zhangwei):
         out = mcp_server._search(conn, query="\u53d1\u7248", top_k=3)
         hit = next(r for r in out["results"] if r["id"] == "e-fact")
         assert hit["related_faces"][0]["level"] == 1
+
+
+# ---------------------------------------------------------------------------
+# related_events (entry \u2192 surrounding-events association read)
+# ---------------------------------------------------------------------------
+
+_EVT_TZ = timezone(timedelta(hours=8))
+
+
+def _evt_block(start: datetime, *, app: str, entry: str) -> timeline_store.TimelineBlock:
+    return timeline_store.TimelineBlock(
+        start_time=start,
+        end_time=start + timedelta(minutes=1),
+        entries=[entry],
+        apps_used=[app],
+        capture_count=1,
+        focus_excerpt=f"{app} focus",
+        attention_surface=f"{app} window",
+    )
+
+
+def test_related_events_returns_overlapping_blocks_and_nearest_captures(ac_root):
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        timeline_store.ensure_schema(conn)
+        _insert(
+            conn,
+            id="e-ev1",
+            ts="2026-06-01T10:00:00+08:00",
+            content="\u51b3\u5b9a\u53d1\u5e03 0.3.9",
+        )
+        timeline_store.insert(
+            conn,
+            _evt_block(
+                datetime(2026, 6, 1, 9, 50, tzinfo=_EVT_TZ),
+                app="Feishu",
+                entry="[Feishu] \u8ba8\u8bba\u53d1\u7248",
+            ),
+        )
+        timeline_store.insert(
+            conn,
+            _evt_block(
+                datetime(2026, 6, 1, 12, 0, tzinfo=_EVT_TZ),
+                app="Safari",
+                entry="[Safari] \u65e0\u5173\u6d4f\u89c8",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO captures (id, timestamp, app_name, window_title, visible_text)"
+            " VALUES ('cap-near', '2026-06-01T10:05:00+08:00', 'Feishu', '\u53d1\u7248\u7fa4', 'x')"
+        )
+        conn.execute(
+            "INSERT INTO captures (id, timestamp, app_name, window_title, visible_text)"
+            " VALUES ('cap-far', '2026-06-01T13:00:00+08:00', 'Safari', 'blog', 'y')"
+        )
+        out = mcp_server._related_events(conn, entry_id="e-ev1")
+        assert out["entry"]["id"] == "e-ev1"
+        assert out["anchor"] == "2026-06-01T10:00:00+08:00"
+        assert out["anchor_source"] == "timestamp"
+        assert out["association"]["kind"] == "time_adjacent_context"
+        assert out["association"]["provenance"] == "observed"
+        assert out["association"]["is_evidence"] is False
+        assert [e["apps_used"] for e in out["events"]] == [["Feishu"]]
+        assert out["events"][0]["focus_excerpt"] == "Feishu focus"
+        assert out["events"][0]["provenance"] == "observed"
+        assert [c["id"] for c in out["captures"]] == ["cap-near"]
+        assert out["captures"][0]["provenance"] == "observed"
+        assert fts.get_retrieval_count(conn, "e-ev1") == 1
+
+
+def test_related_events_anchors_on_occurred_at_over_write_time(ac_root):
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        timeline_store.ensure_schema(conn)
+        # Written in the evening, but the event it records happened at 10:00.
+        _insert(
+            conn,
+            id="e-ev2",
+            ts="2026-06-01T18:00:00+08:00",
+            content="\u4e0a\u5348\u7684\u51b3\u5b9a",
+        )
+        fts.set_entry_metadata(conn, "e-ev2", occurred_at="2026-06-01T10:00:00+08:00")
+        timeline_store.insert(
+            conn,
+            _evt_block(
+                datetime(2026, 6, 1, 9, 59, tzinfo=_EVT_TZ),
+                app="Feishu",
+                entry="[Feishu] \u4e0a\u5348\u4f1a\u8bae",
+            ),
+        )
+        timeline_store.insert(
+            conn,
+            _evt_block(
+                datetime(2026, 6, 1, 17, 55, tzinfo=_EVT_TZ),
+                app="Xcode",
+                entry="[Xcode] \u665a\u95f4\u5199\u4f5c",
+            ),
+        )
+        out = mcp_server._related_events(conn, entry_id="e-ev2")
+        assert out["anchor"] == "2026-06-01T10:00:00+08:00"
+        assert out["anchor_source"] == "occurred_at"
+        assert out["entry"]["occurred_at"] == "2026-06-01T10:00:00+08:00"
+        # Anchored on occurred_at: the morning block, not the write-time one.
+        assert [e["apps_used"] for e in out["events"]] == [["Feishu"]]
+
+
+def test_related_events_invalid_occurred_at_falls_back_to_write_time(ac_root):
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        timeline_store.ensure_schema(conn)
+        _insert(
+            conn,
+            id="e-bad-occurred",
+            ts="2026-06-01T18:00:00+08:00",
+            content="still readable",
+        )
+        # Writer metadata is deliberately tolerant of malformed model output.
+        fts.set_entry_metadata(conn, "e-bad-occurred", occurred_at="not-an-iso-time")
+        timeline_store.insert(
+            conn,
+            _evt_block(
+                datetime(2026, 6, 1, 17, 59, tzinfo=_EVT_TZ),
+                app="Xcode",
+                entry="[Xcode] write-time context",
+            ),
+        )
+        out = mcp_server._related_events(conn, entry_id="e-bad-occurred")
+
+    assert out["anchor"] == "2026-06-01T18:00:00+08:00"
+    assert out["anchor_source"] == "timestamp"
+    assert out["entry"]["occurred_at"] == "not-an-iso-time"
+    assert [event["apps_used"] for event in out["events"]] == [["Xcode"]]
+
+
+def test_related_events_honest_miss_and_superseded_no_bump(ac_root):
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        timeline_store.ensure_schema(conn)
+        assert "error" in mcp_server._related_events(conn, entry_id="nope")
+        conn.execute(
+            "INSERT INTO entries (id, path, prefix, timestamp, tags, content, superseded)"
+            " VALUES ('e-old-ev', 'topic-x.md', 'topic', '2026-05-01T10:00:00+08:00', '',"
+            " '\u65e7\u4e8b\u5b9e', 1)"
+        )
+        out = mcp_server._related_events(conn, entry_id="e-old-ev")
+        assert out["entry"]["superseded"] is True
+        assert out["events"] == [] and out["captures"] == []
+        assert fts.get_retrieval_count(conn, "e-old-ev") == 0

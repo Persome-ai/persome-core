@@ -401,6 +401,7 @@ host = "127.0.0.1"
 port = 8742
 read_receipt_enabled = true
 entity_graph_enabled = true
+related_events_enabled = true
 ```
 
 The daemon HTTP transport hosts MCP, REST routes, and `/model` on the same

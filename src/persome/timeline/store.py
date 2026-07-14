@@ -225,6 +225,67 @@ def query_range(
     return [_row_to_block(r) for r in rows]
 
 
+def query_overlapping(
+    conn: sqlite3.Connection,
+    window_start: datetime,
+    window_end: datetime,
+    limit: int = 50,
+) -> list[TimelineBlock]:
+    """Nearest blocks overlapping ``[window_start, window_end)``, chronological.
+
+    Timeline windows are half-open throughout the Runtime.  Use strict overlap
+    (``end_time > window_start AND start_time < window_end``), not the
+    containment ``query_range`` applies: a block straddling a boundary counts,
+    while one that merely touches a boundary does not.
+
+    The interval midpoint is the association anchor.  When more rows overlap
+    than ``limit``, retain the rows nearest that anchor, then return that subset
+    in chronological order.  Taking the first chronological rows would bias a
+    symmetric window toward its oldest edge and could omit the anchor itself.
+    """
+    start_epoch = window_start.timestamp()
+    end_epoch = window_end.timestamp()
+    if end_epoch <= start_epoch:
+        return []
+    anchor_epoch = start_epoch + ((end_epoch - start_epoch) / 2.0)
+    rows = conn.execute(
+        """
+        WITH candidates AS MATERIALIZED (
+            SELECT *,
+                   persome_epoch(start_time) AS _start_epoch,
+                   persome_epoch(end_time) AS _end_epoch
+              FROM timeline_blocks
+             WHERE persome_epoch(end_time) > ?
+               AND persome_epoch(start_time) < ?
+        ),
+        nearest AS (
+            SELECT *
+              FROM candidates
+             ORDER BY
+                   CASE
+                       WHEN _end_epoch <= ? THEN ? - _end_epoch
+                       WHEN _start_epoch >= ? THEN _start_epoch - ?
+                       ELSE 0.0
+                   END ASC,
+                   _start_epoch ASC,
+                   id ASC
+             LIMIT ?
+        )
+        SELECT * FROM nearest ORDER BY _start_epoch ASC, id ASC
+        """,
+        (
+            start_epoch,
+            end_epoch,
+            anchor_epoch,
+            anchor_epoch,
+            anchor_epoch,
+            anchor_epoch,
+            max(0, min(limit, 200)),
+        ),
+    ).fetchall()
+    return [_row_to_block(r) for r in rows]
+
+
 def _row_to_block(row: sqlite3.Row | tuple) -> TimelineBlock:
     # Row indexing works for both sqlite3.Row and tuple
     get = row.__getitem__

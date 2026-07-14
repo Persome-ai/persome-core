@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from persome import config as config_mod
@@ -1070,3 +1070,102 @@ def test_produce_block_records_miss_for_iron_meeting_window(ac_root: Path, fake_
     assert row is not None
     assert row["outcome"] == "miss"
     assert row["bundle_id"] == "com.electron.lark.iron"
+
+
+# ---------------------------------------------------------------------------
+# query_overlapping (entry → events association read)
+# ---------------------------------------------------------------------------
+
+
+def test_query_overlapping_uses_interval_overlap_not_containment(ac_root: Path) -> None:
+    """A straddler counts, but half-open intervals that merely touch do not."""
+    touches_before = timeline_store.TimelineBlock(
+        start_time=datetime(2026, 6, 2, 9, 28, tzinfo=_TZ),
+        end_time=datetime(2026, 6, 2, 9, 30, tzinfo=_TZ),
+        entries=["[Xcode] ended at the boundary"],
+        apps_used=["Before"],
+        capture_count=1,
+    )
+    straddler = timeline_store.TimelineBlock(
+        start_time=datetime(2026, 6, 2, 9, 29, tzinfo=_TZ),
+        end_time=datetime(2026, 6, 2, 9, 31, tzinfo=_TZ),
+        entries=["[Xcode] edited store.py"],
+        apps_used=["Xcode"],
+        capture_count=2,
+    )
+    inside = timeline_store.TimelineBlock(
+        start_time=datetime(2026, 6, 2, 10, 0, tzinfo=_TZ),
+        end_time=datetime(2026, 6, 2, 10, 1, tzinfo=_TZ),
+        entries=["[Feishu] replied"],
+        apps_used=["Feishu"],
+        capture_count=1,
+    )
+    outside = timeline_store.TimelineBlock(
+        start_time=datetime(2026, 6, 2, 12, 0, tzinfo=_TZ),
+        end_time=datetime(2026, 6, 2, 12, 1, tzinfo=_TZ),
+        entries=["[Safari] browsed"],
+        apps_used=["Safari"],
+        capture_count=1,
+    )
+    touches_after = timeline_store.TimelineBlock(
+        start_time=datetime(2026, 6, 2, 10, 30, tzinfo=_TZ),
+        end_time=datetime(2026, 6, 2, 10, 31, tzinfo=_TZ),
+        entries=["[Terminal] started at the boundary"],
+        apps_used=["After"],
+        capture_count=1,
+    )
+    with fts.cursor() as conn:
+        timeline_store.ensure_schema(conn)
+        for blk in (touches_before, straddler, inside, outside, touches_after):
+            timeline_store.insert(conn, blk)
+        got = timeline_store.query_overlapping(
+            conn,
+            datetime(2026, 6, 2, 9, 30, tzinfo=_TZ),
+            datetime(2026, 6, 2, 10, 30, tzinfo=_TZ),
+        )
+    assert [b.apps_used[0] for b in got] == ["Xcode", "Feishu"]  # chronological
+
+
+def test_query_overlapping_limits_to_anchor_nearest_then_returns_chronological(
+    ac_root: Path,
+) -> None:
+    anchor = datetime(2026, 6, 3, 10, 0, tzinfo=_TZ)
+    blocks = [
+        timeline_store.TimelineBlock(
+            start_time=anchor + timedelta(minutes=offset),
+            end_time=anchor + timedelta(minutes=offset + 1),
+            entries=[f"offset {offset}"],
+            apps_used=[str(offset)],
+            capture_count=1,
+        )
+        for offset in (-50, -2, 0, 2, 50)
+    ]
+    with fts.cursor() as conn:
+        for block in blocks:
+            timeline_store.insert(conn, block)
+        got = timeline_store.query_overlapping(
+            conn,
+            anchor - timedelta(hours=1),
+            anchor + timedelta(hours=1),
+            limit=3,
+        )
+    # The three closest blocks survive the limit; presentation remains chronological.
+    assert [b.apps_used[0] for b in got] == ["-2", "0", "2"]
+
+
+def test_query_overlapping_compares_instants_across_offsets(ac_root: Path) -> None:
+    block = timeline_store.TimelineBlock(
+        start_time=datetime(2026, 6, 4, 2, 0, tzinfo=UTC),
+        end_time=datetime(2026, 6, 4, 2, 1, tzinfo=UTC),
+        entries=["same instant"],
+        apps_used=["UTC app"],
+        capture_count=1,
+    )
+    with fts.cursor() as conn:
+        timeline_store.insert(conn, block)
+        got = timeline_store.query_overlapping(
+            conn,
+            datetime(2026, 6, 4, 9, 59, tzinfo=_TZ),
+            datetime(2026, 6, 4, 10, 2, tzinfo=_TZ),
+        )
+    assert [b.apps_used for b in got] == [["UTC app"]]

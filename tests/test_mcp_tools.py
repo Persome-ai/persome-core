@@ -189,6 +189,7 @@ def test_server_instructions_fit_client_truncation_budget() -> None:
         "read_memory",
         "resolve_evidence",
         "read_receipt",
+        "related_events",
         "correct_memory",
         "remember",
     ):

@@ -417,6 +417,8 @@ class MCPConfig:
 
     read_receipt_enabled: bool = True
     entity_graph_enabled: bool = True
+    # Entry → surrounding-events association read (timeline blocks + captures):
+    related_events_enabled: bool = True
 
 
 @dataclass
@@ -716,6 +718,7 @@ recency_decay_floor = 0.2          # Minimum age-decay factor for durable old fa
 auto_start = true                 # run an always-on MCP server inside the daemon
 read_receipt_enabled = true       # Register receipt dereference with capture breadcrumbs
 entity_graph_enabled = true       # Register direct entity-graph reads
+related_events_enabled = true     # Register entry → surrounding-events association reads
 transport = "streamable-http"     # "streamable-http" | "sse" (deprecated 2026-04-01) | "stdio"
 host = "127.0.0.1"                # bind address; loopback only (non-loopback is rejected)
 port = 8742
