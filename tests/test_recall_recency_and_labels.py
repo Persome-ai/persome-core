@@ -230,6 +230,23 @@ def test_verify_fact_no_evidence_is_honest(ac_root, _restore_fts_gates):
         assert "No related evidence" in out["note"]
 
 
+def test_verify_fact_undated_evidence_notes_unknown_freshness(ac_root, _restore_fts_gates):
+    """Evidence whose timestamps all fail to parse is 'freshness unknown', not
+    'old' \u2014 the stale branch used to interpolate the Python literal None into
+    the note (\"... is None day(s) old\") and misstate unknown age as staleness."""
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        _insert(
+            conn, id="e-undated", ts="not-a-timestamp", content="\u5f53\u524d \u7248\u672c 0.3.9"
+        )
+        out = mcp_server._verify_fact(conn, claim="\u5f53\u524d \u7248\u672c 0.3.9")
+        assert out["evidence"], "expected the undated entry to be recalled"
+        assert out["freshest_age_days"] is None
+        assert out["stale"] is True
+        assert "None" not in out["note"]
+        assert "cannot be judged" in out["note"]
+
+
 def test_wire_read_path_sets_every_gate_from_config(ac_root, _restore_fts_gates, monkeypatch):
     """One wiring call must configure ALL module-level read gates — a spawn
     path that calls it serves the full-power stack, never import-time defaults."""

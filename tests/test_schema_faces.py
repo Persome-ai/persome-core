@@ -217,6 +217,18 @@ class TestResidency:
         assert "Resident behavior patterns" in block
         assert faces.render_residency([]) == ""
 
+    def test_resident_faces_exclude_the_root_apex(self, conn):
+        """The level-3 root is its own resident block (resident_root/render_root),
+        yet a live root is ACTIVE\u2227live and satisfied the query \u2014 with few active
+        faces it rode into the top_k and render_residency mislabeled the apex as
+        a behavior regularity (delivered twice by behavior_patterns)."""
+        fid = self._promoted(conn, "\u89c4\u5f8b\u7532", ["r1", "r2"])
+        faces.upsert_root(conn, signature="apex narrative", members=["v1"])
+        rows = faces.resident_faces(conn, top_k=8)
+        assert [r["face_id"] for r in rows] == [fid]
+        assert all(r["level"] != faces.ROOT_LEVEL for r in rows)
+        assert "apex narrative" not in faces.render_residency(rows)
+
 
 class TestMemberKey:
     def test_stable_across_whitespace_and_case(self):
