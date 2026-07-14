@@ -976,6 +976,72 @@ def onboard(
         console.print(f"[green]✓ Capture privacy state preserved[/green] ({state})")
 
 
+@app.command("import-data")
+def import_data(
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source",
+            help="Data source: obsidian, folder, notion, or anything.",
+        ),
+    ] = "obsidian",
+    path: Annotated[
+        Path | None,
+        typer.Option(
+            "--path",
+            help="Folder to import. Obsidian auto-detects the active registered vault.",
+        ),
+    ] = None,
+    build: Annotated[
+        bool,
+        typer.Option(
+            "--build/--no-build",
+            help="Build the personal model after staging changed documents.",
+        ),
+    ] = True,
+) -> None:
+    """Import local knowledge without modifying the source files."""
+    from . import source_import
+
+    _init()
+    normalized = source.strip().lower()
+    if normalized not in {"obsidian", "folder", "notion", "anything"}:
+        console.print("[red]Unknown source. Choose obsidian, folder, notion, or anything.[/red]")
+        raise typer.Exit(2)
+    if path is None and normalized == "obsidian":
+        vaults = source_import.discover_obsidian_vaults()
+        if not vaults:
+            console.print(
+                "[yellow]No registered Obsidian vault found. Pass --path /path/to/vault.[/yellow]"
+            )
+            raise typer.Exit(1)
+        path = vaults[0]
+        console.print(f"Found active Obsidian vault: [cyan]{path}[/cyan]")
+    if path is None:
+        console.print(
+            "[yellow]Choose an exported/local folder with --path. Notion Markdown exports "
+            "work directly.[/yellow]"
+        )
+        raise typer.Exit(2)
+
+    source_type = "folder" if normalized == "anything" else normalized
+    try:
+        result = source_import.import_folder(path, source_type=source_type)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Import failed: {exc}[/red]")
+        raise typer.Exit(1) from exc
+    console.print(
+        f"[green]✓ Imported {result.imported} new/changed document(s)[/green]; "
+        f"{result.unchanged} unchanged, {result.skipped} skipped."
+    )
+    if build and result.session_ids:
+        console.print("Building your personal model from the imported history...")
+        outcome = source_import.build_imported_model(config_mod.load())
+        console.print(f"[green]✓ Personal model build {outcome.status}[/green]")
+    elif build:
+        console.print("Nothing changed; the existing model is already up to date.")
+
+
 @app.command()
 def update(
     source: Annotated[

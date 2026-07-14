@@ -1231,6 +1231,12 @@ def onboard(
         expected_ocr_enabled=effective_cfg.capture.enable_ocr_fallback,
         expected_owner=expected_owner,
     )
+    if not preserve_policy:
+        # Optional and read-only: capture readiness remains the hard gate, while
+        # a detected active Obsidian vault can seed Day-One model formation.
+        from .source_import import offer_obsidian_import
+
+        offer_obsidian_import(ui, effective_cfg)
     if proof.receipt == "fresh-capture":
         completion = "a fresh capture with real context was verified"
     elif proof.receipt == "ingest-ready":

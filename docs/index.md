@@ -44,6 +44,10 @@ idempotent recheck, not a prerequisite `stop`/`start` cycle. It requests
 Accessibility for the actual source-versioned AX helper and watcher, applies
 the durable OCR policy, proves the final Runtime owner and generation, and
 returns the receipt appropriate to daemon, ingest, paused, or locked mode.
+When an active local Obsidian vault is detected, onboarding also offers a
+read-only, one-click history import so the first model need not start empty.
+See [Import existing knowledge](importing.md) for Obsidian, local folders, and
+Notion Markdown exports.
 
 Update an existing installation from any directory with `persome update`. The
 command builds an inactive candidate, atomically exchanges it with the active
@@ -63,6 +67,7 @@ installers use stdio and do not copy that credential.
 - [LLM provider configuration](config.md#providers-and-stage-models)
 - [MCP clients](mcp-clients.md)
 - [Operations and data control](operations.md)
+- [Import existing knowledge](importing.md)
 - [Benchmark scope](benchmarks.md)
 - [Security and privacy](https://github.com/Intuition-Lab/personal-model/blob/main/SECURITY_PRIVACY.md)
 - [Releases](https://github.com/Intuition-Lab/personal-model/releases)

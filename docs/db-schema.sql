@@ -322,6 +322,17 @@ CREATE INDEX ix_cross_domain_probe_age
 
 CREATE INDEX ix_faces_status ON schema_faces(status, level);
 
+-- ---- source_import.py ----
+
+CREATE TABLE source_imports (
+    source_key TEXT PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    imported_at TEXT NOT NULL,
+    session_ids TEXT NOT NULL
+);
+
 -- ---- evomem/store.py ----
 
 CREATE TABLE evo_nodes (
