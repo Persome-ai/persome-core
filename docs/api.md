@@ -34,6 +34,9 @@ runtime schema.
 `POST /health-events/import` is the local connector boundary for Apple HealthKit,
 Health Connect, vendor APIs, and file/BLE adapters. Every event needs a stable
 provider `event_id`; repeated imports are accepted and counted as duplicates.
+If the same provider ID arrives with changed normalized content, it corrects the
+existing observation and is counted as `corrected`; an identical replay remains
+a `duplicate`.
 Times must be ISO 8601 values with an explicit offset. The Runtime stores raw
 normalized observations and provenance locally; it does not treat consumer
 device measurements as medical diagnoses.

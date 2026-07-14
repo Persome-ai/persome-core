@@ -36,47 +36,82 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def import_events(conn: sqlite3.Connection, events: list[dict[str, Any]]) -> dict[str, int]:
-    """Atomically insert a batch, ignoring events already synced by the provider."""
+    """Atomically import a batch using provider IDs as revision identities.
+
+    A byte-for-byte replay of the normalized event is a duplicate.  When a
+    provider reuses an ID with changed content, the new payload is a correction
+    of that observation rather than a second observation.
+    """
     ensure_schema(conn)
     imported_at = datetime.now(UTC).isoformat(timespec="seconds")
     inserted = 0
+    corrected = 0
     conn.execute("BEGIN IMMEDIATE")
     try:
         for event in events:
             source = event["source"]
-            before = conn.total_changes
-            conn.execute(
+            values = (
+                event["metric"],
+                json.dumps(event["value"], ensure_ascii=False, separators=(",", ":")),
+                event.get("unit") or "",
+                _iso(event["started_at"]),
+                _iso(event.get("ended_at")),
+                event.get("timezone"),
+                source.get("device"),
+                source.get("device_id"),
+                json.dumps(event.get("metadata") or {}, ensure_ascii=False, separators=(",", ":")),
+            )
+            existing = conn.execute(
                 """
-                INSERT OR IGNORE INTO health_events (
+                SELECT metric, value_json, unit, started_at, ended_at, timezone,
+                       device, device_id, metadata_json
+                FROM health_events
+                WHERE provider = ? AND external_id = ?
+                """,
+                (source["provider"], event["event_id"]),
+            ).fetchone()
+            if existing is not None and tuple(existing) == values:
+                continue
+            if existing is None:
+                conn.execute(
+                    """
+                INSERT INTO health_events (
                     provider, external_id, metric, value_json, unit,
                     started_at, ended_at, timezone, device, device_id,
                     metadata_json, imported_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    source["provider"],
-                    event["event_id"],
-                    event["metric"],
-                    json.dumps(event["value"], ensure_ascii=False, separators=(",", ":")),
-                    event.get("unit") or "",
-                    _iso(event["started_at"]),
-                    _iso(event.get("ended_at")),
-                    event.get("timezone"),
-                    source.get("device"),
-                    source.get("device_id"),
-                    json.dumps(
-                        event.get("metadata") or {}, ensure_ascii=False, separators=(",", ":")
+                    (
+                        source["provider"],
+                        event["event_id"],
+                        *values,
+                        imported_at,
                     ),
-                    imported_at,
-                ),
-            )
-            inserted += int(conn.total_changes > before)
+                )
+                inserted += 1
+            else:
+                conn.execute(
+                    """
+                    UPDATE health_events
+                    SET metric = ?, value_json = ?, unit = ?, started_at = ?,
+                        ended_at = ?, timezone = ?, device = ?, device_id = ?,
+                        metadata_json = ?, imported_at = ?
+                    WHERE provider = ? AND external_id = ?
+                    """,
+                    (*values, imported_at, source["provider"], event["event_id"]),
+                )
+                corrected += 1
     except Exception:
         conn.rollback()
         raise
     else:
         conn.commit()
-    return {"received": len(events), "inserted": inserted, "duplicates": len(events) - inserted}
+    return {
+        "received": len(events),
+        "inserted": inserted,
+        "corrected": corrected,
+        "duplicates": len(events) - inserted - corrected,
+    }
 
 
 def _iso(value: Any) -> str | None:

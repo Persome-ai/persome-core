@@ -42,6 +42,7 @@ def test_import_persists_normalized_event(ac_root) -> None:
         "schema_version": 1,
         "received": 1,
         "inserted": 1,
+        "corrected": 0,
         "duplicates": 0,
     }
 
@@ -59,7 +60,32 @@ def test_import_is_idempotent(ac_root) -> None:
     assert client.post("/health-events/import", json=_payload()).status_code == 200
     response = client.post("/health-events/import", json=_payload())
     assert response.json()["data"]["inserted"] == 0
+    assert response.json()["data"]["corrected"] == 0
     assert response.json()["data"]["duplicates"] == 1
+
+
+def test_same_id_with_changed_content_corrects_existing_event(ac_root) -> None:
+    client = _client()
+    assert client.post("/health-events/import", json=_payload()).status_code == 200
+
+    corrected = _payload()
+    corrected["events"][0]["value"] = 76
+    corrected["events"][0]["metadata"] = {"source_revision": "watchOS", "sync": 2}
+    response = client.post("/health-events/import", json=corrected)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == {
+        "schema_version": 1,
+        "received": 1,
+        "inserted": 0,
+        "corrected": 1,
+        "duplicates": 0,
+    }
+    with fts.cursor() as conn:
+        rows = conn.execute("SELECT value_json, metadata_json FROM health_events").fetchall()
+    assert [(row["value_json"], row["metadata_json"]) for row in rows] == [
+        ("76.0", '{"source_revision":"watchOS","sync":2}')
+    ]
 
 
 def test_import_rejects_naive_or_reversed_timestamps(ac_root) -> None:
