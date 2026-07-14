@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from persome import source_import
 from persome.session import store as session_store
 from persome.store import fts
@@ -147,3 +149,8 @@ def test_changed_note_gets_a_new_provenance_session(ac_root: Path, tmp_path: Pat
 
     assert second.imported == 1
     assert second.session_ids != first.session_ids
+
+
+def test_refuses_to_import_persome_generated_state(ac_root: Path) -> None:
+    with pytest.raises(ValueError, match="Persome data directory"):
+        source_import.import_folder(ac_root, source_type="folder")

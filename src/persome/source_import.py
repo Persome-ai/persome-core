@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
+from . import paths
 from .session import store as session_store
 from .store import fts
 from .timeline import store as timeline_store
@@ -105,6 +107,36 @@ def _documents(root: Path) -> list[Path]:
     return sorted(found, key=lambda item: item.relative_to(root).as_posix().casefold())
 
 
+def _validate_source_root(root: Path) -> None:
+    """Prevent generated Persome state from feeding back into its own model."""
+    private_root = paths.root()
+    if root == private_root or private_root in root.parents:
+        raise ValueError("the Persome data directory cannot be used as an import source")
+
+
+def _read_stable_utf8(path: Path) -> tuple[bytes, str, int] | None:
+    """Read without following a symlink and reject a file that changed mid-read."""
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        try:
+            before = os.fstat(descriptor)
+            with os.fdopen(descriptor, "rb", closefd=False) as handle:
+                data = handle.read(_MAX_FILE_BYTES + 1)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        if len(data) > _MAX_FILE_BYTES:
+            return None
+        fingerprint_before = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        fingerprint_after = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        if fingerprint_before != fingerprint_after or len(data) != after.st_size:
+            return None
+        return data, data.decode("utf-8-sig"), after.st_mtime_ns
+    except (OSError, UnicodeError):
+        return None
+
+
 def _chunks(text: str) -> list[str]:
     text = text.strip()
     if not text:
@@ -124,6 +156,7 @@ def _chunks(text: str) -> list[str]:
 def import_folder(root: Path, *, source_type: str = "folder") -> ImportResult:
     """Stage changed text files as ended sessions; the shared writer models them."""
     root = root.expanduser().resolve(strict=True)
+    _validate_source_root(root)
     documents = _documents(root)
     imported = unchanged = skipped = 0
     created_sessions: list[str] = []
@@ -132,12 +165,11 @@ def import_folder(root: Path, *, source_type: str = "folder") -> ImportResult:
         ensure_schema(conn)
         for path in documents:
             relative = path.relative_to(root).as_posix()
-            try:
-                data = path.read_bytes()
-                text = data.decode("utf-8-sig")
-            except (OSError, UnicodeError):
+            stable = _read_stable_utf8(path)
+            if stable is None:
                 skipped += 1
                 continue
+            data, text, modified_ns = stable
             parts = _chunks(text)
             if not parts:
                 skipped += 1
@@ -162,10 +194,7 @@ def import_folder(root: Path, *, source_type: str = "folder") -> ImportResult:
                         created_sessions.append(str(session_id))
                 continue
 
-            try:
-                modified = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
-            except OSError:
-                modified = datetime.now().astimezone()
+            modified = datetime.fromtimestamp(modified_ns / 1_000_000_000).astimezone()
             file_sessions: list[str] = []
             for index, part in enumerate(parts):
                 identity = f"{source_key}:{digest}:{index}"
@@ -282,6 +311,7 @@ def offer_data_import(ui: ImportUI, cfg: Any) -> list[ImportResult]:
         ui.status(
             "✓ Data import complete: "
             f"{sum(result.imported for result in results)} new/changed, "
-            f"{sum(result.unchanged for result in results)} already imported"
+            f"{sum(result.unchanged for result in results)} already imported, "
+            f"{sum(result.skipped for result in results)} skipped"
         )
     return results

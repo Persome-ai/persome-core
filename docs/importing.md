@@ -10,6 +10,29 @@ The import is read-only: Persome neither writes to the source nor installs an
 Obsidian plugin. Hidden directories such as `.obsidian`, symlinks, non-text
 attachments, and files larger than 2 MiB are excluded. All selected sources are
 staged first, then one shared model build creates the first personal model.
+Files are opened with the platform's no-follow flag, bounded to 2 MiB, and
+checked before and after reading; a note being edited during import is skipped
+and can be picked up safely on the next run. Persome also refuses to import its
+own private data directory, preventing a generated-model feedback loop.
+
+Notion's application cache is never inspected or modified. Detecting
+`Notion.app` only makes the option relevant in onboarding; the user then chooses
+an unpacked export copy with the native folder picker. Obsidian discovery reads
+its vault registry, but content import excludes the entire `.obsidian` tree.
+
+## Onboarding states
+
+The existing native onboarding surface follows four states:
+
+1. **Choose sources.** Local folder is always present. Obsidian appears only
+   for a real registered vault; Notion appears only when its desktop app is
+   installed. The user may select multiple sources or choose **Not Now**.
+2. **Choose folders.** Obsidian needs no second choice. Local folder and Notion
+   export use the macOS folder picker, making the exact read boundary visible.
+3. **Import and build.** Status lines name each source as read-only. All sources
+   stage idempotently, then share one model build through the production writer.
+4. **Receipt.** Onboarding reports new/changed, unchanged, and skipped files.
+   A failed build remains resumable because its pending sessions are retained.
 
 This is the lowest-friction first import because an Obsidian vault is already a
 local folder of Markdown files. A plugin is not required for migration; a
