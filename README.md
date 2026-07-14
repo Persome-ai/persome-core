@@ -1,18 +1,20 @@
-<p align="center"><b>About</b>: <b>Build your HUMAN.md.</b></p>
+# Persome: Build your Personal Model
 
-<h2 align="center">[Personal Model]</h2>
+<!-- mcp-name: io.github.Intuition-Lab/personal-model -->
 
-<p align="center"><b>Build your Personal Model →</b><br>☆ <a href="https://github.com/Intuition-Lab/personal-model">Star Persome on GitHub</a></p>
+**The open-source Personal Model that makes every AI yours.**
 
-<h3 align="center">Build your Personal Model</h3>
-
-<p align="center">The open-source personal model that makes every AI yours.</p>
-
-Persome learns how you actually think and work from the activity captured on your Mac—then gives Codex, Claude Code, and any MCP agent the context to pick up where you left off, understand what matters, and work while you sleep.
-
-<p align="center"><img src="docs/assets/readme/personal-model.png" alt="Persome Personal Model interface. The left panel describes a live personal model that turns personal context into testable products, evidence-backed decisions, and sustainable momentum. The right panel visualizes 1,012 Points, 326 Lines, 18 Faces, 6 Volumes, and 1 Root, alongside signals, feedback loops, and guidance for reading the model." width="100%"></p>
+Persome learns how you actually think and work from focused activity captured on your Mac after you grant macOS permission—then gives Codex, Claude Code, and other trusted MCP-compatible clients evidence-linked context to continue your work and make grounded decisions.
 
 **Runs locally on your Mac. Private by default. Yours to inspect, correct, export, and delete.**
+
+[![CI](https://github.com/Intuition-Lab/personal-model/actions/workflows/ci.yml/badge.svg)](https://github.com/Intuition-Lab/personal-model/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Intuition-Lab/personal-model)](https://github.com/Intuition-Lab/personal-model/releases) [![License: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-blue)](LICENSE) [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black)](#2-install-with-your-data) [![MCP](https://img.shields.io/badge/interface-MCP-0b7285)](MCP.md) [![Official MCP Registry](https://img.shields.io/badge/Official_MCP_Registry-Persome-6f42c1)](https://registry.modelcontextprotocol.io/?q=Persome)
+
+[Try the synthetic demo](#1-five-minute-synthetic-demo) · [Install with your data](#2-install-with-your-data) · [Connect an MCP client](#3-connect-a-trusted-mcp-client) · [Star Persome on GitHub](https://github.com/Intuition-Lab/personal-model)
+
+![Illustration of a mature Persome Personal Model with evidence-linked Points, Lines, Faces, Volumes, and a Root](docs/assets/readme/personal-model.png)
+
+_Concept illustration of a mature Personal Model. The deterministic Runtime proof is shown in the demo below._
 
 ---
 
@@ -90,7 +92,11 @@ cd personal-model
 uv run python scripts/sample_demo.py
 ```
 
-The script opens the local viewer at `http://127.0.0.1:8743/model` and deletes its temporary synthetic data when you press `Ctrl-C`. Add `--showcase` for the denser, still fully synthetic graph shown in the README.
+The script opens the local viewer at `http://127.0.0.1:8743/model` and deletes its temporary synthetic data when you press `Ctrl-C`. Add `--showcase` for the denser, still fully synthetic graph shown below.
+
+![Persome local personal-model viewer rendering a dense synthetic Point, Line, Face, Volume, and Root graph](docs/assets/persome-model-hero.png)
+
+_Actual `/model` screenshot produced by `scripts/sample_demo.py --showcase`: 424 synthetic Points, 146 Lines, 12 Faces, 4 Volumes, and 1 Root. It contains no personal data._
 
 ### 2. Install with your data
 
