@@ -123,6 +123,38 @@ def test_same_day_rerun_unchanged_keeps_chain_quiet(ac_root: Path) -> None:
     assert len(_latest_digests()) == 1
 
 
+def test_same_rendered_dwell_with_new_receipt_still_supersedes(ac_root: Path) -> None:
+    _insert([_blk(m, "ProjA") for m in range(5)])
+    first = attention_digest.run_attention_digest(_CFG, now=_NOW)
+    assert first.committed
+    first_node = EvoMemory().store.get(first.node_id)
+    assert first_node is not None and '"ProjA"' in first_node.content
+
+    # 300s and 329s both render as ~5m. The exact dwell and source receipt still
+    # changed, so content equality must not leave stale provenance in the latest node.
+    start = datetime(2026, 6, 18, 17, 5, tzinfo=_TZ)
+    _insert(
+        [
+            timeline_store.TimelineBlock(
+                start_time=start,
+                end_time=start + timedelta(seconds=29),
+                attention_surface="ProjA",
+                attention_rung="editing",
+                attention_confidence=0.8,
+            )
+        ]
+    )
+    later = _NOW + timedelta(minutes=1)
+    second = attention_digest.run_attention_digest(_CFG, now=later)
+    assert second.committed
+    assert second.node_id != first.node_id
+    latest = EvoMemory().store.get(second.node_id)
+    assert latest is not None and latest.content == first_node.content
+    metadata = json.loads(latest.schema_summary)
+    assert metadata["surfaces"][0]["dwell_seconds"] == 329
+    assert len(metadata["surfaces"][0]["source_block_ids"]) == 6
+
+
 def test_same_day_rerun_supersedes_in_place(ac_root: Path) -> None:
     _insert([_blk(m, "ProjA") for m in range(8)])
     first = attention_digest.run_attention_digest(_CFG, now=_NOW)

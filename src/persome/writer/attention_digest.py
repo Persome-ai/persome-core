@@ -141,25 +141,44 @@ def _find_today_digest(mem: EvoMemory, day: str) -> MemoryNode | None:
     return None
 
 
+def _surface_metadata(rows: list[_SurfaceDwell]) -> list[dict[str, Any]]:
+    return [
+        {
+            "surface": row.surface,
+            "dwell_seconds": row.dwell_seconds,
+            "rung": row.rung,
+            "source_block_ids": list(row.block_ids),
+        }
+        for row in rows
+    ]
+
+
 def _digest_metadata(*, day: str, moment: datetime, rows: list[_SurfaceDwell]) -> str:
     return json.dumps(
         {
             "kind": "attention_digest",
             "day": day,
             "through": moment.isoformat(),
-            "surfaces": [
-                {
-                    "surface": row.surface,
-                    "dwell_seconds": row.dwell_seconds,
-                    "rung": row.rung,
-                    "source_block_ids": list(row.block_ids),
-                }
-                for row in rows
-            ],
+            "surfaces": _surface_metadata(rows),
         },
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def _same_evidence(existing: MemoryNode, rows: list[_SurfaceDwell]) -> bool:
+    """Whether the latest node already receipts the exact observed blocks.
+
+    Rendered dwell is deliberately rounded for readability. Comparing only the
+    content would lose a newly observed short block when both totals render as,
+    for example, ``~5m``. The exact evidence payload, excluding the changing
+    ``through`` timestamp, is the idempotence key.
+    """
+    try:
+        metadata = json.loads(existing.schema_summary or "{}")
+    except (TypeError, ValueError):
+        return False
+    return isinstance(metadata, dict) and metadata.get("surfaces") == _surface_metadata(rows)
 
 
 def _new_digest_node(
@@ -243,8 +262,9 @@ def run_attention_digest(
             rows=rows,
         )
         node_id = mem.commit_node(node)
-    elif existing.content == content:
-        # Nothing changed since the last run — keep the chain quiet.
+    elif existing.content == content and _same_evidence(existing, rows):
+        # Neither the readable digest nor its exact receipts changed — keep the
+        # chain quiet even though the observation timestamp advanced.
         return AttentionDigestResult(
             committed=False,
             summary="Digest unchanged since last run",
