@@ -110,6 +110,14 @@ CREATE TABLE sessions (
     modeled_at TEXT
 );
 
+CREATE TABLE skill_observations (
+    session_id TEXT NOT NULL,
+    skill_path TEXT NOT NULL,
+    timeline_block_id TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, skill_path)
+);
+
 CREATE TABLE sqlite_sequence(name,seq);
 
 CREATE TABLE system_state (
@@ -155,6 +163,9 @@ CREATE INDEX idx_sessions_retry ON sessions(next_retry_at)
 CREATE INDEX idx_sessions_start ON sessions(start_time);
 
 CREATE INDEX idx_sessions_status ON sessions(status);
+
+CREATE INDEX idx_skill_observations_block
+    ON skill_observations(timeline_block_id);
 
 CREATE INDEX idx_tlb_end ON timeline_blocks(end_time);
 

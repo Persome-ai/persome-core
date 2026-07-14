@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS timeline_blocks (
 );
 CREATE INDEX IF NOT EXISTS idx_tlb_start ON timeline_blocks(start_time);
 CREATE INDEX IF NOT EXISTS idx_tlb_end ON timeline_blocks(end_time);
+
+CREATE TABLE IF NOT EXISTS skill_observations (
+    session_id TEXT NOT NULL,
+    skill_path TEXT NOT NULL,
+    timeline_block_id TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, skill_path)
+);
+CREATE INDEX IF NOT EXISTS idx_skill_observations_block
+    ON skill_observations(timeline_block_id);
 """
 
 
@@ -168,6 +178,45 @@ def insert(conn: sqlite3.Connection, block: TimelineBlock) -> None:
             block.attention_rung,
         ),
     )
+
+
+def claim_skill_observation(
+    conn: sqlite3.Connection,
+    *,
+    block: TimelineBlock,
+    skill_path: str,
+) -> bool:
+    """Claim one durable skill observation per session.
+
+    Timeline classification runs once per minute, while behavioral evidence is
+    session-scoped. Without this gate a long session can append the same skill
+    echo dozens of times and make one continuous episode look like independent
+    support. If no containing session exists, preserve the legacy best-effort
+    echo rather than silently dropping the observation.
+    """
+    row = conn.execute(
+        """
+        SELECT id
+          FROM sessions
+         WHERE persome_epoch(start_time) <= persome_epoch(?)
+           AND (end_time IS NULL OR persome_epoch(end_time) > persome_epoch(?))
+         ORDER BY persome_epoch(start_time) DESC
+         LIMIT 1
+        """,
+        (block.start_time.isoformat(), block.start_time.isoformat()),
+    ).fetchone()
+    if row is None:
+        return True
+
+    cursor = conn.execute(
+        """
+        INSERT OR IGNORE INTO skill_observations
+            (session_id, skill_path, timeline_block_id, observed_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (row["id"], skill_path, block.id, block.start_time.isoformat()),
+    )
+    return cursor.rowcount == 1
 
 
 def get_latest_end(conn: sqlite3.Connection) -> datetime | None:

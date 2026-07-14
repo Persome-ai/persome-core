@@ -425,7 +425,7 @@ def _validate_skill_hint(raw: object, *, skill_paths: set[str]) -> dict | None:
 
 
 def _echo_skill_hints(block: store.TimelineBlock, skill_hints: list[dict]) -> None:
-    """Append a triggered-echo entry to each matched skill file."""
+    """Append at most one triggered-echo entry per skill and session."""
     for hint in skill_hints:
         skill_name = hint["skill"].removesuffix(".md")
         content = (
@@ -434,6 +434,16 @@ def _echo_skill_hints(block: store.TimelineBlock, skill_hints: list[dict]) -> No
         )
         try:
             with fts_store.cursor() as conn:
+                if not store.claim_skill_observation(
+                    conn,
+                    block=block,
+                    skill_path=hint["skill"],
+                ):
+                    logger.debug(
+                        "timeline: skill %s already observed in block session, skipping echo",
+                        hint["skill"],
+                    )
+                    continue
                 entries_mod.append_entry(
                     conn,
                     name=skill_name,
