@@ -219,6 +219,66 @@ def test_verify_fact_passes_fresh_evidence(ac_root, _restore_fts_gates):
         assert out["freshest_age_days"] <= 2
 
 
+def test_verify_fact_explains_open_contradictions(ac_root, _restore_fts_gates):
+    from persome.store import contradictions as contradictions_store
+
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        fresh_ts = (datetime.now().astimezone() - timedelta(days=1)).isoformat()
+        _insert(conn, id="e-a", ts=fresh_ts, content="current version 0.4.2")
+        _insert(conn, id="e-b", ts=fresh_ts, content="current version 0.5.0")
+        key = contradictions_store.record(
+            conn,
+            a_id="e-a",
+            b_id="e-b",
+            path="topic-x.md",
+            a_body="current version 0.4.2",
+            b_body="current version 0.5.0",
+            reason="both claim to be the current version",
+        )
+
+        out = mcp_server._verify_fact(conn, claim="current version")
+
+    by_id = {item["id"]: item for item in out["evidence"]}
+    assert by_id["e-a"]["conflicted"] is True
+    assert by_id["e-a"]["contradictions"] == [
+        {
+            "pair_key": key,
+            "reason": "both claim to be the current version",
+            "competing_id": "e-b",
+            "competing_claim": "current version 0.5.0",
+        }
+    ]
+    assert by_id["e-b"]["contradictions"][0]["competing_id"] == "e-a"
+    assert "unresolved contradiction" in out["note"]
+
+
+def test_verify_fact_does_not_replay_closed_contradictions(ac_root, _restore_fts_gates):
+    from persome.store import contradictions as contradictions_store
+
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        fresh_ts = (datetime.now().astimezone() - timedelta(days=1)).isoformat()
+        _insert(conn, id="e-a", ts=fresh_ts, content="current version 0.4.2")
+        key = contradictions_store.record(
+            conn,
+            a_id="e-a",
+            b_id="e-retired",
+            path="topic-x.md",
+            a_body="current version 0.4.2",
+            b_body="current version 0.3.9",
+            reason="a newer version superseded the old claim",
+        )
+        contradictions_store.close(conn, key, status="resolved", keep_id="e-a")
+
+        out = mcp_server._verify_fact(conn, claim="current version")
+
+    item = next(evidence for evidence in out["evidence"] if evidence["id"] == "e-a")
+    assert item["conflicted"] is False
+    assert "contradictions" not in item
+    assert "unresolved contradiction" not in out["note"]
+
+
 def test_verify_fact_no_evidence_is_honest(ac_root, _restore_fts_gates):
     with fts.cursor() as conn:
         conn.executescript(fts.SCHEMA)

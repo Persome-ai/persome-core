@@ -82,6 +82,48 @@ def list_rows(conn: sqlite3.Connection, *, status: str | None = "open") -> list[
     )
 
 
+def open_for_entries(conn: sqlite3.Connection, entry_ids: list[str]) -> dict[str, list[dict]]:
+    """Return open ledger rows touching the requested entries, keyed by entry id.
+
+    Each result is oriented from the requested entry's side of the pair so a
+    read client can explain the ``conflicted`` flag without making another
+    semantic judgment.
+    """
+    ids = sorted({entry_id for entry_id in entry_ids if entry_id})
+    if not ids:
+        return {}
+    ensure_schema(conn)
+    conn.row_factory = sqlite3.Row
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        "SELECT pair_key, a_id, b_id, path, a_body, b_body, reason"
+        " FROM memory_contradictions WHERE status = 'open'"
+        f" AND (a_id IN ({placeholders}) OR b_id IN ({placeholders}))"  # noqa: S608
+        " ORDER BY created_at DESC, pair_key ASC",
+        (*ids, *ids),
+    ).fetchall()
+    wanted = set(ids)
+    out: dict[str, list[dict]] = {}
+    for row in rows:
+        sides = (
+            (row["a_id"], row["b_id"], row["b_body"]),
+            (row["b_id"], row["a_id"], row["a_body"]),
+        )
+        for current_id, competing_id, competing_body in sides:
+            if current_id not in wanted:
+                continue
+            out.setdefault(current_id, []).append(
+                {
+                    "pair_key": row["pair_key"],
+                    "reason": row["reason"],
+                    "competing_id": competing_id,
+                    "competing_body": competing_body,
+                    "path": row["path"],
+                }
+            )
+    return out
+
+
 def close(
     conn: sqlite3.Connection,
     key: str,

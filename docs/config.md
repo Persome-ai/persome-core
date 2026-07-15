@@ -417,6 +417,11 @@ as structured error logs. The old runtime SSE event bus no longer exists.
 `freeze_writes_on_failure` is intentionally off because a false positive under
 Markdown authority should not halt observation.
 
+`contradiction_check_enabled` remains off by default because generation spends
+nightly LLM calls. This does not disable the read contract: `verify_fact`
+explains any existing open ledger rows, while resolved or dismissed rows remain
+historical and are not returned.
+
 ## Retrieval
 
 ```toml

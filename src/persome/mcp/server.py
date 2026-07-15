@@ -390,25 +390,37 @@ def _verify_fact(  # type: ignore[no-untyped-def]
     judges the claim itself, it says how stale the best available evidence is.
     """
     from ..retrieval import associative as assoc_mod
+    from ..store import contradictions as contradictions_store
 
     hits = assoc_mod.associative_read(conn, query=claim, top_k=top_k)
     metas = fts.entry_metadata_map(conn, [h.id for h in hits])
+    conflicts = contradictions_store.open_for_entries(conn, [h.id for h in hits])
     now = datetime.now().astimezone()
     evidence = []
     for h in hits:
         m = metas.get(h.id) or {}
-        evidence.append(
-            {
-                "id": h.id,
-                "path": h.path,
-                "timestamp": h.timestamp,
-                "age_days": _age_days(h.timestamp, now=now),
-                "content": h.content,
-                "confidence": m.get("confidence"),
-                "conflicted": m.get("conflicted", False),
-                "occurred_at": m.get("occurred_at"),
-            }
-        )
+        item = {
+            "id": h.id,
+            "path": h.path,
+            "timestamp": h.timestamp,
+            "age_days": _age_days(h.timestamp, now=now),
+            "content": h.content,
+            "confidence": m.get("confidence"),
+            "conflicted": m.get("conflicted", False),
+            "occurred_at": m.get("occurred_at"),
+        }
+        if h.id in conflicts:
+            item["conflicted"] = True
+            item["contradictions"] = [
+                {
+                    "pair_key": conflict["pair_key"],
+                    "reason": conflict["reason"],
+                    "competing_id": conflict["competing_id"],
+                    "competing_claim": (conflict["competing_body"] or "")[:280],
+                }
+                for conflict in conflicts[h.id]
+            ]
+        evidence.append(item)
     ages = [e["age_days"] for e in evidence if e["age_days"] is not None]
     freshest = min(ages) if ages else None
     stale = freshest is None or freshest > fresh_within_days
@@ -432,6 +444,8 @@ def _verify_fact(  # type: ignore[no-untyped-def]
             f"Evidence exists within {freshest} day(s). Read each item to confirm that "
             "it supports the claim; this tool checks freshness, not semantics."
         )
+    if any(item.get("contradictions") for item in evidence):
+        note += " One or more evidence items have an unresolved contradiction; do not present them as settled."
     return {
         "claim": claim,
         "evidence": evidence,
@@ -813,7 +827,8 @@ top-down — who they are (resident), what happened (recall), what was on screen
   - `include_bodies=true` to also attach higher-level cross-domain patterns.
 - `verify_fact(claim, top_k?, fresh_within_days?)` — freshness check for ONE claim.
   Call before stating time-sensitive facts (versions, task status, who-does-what,
-  schedules) as current. It judges TIME only; read the evidence yourself.
+  schedules) as current. It judges TIME only, but explains any existing open
+  contradiction ledger rows so they are not presented as settled.
 - `read_receipt(entry_id)` — dereference a `⟨entry_id:path⟩` receipt (from `chains`
   or any hit id) into the full entry + nearby-capture breadcrumbs. The audit trail
   from any memory down to the on-screen moment it came from.
@@ -1338,9 +1353,10 @@ def build_server(
         `verify_fact(claim="the current version is 0.3.9")`). Returns the freshest live
         evidence with per-entry `age_days`, plus `stale` (no evidence within
         `fresh_within_days`) and a `note` telling you how to treat it. The tool
-        judges TIME only — read the evidence to judge semantics yourself: if the
-        freshest evidence contradicts or postdates your claim, follow the
-        evidence; if everything is stale, state it as past status or ask.
+        judges TIME only — read the evidence to judge semantics yourself. An
+        evidence item with an open ledger row includes `contradictions` with the
+        recorded reason and competing claim; do not present either side as
+        settled. If everything is stale, state it as past status or ask.
         """
         claim = bounded_text("claim", claim, maximum=20_000)
         top_k = bounded_int(top_k, minimum=1, maximum=50)
