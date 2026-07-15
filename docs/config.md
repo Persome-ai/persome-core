@@ -166,15 +166,16 @@ cmux_source_enabled = true
   `persome onboard --tier tiny` or `persome ocr setup` explicitly enables OCR;
   `persome ocr disable` records the opt-out. Do not toggle only
   `enable_ocr_fallback` when representing user intent.
-- Paddle inference runs in a local worker subprocess so a native crash does not
-  kill the daemon. OCR text is backfilled into capture search and consumed by
+- OCR inference runs in a local worker subprocess so a native crash does not
+  kill the daemon. Apple Silicon selects bundled PP-OCRv6; Intel selects the
+  system Apple Vision framework. OCR text is backfilled into capture search and consumed by
   timeline/modeling; pixels are not sent to an LLM stage. The source-level
   config default is `enable_ocr_fallback=false`, `ocr_policy="auto"` for
   unsupported/direct-library environments; a supported fresh macOS install
   records the enabled state shown above after explicit onboarding.
 - `PERSOME_DISABLE_OCR=1` is the deployment kill switch.
-- `PERSOME_OCR_IN_PROCESS=1` is a debugging escape hatch that gives up crash
-  isolation and should not be used for normal operation.
+- `PERSOME_OCR_IN_PROCESS=1` is a Paddle-only debugging escape hatch that gives
+  up its worker isolation and should not be used for normal operation.
 - Age-based retention only removes captures already absorbed by a closed
   timeline block. `buffer_max_mb` remains a hard cap and may evict the oldest
   unabsorbed frame to prevent unbounded disk growth.

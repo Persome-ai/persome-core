@@ -66,13 +66,14 @@ class CaptureConfig:
     screenshot_jpeg_quality: int = 80
     ax_depth: int = 100
     ax_timeout_seconds: int = 3
-    # OCR fallback for AX-poor apps (WeChat, Feishu, etc.) — on-device PP-OCRv6.
+    # OCR fallback for AX-poor apps: PP-OCRv6 on Apple Silicon, Vision on Intel.
     enable_ocr_fallback: bool = False
     # ``auto`` = fresh/unconfigured; onboarding may enable the supported
     # default. Explicit setup/disable records durable intent so repeated
     # onboarding never silently changes the user's choice.
     ocr_policy: str = "auto"  # auto | enabled | disabled
-    ocr_tier: str = "tiny"  # tiny | small | medium (local PP-OCRv6 weights)
+    # Paddle model tier on Apple Silicon; retained for one cross-architecture config.
+    ocr_tier: str = "tiny"  # tiny | small | medium
     ocr_min_gap_seconds: float = 15.0
     # Geometry structuring of raw OCR (zero LLM, on-device): reconstruct columns/regions
     # + per-app field labels (WeChat contact/time/preview) instead of a flat noisy join.
@@ -658,12 +659,12 @@ screenshot_jpeg_quality = 80
 ax_depth = 100                # Electron apps (Claude Desktop, VS Code, Slack) have deep DOM; 8 only reaches the chrome
 ax_timeout_seconds = 3
 # OCR fallback for apps that block Accessibility API (WeChat, Feishu, NetEase Music, etc.)
-# On-device PP-OCRv6 — the focused-window screenshot is OCR'd locally; nothing leaves the machine.
+# Architecture-native OCR (PP-OCRv6 on Apple Silicon, Vision on Intel); nothing leaves the machine.
 enable_ocr_fallback = false   # install.sh verifies the worker, then writes true on supported Macs
 ocr_policy = "auto"           # auto until first setup; then enabled|disabled preserves user intent
-# Inference runs in an isolated local worker, so a native Paddle crash does not
+# Inference runs in an isolated local worker, so a native OCR crash does not
 # kill the daemon. PERSOME_DISABLE_OCR=1 is the deployment kill switch.
-ocr_tier = "tiny"             # tiny (default) | small | medium — local PP-OCRv6 weights
+ocr_tier = "tiny"             # tiny (default) | small | medium; Vision ignores the Paddle tier
 ocr_min_gap_seconds = 15.0    # minimum seconds between OCR runs for the same window
 ocr_structured = true              # geometry-structure raw OCR (zero LLM, on-device): columns/regions + per-app field labels
 # cmux signal source: real terminal text via cmux's local unix-socket RPC (GPU-rendered

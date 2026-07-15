@@ -10,7 +10,6 @@ fresh capture; supported alternate policies return explicit mode-aware receipts.
 from __future__ import annotations
 
 import json
-import platform
 import shutil
 import subprocess
 import sys
@@ -337,7 +336,7 @@ def ensure_local_ocr(
         if preserve_policy or (tier is None and before.enable_ocr_fallback)
         else tier or before.ocr_tier or "tiny"
     )
-    ui.status(f"Checking bundled local OCR ({effective_tier})...")
+    ui.status(f"Checking local OCR ({effective_tier})...")
 
     require_worker = True
     fallback_state: str | None = None
@@ -352,12 +351,6 @@ def ensure_local_ocr(
         fallback_state = "disabled_by_environment"
         fallback_message = "disabled_by_environment"
     runtime_available = ocr_local.runtime_available() if require_worker else False
-    intel_without_runtime = platform.machine().lower() in {"x86_64", "amd64"}
-    if require_worker and not runtime_available and intel_without_runtime:
-        require_worker = False
-        fallback_state = "runtime_unavailable" if before.enable_ocr_fallback else "disabled"
-        fallback_message = "runtime_unavailable"
-
     if require_worker and effective_tier not in VALID_TIERS:
         raise OnboardingError(
             f"unsupported OCR tier {effective_tier!r}: choose {', '.join(VALID_TIERS)}"
@@ -365,7 +358,7 @@ def ensure_local_ocr(
     if require_worker and ocr_local.disabled_by_environment():
         raise OnboardingError("OCR is disabled by PERSOME_DISABLE_OCR")
     if require_worker and not runtime_available:
-        raise OnboardingError("the local Paddle OCR runtime is unavailable on this architecture")
+        raise OnboardingError("the local OCR runtime is unavailable on this architecture")
     if require_worker and not ocr_local.models_available(effective_tier):
         raise OnboardingError(f"bundled PP-OCRv6 {effective_tier} model weights are missing")
 
@@ -382,7 +375,7 @@ def ensure_local_ocr(
             ui=ui,
             explanation=(
                 "Persome uses Screen Recording for locally encrypted screenshots and, when "
-                "enabled, bundled PP-OCRv6 when an app's Accessibility text is incomplete. "
+                "enabled, on-device OCR when an app's Accessibility text is incomplete. "
                 "Pixels are not sent to an LLM or uploaded. macOS will show its own permission "
                 "request next."
             ),

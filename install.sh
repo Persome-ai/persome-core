@@ -535,8 +535,10 @@ PY
 }
 
 compile_bundled_binaries() {
-  log "compiling bundled AX helper binaries"
-  "${VENV_DIR}/bin/python" - <<'PY' || die "failed to compile bundled AX binaries"
+  log "compiling bundled native helper binaries"
+  "${VENV_DIR}/bin/python" - <<'PY' || die "failed to compile bundled native binaries"
+import platform
+
 from persome.capture.ax_capture import _resolve_helper_path
 from persome.capture.watcher import _resolve_watcher_path
 
@@ -548,6 +550,13 @@ if watcher is None:
     raise SystemExit("mac-ax-watcher not available after install")
 print(f"helper={helper}")
 print(f"watcher={watcher}")
+if platform.machine().lower() in {"x86_64", "amd64"}:
+    from persome.capture.vision_ocr import resolve_helper_path
+
+    vision = resolve_helper_path()
+    if vision is None:
+        raise SystemExit("mac-vision-ocr not available after Intel install")
+    print(f"vision_ocr={vision}")
 PY
 }
 

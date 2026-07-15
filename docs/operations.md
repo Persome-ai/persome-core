@@ -5,10 +5,10 @@ inspection, correction, export, erasure, and uninstall behavior.
 
 ## Support matrix
 
-| Host | AX capture | PP-OCRv6 | Daemon, MCP, model |
+| Host | AX capture | Local OCR | Daemon, MCP, model |
 |---|---|---|---|
-| macOS 13+ Apple Silicon | yes | yes, bundled and local | supported |
-| macOS 13+ Intel | yes | no compatible Paddle runtime | supported without OCR |
+| macOS 13+ Apple Silicon | yes | PP-OCRv6, bundled and local | supported |
+| macOS 13+ Intel | yes | Apple Vision, system and local | supported |
 | Linux | no | no | offline tests and development only |
 | Windows | no | no | unsupported |
 
@@ -39,8 +39,9 @@ one fresh capture through that daemon's runner. The authenticated `/permissions`
 endpoint invokes the actual helper/watcher probes and the Runtime's Screen
 Recording preflight. HTTP-disabled daemon mode publishes the same generation's
 owner-only state receipt; trusted ingest proves its authenticated runner and
-does not claim daemon-owned macOS permissions. Intel without local OCR and
-explicit OCR/pixel opt-out report their actual remaining AX/pixel capabilities.
+does not claim daemon-owned macOS permissions. Intel uses the same worker
+contract through Apple Vision; explicit OCR/pixel opt-out reports the actual
+remaining AX/pixel capabilities.
 Updates preserve paused/locked privacy state without forcing a frame. The first
 OCR load can take up to two minutes; repeated runs publish progress and normally
 reuse the worker.
@@ -80,7 +81,7 @@ and old helper path.
 | `.daemon.lock` | lifetime single-Runtime lock inherited across background forks |
 | `.launchagent-owner` | durable intent that launchd owns Runtime lifecycle |
 | `.update.lock`, `.update-state.json` | exclusive update lock and crash-recovery phase metadata |
-| `native/<source-digest>/` | immutable machine-local AX binaries; code, not personal data |
+| `native/<source-digest>/` | immutable machine-local AX and Vision OCR binaries; code, not personal data |
 | `venv.replacement.update`, `venv.previous.committed.*`, `venv.failed.update.*` | candidate, retained-old, and cleanup environments during a transaction; code, not personal data |
 | `venv/` | dedicated installer environment; code, not personal data |
 

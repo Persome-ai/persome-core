@@ -1275,7 +1275,7 @@ def ocr_setup(
         raise typer.Exit(1)
     if not ocr_local.runtime_available():
         console.print(
-            "[red]The local Paddle OCR runtime is unavailable on this architecture.[/red] "
+            "[red]The local OCR runtime is unavailable on this architecture.[/red] "
             "AX capture remains available."
         )
         raise typer.Exit(1)
@@ -1364,7 +1364,7 @@ def ocr_selftest(
 ) -> None:
     """Run on-device OCR over an image and print the recognized text.
 
-    Verifies the bundled PP-OCRv6 runtime end-to-end (model load + inference). Exits
+    Verifies the architecture-native OCR runtime end-to-end. Exits
     non-zero on failure so it can gate a packaged build.
     """
     from pathlib import Path
@@ -1383,8 +1383,8 @@ def ocr_selftest(
 def _ocr_worker() -> None:
     """Isolated OCR worker loop (internal — spawned by the daemon, not for direct use).
 
-    Reads length-prefixed OCR requests on stdin and writes results on stdout. Paddle is
-    imported ONLY in this process, so a native SIGSEGV kills just the worker and the daemon
+    Reads length-prefixed OCR requests on stdin and writes results on stdout. Native
+    inference stays in this crash domain, so a fault kills just the worker and the daemon
     fails open + respawns (see #403 / the ocr-subprocess-isolation spec).
     """
     from .capture import ocr_worker

@@ -1,12 +1,14 @@
-"""On-device OCR via local PaddleOCR (PP-OCRv6).
+"""On-device OCR via PP-OCRv6 on Apple Silicon and Apple Vision on Intel.
 
 Replaces the former Baidu AI Studio cloud OCR (``ocr_client``). The focused-window
 screenshot is OCR'd **locally** — nothing leaves the machine — for apps that block
 the Accessibility API (WeChat, Feishu, NetEase Music, …).
 
 Design notes:
-- A single lazily-built ``PaddleOCR`` engine per tier is cached and reused; building it
+- Apple Silicon uses a lazily-built ``PaddleOCR`` engine per tier; building it
   is slow (loads two inference graphs) so we never construct per call.
+- Intel macOS uses a compiled Swift helper backed by the system Vision framework,
+  because PaddlePaddle publishes no macOS x86_64 wheel.
 - ``predict`` is serialized behind a module lock: the Paddle predictor is not
   guaranteed reentrant, and OCR fires at most once per window every
   ``ocr_min_gap_seconds`` (default 15s) so serialization costs nothing.
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import platform
 import sys
 import threading
 from pathlib import Path
@@ -44,34 +47,55 @@ _engines: dict[str, Any] = {}
 _lock = threading.Lock()
 
 _runtime_available: bool | None = None
+_runtime_backend: str | None = None
+
+
+def _paddle_runtime_available() -> bool:
+    try:
+        return (
+            importlib.util.find_spec("paddleocr") is not None
+            and importlib.util.find_spec("paddle") is not None
+        )
+    except (ImportError, ValueError):
+        return False
+
+
+def runtime_backend() -> str | None:
+    """Return the selected local backend: ``paddle``, ``vision``, or ``None``."""
+    if _runtime_available is None:
+        runtime_available()
+    # Tests and embedded callers historically injected only the boolean cache.
+    # Preserve that narrow compatibility by treating an injected true value as
+    # the original Paddle path unless detection selected Vision explicitly.
+    if _runtime_available and _runtime_backend is None:
+        return "paddle"
+    return _runtime_backend
 
 
 def runtime_available() -> bool:
-    """Whether the local-OCR native runtime (``paddleocr`` + ``paddlepaddle``) is installed in
-    THIS build — the honest "can we OCR at all" probe (issue #226).
+    """Whether this build has a usable architecture-native local OCR backend.
 
-    **False on Intel (x86_64) macOS by design.** PaddlePaddle publishes no macOS-Intel wheel
-    (only manylinux x86_64, win_amd64, and macos arm64), so ``pyproject.toml`` gates the paddle
-    deps to ``platform_machine == 'arm64'`` and the PyInstaller spec skips collecting them off
-    arm64. The x86_64 daemon slice therefore ships WITHOUT local OCR: AX-poor apps (WeChat /
-    Feishu) get no OCR text, but AX-based state formation and every other feature
-    work normally. This is the intended graceful degrade, not a failure.
+    Apple Silicon selects bundled PaddleOCR. Intel macOS selects an Apple Vision
+    Swift helper because PaddlePaddle has no macOS x86_64 wheel. Both stay local
+    and return the same text/geometry contract.
 
-    Cheap + side-effect-free: uses ``importlib.util.find_spec`` (no import), so it never triggers
-    paddle's slow load or its glog signal handler. Cached after the first call.
+    Cheap + side-effect-free: probes import specs or the packaged Swift source;
+    it never loads an inference engine. Cached after the first call.
     """
-    global _runtime_available
+    global _runtime_available, _runtime_backend
     if _runtime_available is None:
-        try:
-            _runtime_available = (
-                importlib.util.find_spec("paddleocr") is not None
-                and importlib.util.find_spec("paddle") is not None
-            )
-        except (
-            ImportError,
-            ValueError,
-        ):  # a missing parent package raises rather than returning None
-            _runtime_available = False
+        _runtime_backend = None
+        if _paddle_runtime_available():
+            _runtime_backend = "paddle"
+        elif platform.system() == "Darwin" and platform.machine().lower() in {
+            "x86_64",
+            "amd64",
+        }:
+            from . import vision_ocr
+
+            if vision_ocr.available():
+                _runtime_backend = "vision"
+        _runtime_available = _runtime_backend is not None
     return _runtime_available
 
 
@@ -84,11 +108,10 @@ def _ocr_disabled() -> bool:
     glog's ``FailureSignalHandler`` only *catches* the fault (and #323 already tears
     that handler out at teardown) — it cannot *prevent* the underlying native crash.
 
-    Until OCR is isolated into a crash-domain subprocess (follow-up), this flag is the
-    safe, instant stop-gap: set ``PERSOME_DISABLE_OCR=1`` (deploy-time, no config
-    rebuild) and no paddle inference runs at all — the daemon degrades to "no OCR text
-    for AX-poor apps" instead of crashing. ``warm()``/``recognize*`` all honor it, so
-    paddle is never even imported when disabled. Truthy values: 1/true/yes/on.
+    This flag is the safe, instant stop-gap: set ``PERSOME_DISABLE_OCR=1``
+    (deploy-time, no config rebuild) and no native OCR inference runs. The daemon
+    degrades to AX-only text. ``warm()``/``recognize*`` all honor it, so Paddle
+    is never imported and Vision is never invoked. Truthy values: 1/true/yes/on.
     """
     val = os.environ.get("PERSOME_DISABLE_OCR", "")
     return val.strip().lower() in {"1", "true", "yes", "on"}
@@ -102,10 +125,10 @@ def disabled_by_environment() -> bool:
 def _use_isolation() -> bool:
     """Whether OCR inference runs in the isolated crash-domain subprocess (default: yes).
 
-    Paddle can SIGSEGV natively; running it in a separate worker means such a fault kills
-    only the worker, never the daemon (see #403 + the subprocess-isolation spec). Isolation
-    is ON by default and cannot be turned off from ``config.toml`` — a normal install is
-    always crash-safe. Two escape hatches, both env-only:
+    Native inference can fail below Python; the worker boundary keeps such a
+    fault from killing the daemon (see #403 + the subprocess-isolation spec).
+    Isolation is ON by default and cannot be turned off from ``config.toml``.
+    Two escape hatches, both env-only:
 
     - ``PERSOME_OCR_WORKER=1`` — set inside the worker itself, so a routed call there
       resolves in-proc (a worker never spawns a worker).
@@ -151,9 +174,12 @@ def _model_dir(tier: str, kind: str) -> str | None:
 
 
 def models_available(tier: str = DEFAULT_TIER) -> bool:
-    """Whether both bundled model graphs required by ``tier`` are present."""
+    """Whether the selected backend has its required model assets."""
     if tier not in _VALID_TIERS:
         return False
+    if runtime_backend() == "vision":
+        # Vision's model is part of macOS; there are no Persome weight files.
+        return True
     return _model_dir(tier, "det") is not None and _model_dir(tier, "rec") is not None
 
 
@@ -209,7 +235,7 @@ def _get_engine(tier: str) -> Any | None:
     importing/building paddle, so every ``recognize*`` path fails open (no inference, no
     native-crash exposure). This is the single chokepoint all OCR entrypoints route through.
     """
-    if _ocr_disabled() or not runtime_available():
+    if _ocr_disabled() or not runtime_available() or runtime_backend() != "paddle":
         return None
     if tier not in _VALID_TIERS:
         tier = DEFAULT_TIER
@@ -224,23 +250,23 @@ def _get_engine(tier: str) -> Any | None:
 def warm(tier: str = DEFAULT_TIER) -> bool:
     """Pre-build the engine so the first real capture doesn't pay graph-load latency.
 
-    No-op when OCR is disabled (``PERSOME_DISABLE_OCR``): paddle is never imported.
-    Under isolation (default), warms the WORKER's engine (spawns it, builds its graphs);
-    only the in-process fallback builds paddle inside the daemon.
+    No-op when OCR is disabled. Under isolation (default), warms the worker's
+    selected backend. Only the Paddle debug fallback builds inside the daemon.
     """
     if _ocr_disabled():
         logger.info("local OCR disabled via PERSOME_DISABLE_OCR; skipping warm")
         return False
     if not runtime_available():
-        logger.info(
-            "local OCR runtime unavailable in this build (no paddlepaddle wheel for this arch, "
-            "e.g. x86_64 macOS); AX-poor apps run without OCR text — see #226. Skipping warm"
-        )
+        logger.info("local OCR runtime unavailable in this build; skipping warm")
         return False
     if _use_isolation():
         from . import ocr_subprocess
 
         return ocr_subprocess.get_client().warm(tier)
+    if runtime_backend() == "vision":
+        from . import vision_ocr
+
+        return vision_ocr.warm()
     with _lock:
         return _get_engine(tier) is not None
 
@@ -261,14 +287,17 @@ def recognize(image_bytes: bytes, tier: str = DEFAULT_TIER) -> str | None:
 def _recognize_detailed_inproc(
     image_bytes: bytes, tier: str = DEFAULT_TIER
 ) -> tuple[list[str], list[list[int]], list[float]] | None:
-    """The actual paddle predict — imports cv2 + builds/uses the engine IN THIS PROCESS.
+    """Run the selected native backend inside the isolated worker process.
 
-    In the daemon this only runs on the in-process fallback (``PERSOME_OCR_IN_PROCESS``);
-    in production it runs inside the isolated worker. A native SIGSEGV here is exactly what
-    isolation contains.
+    Apple Silicon imports/builds Paddle here. Intel invokes the one-shot Vision
+    helper here. A native fault is contained by the parent worker boundary.
     """
     if not image_bytes:
         return None
+    if runtime_backend() == "vision":
+        from . import vision_ocr
+
+        return vision_ocr.recognize_detailed(image_bytes)
     # Decode via PIL, not cv2: opencv is only a transitive dependency of paddle
     # (arm64-only), so cv2 is absent on hosts without the paddle wheels — while
     # this parse path must still work there under a stubbed engine (tests, and
@@ -314,11 +343,10 @@ def recognize_detailed(
     is what ``recognize`` throws away — the downstream structurer (``ocr_structure``) needs
     it to reconstruct columns/regions and drop low-confidence fragments.
 
-    Routing: the ``PERSOME_DISABLE_OCR`` kill-switch and the ``runtime_available()`` probe
-    (no paddle wheel on this arch, e.g. x86_64 macOS — #226) short-circuit first, so neither the
-    isolated worker nor the in-process path is even entered; then by default inference runs in the
-    isolated crash-domain worker (``_use_isolation``); the ``PERSOME_OCR_IN_PROCESS`` debug
-    hatch forces the legacy in-daemon predict.
+    Routing: the ``PERSOME_DISABLE_OCR`` kill-switch and ``runtime_available()``
+    short-circuit first. By default inference runs in the isolated crash-domain
+    worker; inside it Apple Silicon uses Paddle and Intel invokes Apple Vision.
+    ``PERSOME_OCR_IN_PROCESS`` is a debug hatch for the legacy Paddle path.
     """
     if _ocr_disabled() or not runtime_available():
         return None

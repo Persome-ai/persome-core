@@ -125,9 +125,10 @@ labels, ports, and data roots do not belong in core.
 Supported installs enable OCR through `persome ocr setup` or an explicit
 `persome onboard --tier ...`. `persome ocr disable` records a durable opt-out;
 an ordinary `persome onboard` and every update preserve that policy and tier.
-The child worker managed by `capture/ocr_subprocess.py` isolates native Paddle
-faults from the daemon. Quick health checks inspect configuration, Runtime,
-weights, kill switch, and Screen Recording without loading Paddle. Run
+The child worker managed by `capture/ocr_subprocess.py` isolates native OCR
+faults from the daemon. Apple Silicon uses bundled PP-OCRv6; Intel uses the
+system Apple Vision framework. Quick health checks inspect configuration,
+Runtime/assets, kill switch, and Screen Recording without loading an engine. Run
 `persome ocr status --check` to verify the worker engine. In trusted-ingest mode,
 the producer owns the OS permission boundary; the daemon starts no AX watcher
 and requires authenticated HTTP ingest readiness.

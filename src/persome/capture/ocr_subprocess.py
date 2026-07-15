@@ -6,7 +6,7 @@ stdout, the client reads EOF, **fails open (returns ``None``)**, reaps the corps
 respawns on the next call. The daemon process itself never imports paddle/cv2, so a native
 OCR fault can never take it down.
 
-The subprocess isolates native OCR failures from the daemon.
+The subprocess isolates native OCR failures from the daemon on both architectures.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import os
 import select
+import signal
 import struct
 import subprocess
 import sys
@@ -55,6 +56,9 @@ def _default_spawn() -> subprocess.Popen:
         env=env,
         bufsize=0,
         close_fds=True,
+        # A worker may compile or invoke a native OCR helper. Give it a private
+        # process group so timeout teardown also reaps those descendants.
+        start_new_session=os.name == "posix",
     )
 
 
@@ -72,6 +76,10 @@ class OCRWorkerClient:
         self._startup_timeout = timeout if startup_timeout is None else startup_timeout
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
+        # The default worker owns a private POSIX process group. Record that
+        # group while the leader is alive so cleanup can still kill native
+        # descendants after the worker itself has crashed or exited.
+        self._proc_group: int | None = None
         self._state: WorkerState = "not_started"
         self._state_lock = threading.Lock()
 
@@ -155,14 +163,27 @@ class OCRWorkerClient:
             self._kill_worker_locked()
         try:
             self._proc = self._spawn()
+            self._proc_group = self._owned_process_group(self._proc)
             self._set_state("warming")
             logger.info("spawned ocr worker (pid=%s)", self._proc.pid)
             return self._proc, True
         except Exception as exc:  # noqa: BLE001
             logger.warning("ocr worker spawn failed: %s; OCR degrades to none", exc)
             self._proc = None
+            self._proc_group = None
             self._set_state("failed")
             return None, False
+
+    @staticmethod
+    def _owned_process_group(proc: subprocess.Popen) -> int | None:
+        """Return the worker's private POSIX process group, if it owns one."""
+        if os.name != "posix":
+            return None
+        try:
+            group = os.getpgid(proc.pid)
+        except (AttributeError, OSError):
+            return None
+        return group if group == proc.pid else None
 
     def _send(self, proc: subprocess.Popen, tier: str, image_bytes: bytes) -> None:
         req = ocr_protocol.encode_request(tier, image_bytes)
@@ -212,10 +233,23 @@ class OCRWorkerClient:
 
     def _kill_worker_locked(self) -> None:
         proc = self._proc
+        group = self._proc_group
         self._proc = None
+        self._proc_group = None
         if proc is None:
             return
-        if proc.poll() is None:
+        killed_group = False
+        if os.name == "posix" and group is not None:
+            try:
+                # Do this even when the worker leader has already exited: its
+                # compiler/Vision child may still be alive in the owned group.
+                os.killpg(group, signal.SIGKILL)
+                killed_group = True
+            except ProcessLookupError:
+                pass
+            except OSError as exc:
+                logger.warning("failed to kill OCR worker process group %s: %s", group, exc)
+        if proc.poll() is None and not killed_group:
             with contextlib.suppress(Exception):
                 proc.kill()
         for stream in (proc.stdin, proc.stdout):
@@ -274,6 +308,8 @@ def _timeout_from_env() -> float:
 
 def _startup_timeout_from_env() -> float:
     try:
-        return float(os.environ.get("PERSOME_OCR_WORKER_STARTUP_TIMEOUT", "120"))
+        # First-run Intel warm-up may compile the Swift helper (120s bound) and
+        # then probe Vision (15s bound). Keep margin for process startup and I/O.
+        return float(os.environ.get("PERSOME_OCR_WORKER_STARTUP_TIMEOUT", "180"))
     except ValueError:
-        return 120.0
+        return 180.0

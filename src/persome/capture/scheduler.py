@@ -113,7 +113,7 @@ def _submit_ocr_async(
 ) -> None:
     """Fire-and-forget local OCR + geometry structuring. Runs on a daemon thread.
 
-    Local PP-OCRv6 inference is synchronous (~0.5s) and runs entirely on-device, so
+    Architecture-native OCR is synchronous and runs entirely on-device, so
     there is no job table / polling loop — we recognize and backfill in one shot.
     Called from `_write_capture` AFTER the capture row is indexed, so the backfill
     `UPDATE … WHERE id=?` always finds its row.

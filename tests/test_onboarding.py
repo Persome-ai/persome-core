@@ -785,21 +785,25 @@ def test_preserve_policy_keeps_existing_ocr_tier(
     assert cfg.capture.ocr_tier == "small"
 
 
-def test_fresh_intel_onboarding_uses_supported_ax_only_mode(
+def test_fresh_intel_onboarding_enables_vision_ocr(
     ac_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg = config.Config()
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: cfg)
-    monkeypatch.setattr(onboarding.platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(ocr_local, "runtime_available", lambda: False)
+    monkeypatch.setattr(ocr_local, "runtime_available", lambda: True)
+    monkeypatch.setattr(ocr_local, "runtime_backend", lambda: "vision")
+    monkeypatch.setattr(ocr_local, "models_available", lambda tier: True)
     monkeypatch.setattr(screen_recording, "has_screen_recording", lambda: True)
+    monkeypatch.setattr(
+        ocr_health,
+        "inspect",
+        lambda capture: SimpleNamespace(ready=True, state="ready", detail="ready"),
+    )
 
     proof = onboarding.ensure_local_ocr(tier="tiny", ui=ScriptedUI())
 
-    assert proof.require_worker is False
-    # The daemon reports its effective disabled policy; the UX separately
-    # explains that Intel has no bundled OCR runtime.
-    assert proof.state == "disabled"
+    assert proof.require_worker is True
+    assert proof.state == "ready"
 
 
 def test_plain_repeated_onboarding_preserves_explicit_ocr_opt_out(

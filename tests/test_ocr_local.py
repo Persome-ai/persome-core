@@ -28,13 +28,14 @@ def _force_in_process_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _fake_paddle_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Force the paddle runtime probe to True.
+    """Force the selected runtime to the stubbed Paddle backend.
 
     Every test here stubs the engine, so the logic under test sits BEHIND the
-    runtime gate; on hosts without paddle wheels (Linux CI, Intel macOS) the
-    gate would short-circuit recognize() to None before the stubs are reached.
+    runtime gate; on hosts without paddle wheels the gate would otherwise
+    short-circuit, while Intel may have already cached the Vision backend.
     """
     monkeypatch.setattr(ocr_local, "_runtime_available", True)
+    monkeypatch.setattr(ocr_local, "_runtime_backend", "paddle")
 
 
 def _jpeg_bytes(size=(40, 20), color=(255, 255, 255)) -> bytes:

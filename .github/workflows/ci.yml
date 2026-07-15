@@ -18,13 +18,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-latest: the Paddle OCR deps are gated to Apple Silicon macOS,
-        # so they are skipped
-        # and the OCR-less code path is exercised.
+        # ubuntu-latest: the Paddle OCR deps are skipped and the no-runtime
+        # fail-open path is exercised.
         # macos-latest (arm64): full dependency set incl. local OCR runtime.
-        # Tests marked "macos" stay deselected on BOTH runners: CI has no
+        # macos-15-intel (x86_64): Apple Vision OCR fallback + Intel install path.
+        # Tests marked "macos" stay deselected in the default gate: CI has no
         # Accessibility (AX) permission, so AX-capture tests cannot run there.
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -82,6 +82,10 @@ jobs:
         env:
           PERSOME_LLM_MOCK: "1"
         run: uv run --no-sync pytest -m "not macos and not integration" -q
+
+      - name: Real Intel Vision OCR smoke
+        if: matrix.os == 'macos-15-intel'
+        run: uv run --no-sync pytest tests/test_vision_ocr.py -m macos -q
 
       - name: PII scan
         # Hard privacy gate: the whole tree (source + test fixtures) must be
@@ -158,6 +162,7 @@ jobs:
               "build-mac-ax-watcher.sh",
               "mac-ax-helper.swift",
               "mac-ax-watcher.swift",
+              "mac-vision-ocr.swift",
               "mac-url-handlers.swift",
               "model_assets/LICENSE",
               "model_assets/three.module.js",

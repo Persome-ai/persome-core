@@ -8,8 +8,12 @@ No paddle, hermetic, default gate.
 
 from __future__ import annotations
 
+import contextlib
+import os
 import subprocess
 import sys
+import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,6 +59,14 @@ import sys, time
 from persome.capture import ocr_protocol as p
 p.read_frame(sys.stdin.buffer)
 time.sleep(3600)
+"""
+
+# Starts a child in the worker's process group, publishes its PID, then exits.
+# Cleanup must still kill that child after the group leader is already dead.
+_EXIT_WITH_LIVE_CHILD = """
+import subprocess, sys
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+print(child.pid, flush=True)
 """
 
 _JPEG = b"\xff\xd8\xff\xe0fake-jpeg-bytes"
@@ -148,6 +160,79 @@ class TestCrashContainment:
         assert client.recognize_detailed(_JPEG, "tiny") is None
         assert client.warm("tiny") is False  # warm also fails open, never raises
 
+    def test_timeout_kills_isolated_worker_process_group(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        killed_groups: list[tuple[int, int]] = []
+        proc = SimpleNamespace(
+            pid=43210,
+            stdin=None,
+            stdout=None,
+            poll=lambda: None,
+            kill=lambda: pytest.fail("group leader must be killed through killpg"),
+            wait=lambda timeout: 0,
+        )
+        client = ocr_subprocess.OCRWorkerClient(spawn=lambda: proc)
+        client._proc = proc
+        client._proc_group = 43210
+        monkeypatch.setattr(ocr_subprocess.os, "getpgid", lambda pid: pid)
+        monkeypatch.setattr(
+            ocr_subprocess.os,
+            "killpg",
+            lambda group, sig: killed_groups.append((group, sig)),
+        )
+
+        client._kill_worker_locked()
+
+        assert killed_groups == [(43210, ocr_subprocess.signal.SIGKILL)]
+        assert client._proc is None
+        assert client._proc_group is None
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group regression")
+    def test_dead_worker_cleanup_kills_live_group_child(self) -> None:
+        def _spawn() -> subprocess.Popen:
+            return subprocess.Popen(
+                [sys.executable, "-c", _EXIT_WITH_LIVE_CHILD],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+                close_fds=True,
+                start_new_session=True,
+            )
+
+        client = ocr_subprocess.OCRWorkerClient(spawn=_spawn, timeout=1)
+        proc: subprocess.Popen | None = None
+        child_pid: int | None = None
+        try:
+            proc, _ = client._ensure_worker_locked()
+            assert proc is not None and proc.stdout is not None
+            child_pid = int(proc.stdout.readline())
+            proc.wait(timeout=5)
+            assert proc.poll() is not None
+            assert client._proc_group == proc.pid
+            os.kill(child_pid, 0)  # the descendant is alive after its leader exits
+
+            client._kill_worker_locked()
+
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("worker process-group child survived cleanup")
+        finally:
+            client._kill_worker_locked()
+            if proc is not None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, ocr_subprocess.signal.SIGKILL)
+            if child_pid is not None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(child_pid, ocr_subprocess.signal.SIGKILL)
+
 
 class TestWarm:
     def test_warm_spawns_worker(self) -> None:
@@ -164,6 +249,12 @@ class TestWarm:
         client = ocr_subprocess.OCRWorkerClient(timeout=20, startup_timeout=120)
         assert client._timeout == 20
         assert client._startup_timeout == 120
+
+    def test_default_cold_start_covers_intel_compile_and_probe(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PERSOME_OCR_WORKER_STARTUP_TIMEOUT", raising=False)
+        assert ocr_subprocess._startup_timeout_from_env() == 180.0
 
 
 class TestRouting:

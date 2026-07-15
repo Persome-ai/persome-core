@@ -6,9 +6,9 @@ In `source="daemon"` mode, live capture requires Accessibility for the native
 `mac-ax-helper` and, when event-driven capture is enabled, the separate
 `mac-ax-watcher` executable. The terminal and Python daemon do not read AX on
 their behalf. Screen Recording is additionally required when screenshot storage
-or effective OCR needs pixels. In a standard interactive Apple Silicon install,
+or effective OCR needs pixels. In a standard interactive macOS install,
 `persome onboard` explains and requests each required principal separately,
-verifies bundled OCR, starts the final daemon owner, checks local health, and
+verifies architecture-native OCR, starts the final daemon owner, checks local health, and
 proves one fresh capture inside that daemon before returning success. The
 authenticated `/permissions` endpoint runs the actual helper/watcher trust
 checks plus the Runtime's Screen Recording preflight. With HTTP auto-start
@@ -54,8 +54,8 @@ The same capture scheduler also invokes `SessionManager.on_event` (wired as a `p
 
 ## Local OCR fallback
 
-The installer runs `persome onboard`, whose OCR step checks the native Runtime
-and bundled weights, requests Screen Recording after an explicit explanation,
+The installer runs `persome onboard`, whose OCR step checks the architecture-native
+Runtime and required assets, requests Screen Recording after an explicit explanation,
 persists enabled intent, then starts the daemon and waits for the daemon-owned
 isolated worker to initialize. `[capture].ocr_policy` distinguishes `auto`
 (fresh/unconfigured), `enabled`, and `disabled` (explicit opt-out). Ordinary
@@ -75,17 +75,20 @@ focused screenshot bytes
   -> timeline/modeling fallback when AX text is empty
 ```
 
-The subprocess is the native-crash boundary: a Paddle fault fails the OCR call
-without killing the daemon. `PERSOME_DISABLE_OCR=1` prevents Paddle from being
-loaded at all. `PERSOME_OCR_IN_PROCESS=1` exists only for debugging and removes
-that isolation.
+The subprocess is the native-crash boundary: Apple Silicon runs bundled
+PP-OCRv6 there; Intel invokes an on-device Apple Vision helper with the same
+text, box, and confidence contract. A native fault fails the OCR call without
+killing the daemon. `PERSOME_DISABLE_OCR=1` prevents either backend from
+running. `PERSOME_OCR_IN_PROCESS=1` exists only for debugging the Paddle path
+and removes its worker isolation.
 
-The helper and watcher are compiled into immutable
+The AX helper, watcher, and Intel Vision OCR helper are compiled into immutable
 `<PERSOME_ROOT>/native/<source-digest>/` directories keyed by a format version,
 architecture, and Swift source bytes. A same-version reinstall returns the exact
-existing executables, preserving their macOS TCC identity. Changed helper source
-uses a new digest path and therefore requires a deliberate new Accessibility
-grant; rollback resolves the old wheel source and old binary again.
+existing executables. For the AX helper and watcher, this preserves their macOS
+TCC identity; changed AX source uses a new digest path and therefore requires a
+deliberate new Accessibility grant. The Vision helper does not request AX access.
+Rollback resolves the old wheel source and old binaries again.
 
 ```bash
 persome onboard            # permissions + OCR + daemon + health + fresh capture

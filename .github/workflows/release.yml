@@ -124,6 +124,7 @@ jobs:
               "build-mac-ax-watcher.sh",
               "mac-ax-helper.swift",
               "mac-ax-watcher.swift",
+              "mac-vision-ocr.swift",
               "mac-url-handlers.swift",
               "model_assets/LICENSE",
               "model_assets/three.module.js",
@@ -169,6 +170,7 @@ jobs:
               raise AssertionError("PyPI wheel must be named personal-model")
           bundled = files("persome") / "_bundled"
           assert (bundled / "mac-ax-helper.swift").is_file()
+          assert (bundled / "mac-vision-ocr.swift").is_file()
           assert (bundled / "model_assets" / "viewer.js").is_file()
           assert (
               bundled / "ocr_models" / "PP-OCRv6_tiny_rec" / "inference.pdiparams"

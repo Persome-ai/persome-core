@@ -405,6 +405,17 @@ def test_ocr_permission_block_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "permission_required" in check.detail
 
 
+def test_enabled_ocr_without_architecture_backend_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ocr_local, "runtime_available", lambda: False)
+    monkeypatch.setattr(ocr_local, "models_available", lambda tier: False)
+    monkeypatch.setattr(ocr_local, "disabled_by_environment", lambda: False)
+
+    check = doctor.check_ocr(CaptureConfig(enable_ocr_fallback=True))
+
+    assert check.status == "fail"
+    assert "runtime_unavailable" in check.detail
+
+
 def test_ocr_disabled_is_visible_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ocr_health.sys, "platform", "darwin")
     monkeypatch.setattr(ocr_local, "runtime_available", lambda: True)

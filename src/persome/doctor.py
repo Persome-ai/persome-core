@@ -357,8 +357,6 @@ def check_ocr(capture: config_mod.CaptureConfig) -> Check:
         return Check("local OCR", "ok", health.detail)
     if health.state == "disabled":
         return Check("local OCR", "warn", health.detail)
-    if health.state == "runtime_unavailable" and platform.machine() != "arm64":
-        return Check("local OCR", "warn", f"{health.detail}; AX capture remains available")
     return Check("local OCR", "fail", f"{health.state}: {health.detail}")
 
 

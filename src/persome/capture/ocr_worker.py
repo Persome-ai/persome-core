@@ -1,9 +1,9 @@
-"""Isolated OCR worker — the child process that owns paddle/cv2 inference.
+"""Isolated OCR worker — the child process that owns native OCR inference.
 
 Spawned by the daemon as ``Persome Backend _ocr-worker`` (frozen) / ``python -m persome.cli
-_ocr-worker`` (dev). This is the ONLY process that imports paddle: a native SIGSEGV here
-kills just this worker, and the parent (``ocr_subprocess.OCRWorkerClient``) fails open +
-respawns.
+_ocr-worker`` (dev). On Apple Silicon this is the only process that imports Paddle; on
+Intel it owns the Apple Vision helper. A native fault kills just this worker, and the
+parent (``ocr_subprocess.OCRWorkerClient``) fails open + respawns.
 
 The worker reads length-prefixed request frames on **stdin** and writes response frames on
 **stdout** (``ocr_protocol``). stdout is the data channel and MUST stay clean — all logging

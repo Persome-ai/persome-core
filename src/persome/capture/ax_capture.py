@@ -197,14 +197,15 @@ def _find_compatible_sdk() -> Path | None:
 
 def _maybe_compile(swift_path: Path, binary_path: Path) -> None:
     """Dev/first-run: compile the helper if missing or stale."""
+    helper_name = binary_path.name
     if not swift_path.is_file():
         return
     if binary_path.is_file():
         if binary_path.stat().st_mtime >= swift_path.stat().st_mtime:
             return
-        logger.info("mac-ax-helper: source newer than binary, recompiling")
+        logger.info("%s: source newer than binary, recompiling", helper_name)
     else:
-        logger.info("mac-ax-helper: binary missing, compiling from source")
+        logger.info("%s: binary missing, compiling from source", helper_name)
 
     cache = Path("/tmp/clang-module-cache")
     cache.mkdir(parents=True, exist_ok=True)
@@ -228,16 +229,17 @@ def _maybe_compile(swift_path: Path, binary_path: Path) -> None:
     sdk = _find_compatible_sdk()
     if sdk is not None:
         cmd.extend(["-sdk", str(sdk)])
-        logger.info("mac-ax-helper: using SDK %s", sdk)
+        logger.info("%s: using SDK %s", helper_name, sdk)
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env)
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        logger.warning("mac-ax-helper compile failed: %s (install Xcode CLT?)", exc)
+        logger.warning("%s compile failed: %s (install Xcode CLT?)", helper_name, exc)
         return
     if result.returncode != 0:
         logger.warning(
-            "mac-ax-helper compile failed (%d): %s",
+            "%s compile failed (%d): %s",
+            helper_name,
             result.returncode,
             result.stderr.strip()[:300],
         )

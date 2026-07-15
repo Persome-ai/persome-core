@@ -56,10 +56,11 @@ class OCRHealth:
 
 
 def inspect(cfg: CaptureConfig) -> OCRHealth:
-    """Return the effective OCR state without importing Paddle or requesting TCC access."""
+    """Return OCR state without loading an inference engine or requesting TCC access."""
     enabled = bool(cfg.enable_ocr_fallback)
     tier = cfg.ocr_tier
     runtime_ready = ocr_local.runtime_available()
+    backend = ocr_local.runtime_backend()
     models_ready = ocr_local.models_available(tier)
     env_disabled = ocr_local.disabled_by_environment()
 
@@ -81,7 +82,7 @@ def inspect(cfg: CaptureConfig) -> OCRHealth:
     elif not runtime_ready:
         state = "runtime_unavailable"
         machine = platform.machine() or "unknown architecture"
-        detail = f"Paddle OCR runtime unavailable on {machine}"
+        detail = f"local OCR runtime unavailable on {machine}"
     elif not models_ready:
         state = "models_missing"
         detail = f"bundled PP-OCRv6 {tier} weights are missing"
@@ -90,7 +91,11 @@ def inspect(cfg: CaptureConfig) -> OCRHealth:
         detail = "Screen Recording permission is required"
     else:
         state = "ready"
-        detail = f"local PP-OCRv6 {tier}, isolated worker"
+        detail = (
+            "local Apple Vision OCR, isolated worker"
+            if backend == "vision"
+            else f"local PP-OCRv6 {tier}, isolated worker"
+        )
 
     return OCRHealth(
         state=state,

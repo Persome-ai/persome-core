@@ -144,6 +144,7 @@ required = (
     "build-mac-ax-watcher.sh",
     "mac-ax-helper.swift",
     "mac-ax-watcher.swift",
+    "mac-vision-ocr.swift",
     "mac-url-handlers.swift",
     "model_assets/LICENSE",
     "model_assets/three.module.js",
@@ -191,7 +192,7 @@ re-prove the Runtime. `persome update` detects this shape and exits with those
 instructions instead of attempting the source installer's atomic venv exchange.
 
 In an interactive macOS session, `install.sh` runs `persome onboard`. For the
-standard Apple Silicon daemon mode, onboarding separately requests Accessibility
+standard daemon mode on Apple Silicon and Intel, onboarding separately requests Accessibility
 for the source-versioned capture helper and event watcher, requests Screen
 Recording when the effective pixel policy needs it, starts the final owner,
 waits for its bundled OCR worker, polls canonical local health and authenticated
@@ -199,7 +200,7 @@ permission endpoints, and requires an exact fresh-capture receipt from the
 daemon-owned runner. Repeated runs must reuse the same source-versioned native
 binaries and ready worker rather than compile new TCC principals or spawn a
     second OCR process. The same command must also report truthfully for Intel
-    without local OCR, durable OCR/pixel opt-out, trusted ingest, paused/locked update,
+    with Apple Vision OCR, durable OCR/pixel opt-out, trusted ingest, paused/locked update,
 LaunchAgent-owned, and HTTP-disabled modes. HTTP-disabled daemon mode proves the
 same generation through owner-only `.runtime-state.json`; trusted ingest is
 rejected when its authenticated HTTP endpoint is disabled.

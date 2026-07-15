@@ -110,7 +110,7 @@ fallback for old installs or a changed TCC principal.
 
 Second most common cause: **`ax_depth` too shallow for Electron apps.** See [capture.md](capture.md#ax-depth-the-1-footgun).
 
-In standard Apple Silicon daemon mode, the installer completes Accessibility,
+In standard daemon mode on Apple Silicon or Intel, the installer completes Accessibility,
 Screen Recording, local OCR, daemon health, and a fresh capture through
 `persome onboard`. Other configured modes print their own readiness receipt.
 Rerun that end-to-end gate first:

@@ -36,14 +36,18 @@ dependencies = [
     "uvicorn>=0.30",
     "httpx[socks]>=0.27",
     "certifi>=2024.2",
-    "cryptography>=42.0",
+    # cryptography 49 dropped macOS x86_64/universal wheels. Keep Intel on the
+    # newest line that still ships a binary so locked `--no-build` installs stay
+    # reproducible; other platforms continue receiving the current release.
+    "cryptography>=42.0,<49; platform_system == 'Darwin' and platform_machine == 'x86_64'",
+    "cryptography>=42.0; platform_system != 'Darwin' or platform_machine != 'x86_64'",
     "anthropic>=0.50",
     "openai>=1.75,<3",
     "tomlkit>=0.13,<1",
     # On-device OCR for AX-poor apps (WeChat/Feishu). PP-OCRv6 via paddleocr on the
     # paddlepaddle CPU runtime; weights are vendored in ocr_models/ and loaded from a
     # local dir (no network). Paddle's macOS wheel is arm64-only; Intel installs
-    # keep the AX pipeline and degrade cleanly without local OCR.
+    # use the system Apple Vision OCR helper instead.
     "paddleocr==3.7.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "paddlepaddle==3.3.1; platform_system == 'Darwin' and platform_machine == 'arm64'",
     # Vector retrieval and the OCR in-process decode path import numpy directly;
@@ -90,6 +94,7 @@ packages = ["src/persome"]
 "resources/build-mac-ax-helper.sh" = "persome/_bundled/build-mac-ax-helper.sh"
 "resources/mac-ax-watcher.swift" = "persome/_bundled/mac-ax-watcher.swift"
 "resources/build-mac-ax-watcher.sh" = "persome/_bundled/build-mac-ax-watcher.sh"
+"resources/mac-vision-ocr.swift" = "persome/_bundled/mac-vision-ocr.swift"
 "resources/mac-url-handlers.swift" = "persome/_bundled/mac-url-handlers.swift"
 "resources/model_assets" = "persome/_bundled/model_assets"
 "ocr_models" = "persome/_bundled/ocr_models"
