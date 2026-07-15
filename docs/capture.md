@@ -264,7 +264,7 @@ Every successful capture write is also indexed into an FTS5 virtual table (`capt
 | `cleanup_buffer` time-based delete | FTS deletion is attempted before each JSON deletion; filesystem erasure remains authoritative if SQLite is temporarily unavailable, and the final reconciliation removes stale searchable rows after recovery. |
 | `cleanup_buffer` size-based eviction | Same, including hard-cap eviction of unabsorbed files when necessary and continued eviction after one unlink failure. |
 | Screenshot strip | **Untouched.** Strip only removes the base64 image; the indexed text (`visible_text`, `focused_value`, `window_title`, `app_name`, `url`) is unchanged. |
-| `persome rebuild-captures-index` | Clear stale rows, then index every surviving `~/.persome/capture-buffer/*.json`. Use `--merge` after snapshot recovery to preserve older rows whose JSON aged out. |
+| `persome rebuild-captures-index` | Atomically clear stale rows, then index every surviving `~/.persome/capture-buffer/*.json` in one rollback-safe transaction. Use `--merge` after snapshot recovery to preserve older rows whose JSON aged out. |
 
 **Indexed columns.** Only the searchable text is in FTS: `app_name`, `window_title`, `focused_value`, `visible_text`, `url`. Filterable metadata (timestamp, bundle_id, focused_role) lives on the `captures` table for `WHERE`-clause filtering. Screenshots are deliberately not duplicated — the JSON file on disk stays the authoritative copy of the raw image bytes.
 

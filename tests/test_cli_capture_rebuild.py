@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from persome import cli, paths
@@ -76,6 +77,48 @@ def test_rebuild_captures_default_remains_exact_buffer_reconciliation(ac_root: P
     with fts.cursor() as conn:
         ids = {row[0] for row in conn.execute("SELECT id FROM captures").fetchall()}
     assert ids == {"buffer-new"}
+
+
+def test_rebuild_captures_indexes_inside_explicit_transaction(
+    ac_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_buffer_capture()
+    original_insert = fts.insert_capture
+    transaction_states: list[bool] = []
+
+    def tracking_insert(conn, **kwargs):
+        transaction_states.append(conn.in_transaction)
+        return original_insert(conn, **kwargs)
+
+    monkeypatch.setattr(fts, "insert_capture", tracking_insert)
+
+    result = CliRunner().invoke(cli.app, ["rebuild-captures-index", "--merge"])
+
+    assert result.exit_code == 0, result.output
+    assert transaction_states == [True]
+
+
+def test_rebuild_captures_interrupt_rolls_back_exact_reconciliation(
+    ac_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_snapshot_only_capture()
+    _write_buffer_capture()
+    original_insert = fts.insert_capture
+
+    def interrupting_insert(conn, **kwargs):
+        original_insert(conn, **kwargs)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(fts, "insert_capture", interrupting_insert)
+
+    result = CliRunner().invoke(cli.app, ["rebuild-captures-index"])
+
+    assert result.exit_code != 0
+    with fts.cursor() as conn:
+        ids = {row[0] for row in conn.execute("SELECT id FROM captures").fetchall()}
+    assert ids == {"snapshot-only"}
 
 
 def test_rebuild_captures_sanitizes_historical_placeholder_projection(ac_root: Path) -> None:
