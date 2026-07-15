@@ -292,13 +292,37 @@ def test_build_server_wires_the_full_read_path(ac_root, _restore_fts_gates, monk
 
 
 def test_behavior_patterns_exposes_root_and_faces(ac_root):
+    from persome.store import entries as entries_store
     from persome.store import schema_faces as faces_store
 
     with fts.cursor() as conn:
         conn.executescript(fts.SCHEMA)
         # cold start: honest empties, never an error
         out = mcp_server._behavior_patterns(conn)
-        assert out == {"root": None, "faces": [], "rendered": ""}
+        assert out == {"root": None, "faces": [], "skills": [], "rendered": ""}
+        entries_store.create_file(
+            conn,
+            name="skills/skill-morning-triage",
+            description="Triage communication before opening the active project.",
+            tags=["skill", "observed"],
+        )
+        skill_id = entries_store.append_entry(
+            conn,
+            name="skills/skill-morning-triage.md",
+            content=(
+                "stage: observed\n\n"
+                "**Trigger**: weekday start\n"
+                "**Steps**: 1. Mail. 2. Slack. 3. Project.\n"
+                "**Boundaries**: observed ordering only"
+            ),
+            tags=["pattern", "observed"],
+        )
+        echo_id = entries_store.append_entry(
+            conn,
+            name="skills/skill-morning-triage.md",
+            content="Triggered with confidence 0.91: Mail and Slack were opened.",
+            tags=["triggered", "echo"],
+        )
         faces_store.upsert_root(
             conn,
             signature="\u9ad8\u5ea6\u7cfb\u7edf\u5316\u7684\u5f00\u53d1\u8005\uff0c\u6df1\u591c\u9ad8\u4ea7",
@@ -308,3 +332,58 @@ def test_behavior_patterns_exposes_root_and_faces(ac_root):
         out = mcp_server._behavior_patterns(conn)
         assert out["root"]["signature"].startswith("\u9ad8\u5ea6\u7cfb\u7edf\u5316")
         assert "Root" in out["rendered"] and "\u9ad8\u5ea6\u7cfb\u7edf\u5316" in out["rendered"]
+        assert out["skills"][0]["entry_id"] == skill_id
+        assert out["skills"][0]["entry_id"] != echo_id
+        assert out["skills"][0]["path"] == "skills/skill-morning-triage.md"
+        assert "**Steps**: 1. Mail. 2. Slack. 3. Project." in out["skills"][0]["playbook"]
+        assert "Triggered with confidence" not in out["skills"][0]["playbook"]
+        assert "Observed workflow" in out["rendered"]
+
+
+def test_behavior_patterns_excludes_skills_without_live_observed_playbook(ac_root):
+    from persome.store import entries as entries_store
+
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        entries_store.create_file(
+            conn,
+            name="skill-echo-only",
+            description="Has an activation echo but no admitted playbook.",
+            tags=["skill"],
+        )
+        entries_store.append_entry(
+            conn,
+            name="skill-echo-only.md",
+            content="Triggered with confidence 0.88: matching activity.",
+            tags=["triggered", "echo"],
+        )
+        entries_store.create_file(
+            conn,
+            name="skills/skill-unobserved",
+            description="A candidate that has not passed observation gates.",
+            tags=["skill"],
+        )
+        entries_store.append_entry(
+            conn,
+            name="skills/skill-unobserved.md",
+            content="stage: candidate\n\n**Pattern**: one possible sequence",
+            tags=["pattern"],
+        )
+        entries_store.create_file(
+            conn,
+            name="skills/skill-dormant",
+            description="An observed playbook that is no longer active.",
+            tags=["skill", "observed"],
+            status="dormant",
+        )
+        entries_store.append_entry(
+            conn,
+            name="skills/skill-dormant.md",
+            content="stage: observed\n\n**Pattern**: retired workflow",
+            tags=["pattern", "observed"],
+        )
+
+        out = mcp_server._behavior_patterns(conn)
+
+    assert out["skills"] == []
+    assert out["rendered"] == ""

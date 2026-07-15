@@ -219,6 +219,53 @@ def test_produce_block_empty_skill_hints_when_no_skills_registered(ac_root: Path
     assert block.skill_hints == []
 
 
+def test_nested_skill_registry_composes_with_session_dedupe(ac_root: Path, fake_llm) -> None:
+    with fts.cursor() as conn:
+        path = entries_mod.create_file(
+            conn,
+            name="skills/skill-morning-standup",
+            description="Use when user is doing a weekday morning standup in Lark.",
+            tags=["skill"],
+        )
+        session_store.insert(
+            conn,
+            session_store.SessionRow(
+                id="sess-nested",
+                start_time=datetime(2026, 5, 21, 9, 6, 30, tzinfo=_TZ),
+            ),
+        )
+
+    payload = json.dumps(
+        {
+            "entries": ["[Lark] standup channel: user typed a status update. Involving: —."],
+            "skill_hints": [
+                {
+                    "skill": "skills/skill-morning-standup.md",
+                    "confidence": 0.82,
+                    "rationale": "entries show Lark standup activity",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    fake_llm.set_default("timeline", payload)
+    cfg = config_mod.load(ac_root / "config.toml")
+
+    for minute in (6, 7):
+        start = datetime(2026, 5, 21, 9, minute, tzinfo=_TZ)
+        win_start, win_end = _seed_window(start)
+        block = aggregator.produce_block_for_window(cfg, start=win_start, end=win_end)
+        assert block is not None
+        assert block.skill_hints[0]["skill"] == "skills/skill-morning-standup.md"
+
+    assert path.read_text(encoding="utf-8").count("Triggered with confidence 0.82") == 1
+    with fts.cursor() as conn:
+        rows = conn.execute("SELECT session_id, skill_path FROM skill_observations").fetchall()
+    assert [(row["session_id"], row["skill_path"]) for row in rows] == [
+        ("sess-nested", "skills/skill-morning-standup.md")
+    ]
+
+
 def test_skill_echo_is_deduplicated_within_session(ac_root: Path, fake_llm) -> None:
     with fts.cursor() as conn:
         path = entries_mod.create_file(

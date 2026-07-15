@@ -499,8 +499,14 @@ def produce_block_for_window(
 
     skill_rows: list = []
     if cfg.skill_check.enabled:
+        # Pattern detection writes nested skills/skill-*.md files while legacy
+        # user-authored skills can still be flat. Register both active layouts.
         with fts_store.cursor() as conn:
-            skill_rows = [f for f in fts_store.list_files(conn) if f.path.startswith("skill-")]
+            skill_rows = [
+                f
+                for f in fts_store.list_files(conn)
+                if f.path.startswith("skill-") or f.path.startswith("skills/skill-")
+            ]
     skill_paths = {r.path for r in skill_rows}
     if skill_rows:
         skill_index_section = "\n\n## Registered Skills\n\n" + "\n".join(

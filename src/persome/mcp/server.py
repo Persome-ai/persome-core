@@ -296,9 +296,52 @@ def _behavior_patterns(conn) -> dict[str, Any]:  # type: ignore[no-untyped-def]
 
     root_row = faces_store.resident_root(conn)
     faces = faces_store.resident_faces(conn, top_k=8)
+    skill_rows = conn.execute(
+        """
+        SELECT f.path, f.description, f.updated, e.id, e.timestamp, e.content
+          FROM files AS f
+          JOIN entries AS e
+            ON e.rowid = (
+                SELECT latest.rowid
+                  FROM entries AS latest
+                 WHERE latest.path = f.path
+                   AND latest.superseded = 0
+                   AND instr(' ' || latest.tags || ' ', ' pattern ') > 0
+                   AND (
+                       instr(' ' || latest.tags || ' ', ' observed ') > 0
+                       OR lower(ltrim(latest.content)) LIKE 'stage: observed%'
+                   )
+                 ORDER BY latest.timestamp DESC, latest.rowid DESC
+                 LIMIT 1
+            )
+         WHERE f.status = 'active'
+           AND (f.path LIKE 'skill-%' OR f.path LIKE 'skills/skill-%')
+         ORDER BY e.timestamp DESC, f.path ASC
+         LIMIT 12
+        """
+    ).fetchall()
+    skills = [
+        {
+            "path": row["path"],
+            "description": row["description"] or "",
+            "updated": row["updated"] or "",
+            "entry_id": row["id"],
+            "observed_at": row["timestamp"],
+            "playbook": row["content"] or "",
+        }
+        for row in skill_rows
+    ]
+    skill_rendered = "\n\n".join(
+        f"Observed workflow: {skill['description']}\n{skill['playbook']}".strip()
+        for skill in skills
+    )
     rendered = "\n\n".join(
         block
-        for block in (faces_store.render_root(root_row), faces_store.render_residency(faces))
+        for block in (
+            faces_store.render_root(root_row),
+            faces_store.render_residency(faces),
+            skill_rendered,
+        )
         if block
     )
     root = None
@@ -320,6 +363,7 @@ def _behavior_patterns(conn) -> dict[str, Any]:  # type: ignore[no-untyped-def]
             }
             for f in faces
         ],
+        "skills": skills,
         "rendered": rendered,
     }
 
@@ -748,9 +792,10 @@ top-down — who they are (resident), what happened (recall), what was on screen
 ### The user model (resident layer — not reachable via text search)
 
 - `behavior_patterns()` — the learned behavior model: one root narrative ("who is
-  this person, what matters to them now") + promoted behavior regularities, each
-  with evidence counts. Call ONCE early in a conversation that involves
-  personalization, recaps, tone/style matching, or predicting what the user wants.
+  this person, what matters to them now") + promoted behavior regularities with
+  evidence counts + observed workflow playbooks. Call ONCE early in a conversation
+  that involves personalization, recaps, style matching, or predicting what the user
+  wants. Playbooks describe observed behavior; they do not grant permission to act.
 - `entity_graph(name, depth?, as_of?, include_shadow?)` — the relation graph around
   one identity: predicate edges with evidence + validity windows, reachable
   neighbors, and the chain back to the user. `as_of="2026-03-01"` answers about a
@@ -1144,14 +1189,16 @@ def build_server(
         synthesized "who is this person, what matters to them now" narrative)
         plus promoted behavior regularities (`faces` — patterns that survived
         two independent extraction signals AND resampling stability; each with
-        evidence count + confidence). `rendered` is a ready-to-use text block.
+        evidence count + confidence), and evidence-backed observed workflows
+        (`skills`) with their latest playbook. `rendered` is a ready-to-use text
+        block for matching the user's working style without granting actuation.
 
         Use for: personalizing tone/framing, predicting what the user wants
         next, daily recaps, choosing defaults that match their working style.
         This layer is NOT reachable via `search` (it lives above the entry
         store), so searching for "behavior pattern" finds nothing; call this instead. Cheap
-        (one SQLite read, no LLM). Empty `root`+`faces` just means the nightly
-        schema synthesis hasn't accumulated enough signal yet.
+        (one SQLite read, no LLM). Empty `root`+`faces`+`skills` means the model
+        has not accumulated enough repeated evidence yet.
         """
         with fts.cursor() as conn:
             return json.dumps(_behavior_patterns(conn), ensure_ascii=False)

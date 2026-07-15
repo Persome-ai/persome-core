@@ -138,7 +138,7 @@ Each record uses this exact shape:
 
 Field rules:
 
-- `skill`: exact filename from the Registered Skills list. No other values are valid.
+- `skill`: exact path from the Registered Skills list. It may include a `skills/` prefix. No other values are valid.
 - `confidence`: float in `[0.0, 1.0]`. Only emit when ≥ 0.65.
 - `rationale`: one short clause that references specific evidence from `entries` above (app name, action, time). Do NOT quote skills that aren't in the registered list.
 

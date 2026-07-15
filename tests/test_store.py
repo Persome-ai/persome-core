@@ -1048,6 +1048,7 @@ def test_client_mcp_read_cannot_mutate_schema(
         assert mcp_server._behavior_patterns(client) == {
             "root": None,
             "faces": [],
+            "skills": [],
             "rendered": "",
         }
         assert int(client.execute("PRAGMA schema_version").fetchone()[0]) == before
