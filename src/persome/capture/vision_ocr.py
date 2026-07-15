@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ..logger import get
 from . import ocr_protocol
-from .ax_capture import _stable_native_binary
+from .ax_capture import _native_binary_path, _stable_native_binary
 
 logger = get("persome.capture.ocr.vision")
 
@@ -52,9 +52,12 @@ def available() -> bool:
     if override:
         path = Path(override).expanduser()
         return path.is_file() and os.access(path, os.X_OK)
-    return shutil.which("swiftc") is not None and any(
-        path.is_file() for path in _source_candidates()
-    )
+    sources = [path for path in _source_candidates() if path.is_file()]
+    for source in sources:
+        compiled = _native_binary_path(source, _HELPER_NAME)
+        if compiled is not None and compiled.is_file() and os.access(compiled, os.X_OK):
+            return True
+    return shutil.which("swiftc") is not None and bool(sources)
 
 
 def resolve_helper_path() -> Path | None:

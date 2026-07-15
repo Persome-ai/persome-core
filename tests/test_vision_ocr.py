@@ -17,6 +17,22 @@ def test_available_requires_darwin(monkeypatch: pytest.MonkeyPatch) -> None:
     assert vision_ocr.available() is False
 
 
+def test_available_reuses_compiled_helper_without_swiftc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "mac-vision-ocr.swift"
+    source.write_text("source", encoding="utf-8")
+    helper = tmp_path / "mac-vision-ocr"
+    helper.write_text("binary", encoding="utf-8")
+    helper.chmod(0o700)
+    monkeypatch.setattr(vision_ocr.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(vision_ocr, "_source_candidates", lambda: [source])
+    monkeypatch.setattr(vision_ocr, "_native_binary_path", lambda *args: helper)
+    monkeypatch.setattr(vision_ocr.shutil, "which", lambda name: None)
+
+    assert vision_ocr.available() is True
+
+
 def test_recognize_decodes_shared_geometry_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -81,5 +97,7 @@ def test_real_intel_vision_ocr_smoke(ac_root: Path, monkeypatch: pytest.MonkeyPa
         assert "PERSOME" in " ".join(texts).upper()
         assert len(texts) == len(boxes) == len(scores)
         assert all(len(box) == 4 for box in boxes)
+        assert all(0 <= x0 < x1 <= 1200 and 0 <= y0 < y1 <= 260 for x0, y0, x1, y1 in boxes)
+        assert all(0.0 <= score <= 1.0 for score in scores)
     finally:
         ocr_subprocess.get_client().shutdown()
