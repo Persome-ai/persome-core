@@ -14,7 +14,7 @@ from persome.api import routes
 from persome.api.model_view import render_memory_view
 from persome.evomem.models import MemoryLayer, MemoryNode
 from persome.evomem.store import NodeStore
-from persome.model import ModelBuildCoordinator, create_build_manifest
+from persome.model import ActivitySource, ModelBuildCoordinator, create_build_manifest
 from persome.store import fts
 from persome.store import relation_edges as edges_store
 
@@ -474,6 +474,50 @@ class TestNodeReceipts:
             and "\u548c\u5f20\u4f1f\u5bf9\u9f50\u63a5\u53e3" in detail["raw"][0]["text"]
         )
         assert detail["raw"][0]["receipt"] == "⟨77:intents⟩"
+
+    def test_event_node_uses_exact_lookup_without_expanding_activity_feed(
+        self, ac_root, monkeypatch
+    ):
+        import json
+
+        with fts.cursor() as conn:
+            conn.execute(
+                """
+                CREATE TABLE intents (
+                    id INTEGER PRIMARY KEY,
+                    ts TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    rationale TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    dedup_key TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    resolution_outcome TEXT
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO intents (id, ts, scope, kind, confidence, status, rationale,"
+                " payload, evidence, dedup_key, created_at, resolution_outcome)"
+                " VALUES (88, '2026-07-01T09:00:00+00:00', 'timeline', 'work', 0.9,"
+                " 'resolved', 'Reviewed daily activity', ?, '[]', 'k88',"
+                " '2026-07-01T09:00:00+00:00', 'done')",
+                (json.dumps({}),),
+            )
+
+        def fail_if_feed_expands(_self):
+            raise AssertionError("exact node lookup must not expand the activity feed")
+
+        monkeypatch.setattr(ActivitySource, "events", fail_if_feed_expands)
+
+        detail = routes.model_node(id="event:88")
+
+        assert detail["source"] == "⟨88:intents⟩"
+        assert detail["raw"][0]["text"] == "Reviewed daily activity"
+        assert detail["raw"][0]["receipt"] == "⟨88:intents⟩"
 
     def test_unknown_id_is_empty_fail_open(self, ac_root):
         detail = routes.model_node(id="\u4e0d\u5b58\u5728\u7684\u4eba")

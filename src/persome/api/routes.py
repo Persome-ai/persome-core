@@ -621,14 +621,7 @@ def model_node(
                     )
             if not raw and id.startswith("event:"):
                 normalized = normalize_activity_identity(id)
-                event = next(
-                    (
-                        item
-                        for item in ActivitySource(conn).events()
-                        if item.stable_id == normalized
-                    ),
-                    None,
-                )
+                event = ActivitySource(conn).event(normalized)
                 if event is not None:
                     source = event.source_receipt
                     raw.append(
