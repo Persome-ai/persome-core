@@ -8,6 +8,7 @@ from pathlib import Path
 
 from persome import config as config_mod
 from persome import paths
+from persome.session import store as session_store
 from persome.store import entries as entries_mod
 from persome.store import fts
 from persome.timeline import aggregator
@@ -216,6 +217,67 @@ def test_produce_block_empty_skill_hints_when_no_skills_registered(ac_root: Path
 
     assert block is not None
     assert block.skill_hints == []
+
+
+def test_skill_echo_is_deduplicated_within_session(ac_root: Path, fake_llm) -> None:
+    with fts.cursor() as conn:
+        path = entries_mod.create_file(
+            conn,
+            name="skill-morning-standup",
+            description="Use when user is doing a weekday morning standup in Lark.",
+            tags=["skill"],
+        )
+        session_store.insert(
+            conn,
+            session_store.SessionRow(
+                id="sess-one",
+                # Sessions start on event timestamps, not minute boundaries.
+                # The 09:00 block overlaps this session for its final 30 seconds.
+                start_time=datetime(2026, 5, 21, 9, 0, 30, tzinfo=_TZ),
+            ),
+        )
+
+    fake_llm.set_default("timeline", _SKILL_HINTS_PAYLOAD)
+    cfg = config_mod.load(ac_root / "config.toml")
+    for minute in (0, 1):
+        win_start, win_end = _seed_window(datetime(2026, 5, 21, 9, minute, tzinfo=_TZ))
+        assert aggregator.produce_block_for_window(cfg, start=win_start, end=win_end) is not None
+
+    assert path.read_text(encoding="utf-8").count("Triggered with confidence 0.82") == 1
+    with fts.cursor() as conn:
+        rows = conn.execute("SELECT session_id, skill_path FROM skill_observations").fetchall()
+    assert [(row["session_id"], row["skill_path"]) for row in rows] == [
+        ("sess-one", "skill-morning-standup.md")
+    ]
+
+
+def test_skill_echo_counts_again_in_a_new_session(ac_root: Path, fake_llm) -> None:
+    with fts.cursor() as conn:
+        path = entries_mod.create_file(
+            conn,
+            name="skill-morning-standup",
+            description="Use when user is doing a weekday morning standup in Lark.",
+            tags=["skill"],
+        )
+        first = datetime(2026, 5, 21, 9, 0, tzinfo=_TZ)
+        second = datetime(2026, 5, 21, 10, 0, tzinfo=_TZ)
+        session_store.insert(
+            conn,
+            session_store.SessionRow(id="sess-one", start_time=first),
+        )
+        session_store.mark_ended(conn, "sess-one", first + timedelta(minutes=5))
+        session_store.insert(
+            conn,
+            session_store.SessionRow(id="sess-two", start_time=second),
+        )
+
+    fake_llm.set_default("timeline", _SKILL_HINTS_PAYLOAD)
+    cfg = config_mod.load(ac_root / "config.toml")
+    for start in (first, second):
+        win_start, win_end = _seed_window(start)
+        assert aggregator.produce_block_for_window(cfg, start=win_start, end=win_end) is not None
+
+    assert path.read_text(encoding="utf-8").count("Triggered with confidence 0.82") == 2
 
 
 def test_produce_block_drops_unregistered_skill_hints(ac_root: Path, fake_llm) -> None:

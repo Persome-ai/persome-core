@@ -110,8 +110,10 @@ delta apply.
 `writer/pattern_detector.py` uses repeated event evidence, deterministic
 candidate filtering, and an LLM validation pass. Confirmed observations land in
 `skills/skill-*.md` with evidence and `stage: observed`. A single occurrence is
-insufficient. The stage models a person's recurring behavior; it does not
-propose scripts or execute automation.
+insufficient. Timeline skill echoes are deduplicated by session, so repeated
+minute blocks inside one continuous episode count as one observation. The stage
+models a person's recurring behavior; it does not propose scripts or execute
+automation.
 
 ## Higher-level build
 
