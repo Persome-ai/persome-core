@@ -105,11 +105,23 @@ class OCRWorkerClient:
         """Return current process liveness without blocking an in-flight inference."""
         with self._state_lock:
             state = self._state
-        proc = self._proc
-        if state in {"warming", "ready"} and proc is not None and proc.poll() is not None:
-            self._set_state("failed")
-            return "failed"
-        return state
+        if state not in {"warming", "ready"}:
+            return state
+        # Never poll/reap the leader unless we can clean its owned group in the
+        # same critical section. If a request is in flight, that request owns
+        # EOF/timeout cleanup and state() remains non-blocking.
+        if not self._lock.acquire(blocking=False):
+            return state
+        try:
+            proc = self._proc
+            if proc is not None and proc.poll() is not None:
+                self._kill_worker_locked()
+                self._set_state("failed")
+                return "failed"
+            with self._state_lock:
+                return self._state
+        finally:
+            self._lock.release()
 
     def shutdown(self) -> None:
         """Terminate the worker (best-effort). The worker also exits on stdin EOF."""
@@ -240,15 +252,31 @@ class OCRWorkerClient:
             return
         killed_group = False
         if os.name == "posix" and group is not None:
-            try:
-                # Do this even when the worker leader has already exited: its
-                # compiler/Vision child may still be alive in the owned group.
-                os.killpg(group, signal.SIGKILL)
-                killed_group = True
-            except ProcessLookupError:
-                pass
-            except OSError as exc:
-                logger.warning("failed to kill OCR worker process group %s: %s", group, exc)
+            safe_to_kill = True
+            if getattr(proc, "returncode", None) is not None:
+                try:
+                    os.getpgid(proc.pid)
+                except ProcessLookupError:
+                    # The reaped leader PID is still unused. Any live process
+                    # in ``group`` is therefore one of our orphan descendants.
+                    pass
+                except OSError as exc:
+                    safe_to_kill = False
+                    logger.warning("could not verify OCR worker process group %s: %s", group, exc)
+                else:
+                    # The dead leader's PID has been reused. Never send a
+                    # signal to a possibly unrelated process group.
+                    safe_to_kill = False
+            if safe_to_kill:
+                try:
+                    # Do this even when the worker leader has already exited:
+                    # its compiler/Vision child may still be alive in the group.
+                    os.killpg(group, signal.SIGKILL)
+                    killed_group = True
+                except ProcessLookupError:
+                    pass
+                except OSError as exc:
+                    logger.warning("failed to kill OCR worker process group %s: %s", group, exc)
         if proc.poll() is None and not killed_group:
             with contextlib.suppress(Exception):
                 proc.kill()

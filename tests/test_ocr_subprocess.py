@@ -188,6 +188,77 @@ class TestCrashContainment:
         assert client._proc is None
         assert client._proc_group is None
 
+    def test_state_immediately_cleans_dead_worker_group(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        killed_groups: list[tuple[int, int]] = []
+        proc = SimpleNamespace(
+            pid=43210,
+            returncode=7,
+            stdin=None,
+            stdout=None,
+            poll=lambda: 7,
+            kill=lambda: pytest.fail("dead group leader must not be killed directly"),
+            wait=lambda timeout: 7,
+        )
+        client = ocr_subprocess.OCRWorkerClient(spawn=lambda: proc)
+        client._proc = proc
+        client._proc_group = 43210
+        client._state = "ready"
+        monkeypatch.setattr(
+            ocr_subprocess.os,
+            "getpgid",
+            lambda pid: (_ for _ in ()).throw(ProcessLookupError()),
+        )
+        monkeypatch.setattr(
+            ocr_subprocess.os,
+            "killpg",
+            lambda group, sig: killed_groups.append((group, sig)),
+        )
+
+        assert client.state() == "failed"
+        assert killed_groups == [(43210, ocr_subprocess.signal.SIGKILL)]
+        assert client._proc is None
+        assert client._proc_group is None
+
+    def test_dead_worker_skips_reused_process_group(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        proc = SimpleNamespace(
+            pid=43210,
+            returncode=7,
+            stdin=None,
+            stdout=None,
+            poll=lambda: 7,
+            kill=lambda: None,
+            wait=lambda timeout: 7,
+        )
+        client = ocr_subprocess.OCRWorkerClient(spawn=lambda: proc)
+        client._proc = proc
+        client._proc_group = 43210
+        monkeypatch.setattr(ocr_subprocess.os, "getpgid", lambda pid: 99999)
+        monkeypatch.setattr(
+            ocr_subprocess.os,
+            "killpg",
+            lambda *args: pytest.fail("a reused process-group ID must never be signaled"),
+        )
+
+        client._kill_worker_locked()
+
+        assert client._proc is None
+        assert client._proc_group is None
+
+    def test_state_does_not_poll_an_inflight_worker(self) -> None:
+        proc = SimpleNamespace(
+            poll=lambda: pytest.fail("state must not poll while a request owns the worker lock")
+        )
+        client = ocr_subprocess.OCRWorkerClient(spawn=lambda: proc)
+        client._proc = proc
+        client._state = "ready"
+        client._lock.acquire()
+        try:
+            assert client.state() == "ready"
+        finally:
+            client._lock.release()
+
     @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group regression")
     def test_dead_worker_cleanup_kills_live_group_child(self) -> None:
         def _spawn() -> subprocess.Popen:
