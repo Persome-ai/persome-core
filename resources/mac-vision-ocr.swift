@@ -4,6 +4,7 @@ import ImageIO
 import Vision
 
 private let maxInputBytes = 64 * 1024 * 1024
+private let inputChunkBytes = 1024 * 1024
 
 private func emit(_ payload: [String: Any]) {
     guard JSONSerialization.isValidJSONObject(payload),
@@ -20,25 +21,43 @@ private func fail(_ message: String, code: Int32 = 1) -> Never {
     exit(code)
 }
 
+private func readBoundedInput() -> Data {
+    var input = Data()
+    do {
+        while input.count <= maxInputBytes {
+            let remaining = maxInputBytes + 1 - input.count
+            guard remaining > 0 else { break }
+            let chunk = try FileHandle.standardInput.read(
+                upToCount: min(inputChunkBytes, remaining)
+            ) ?? Data()
+            guard !chunk.isEmpty else { break }
+            input.append(chunk)
+        }
+    } catch {
+        fail("could not read image input")
+    }
+    return input
+}
+
 if CommandLine.arguments.dropFirst().contains("--check") {
     _ = VNRecognizeTextRequest()
     emit(["ok": true, "texts": [], "boxes": [], "scores": []])
     exit(0)
 }
 
-let input: Data
-do {
-    // Read one byte past the contract limit so oversized input is rejected
-    // without first allocating an unbounded stdin payload.
-    input = try FileHandle.standardInput.read(upToCount: maxInputBytes + 1) ?? Data()
-} catch {
-    fail("could not read image input")
-}
+// Pipes may legally return a short read before EOF. Accumulate bounded chunks
+// so a large image is never silently truncated, while still reading one byte
+// past the contract limit to reject oversized input without unbounded memory.
+let input = readBoundedInput()
 guard !input.isEmpty else {
     fail("empty image input")
 }
 guard input.count <= maxInputBytes else {
     fail("image input exceeds 64 MiB limit")
+}
+if CommandLine.arguments.dropFirst().contains("--check-input") {
+    emit(["ok": true, "inputBytes": input.count])
+    exit(0)
 }
 guard let source = CGImageSourceCreateWithData(input as CFData, nil),
       let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {

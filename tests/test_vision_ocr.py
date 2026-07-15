@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import platform
 import subprocess
@@ -72,6 +73,26 @@ def test_recognize_fails_open_when_helper_times_out(
 
     monkeypatch.setattr(vision_ocr.subprocess, "run", timeout)
     assert vision_ocr.recognize_detailed(b"jpeg") is None
+
+
+@pytest.mark.macos
+def test_real_intel_helper_reads_large_pipe_input() -> None:
+    """The Swift helper must accumulate pipe short reads instead of truncating stdin."""
+    if platform.system() != "Darwin" or platform.machine().lower() not in {"x86_64", "amd64"}:
+        pytest.skip("Intel macOS smoke")
+
+    helper = vision_ocr.resolve_helper_path()
+    assert helper is not None
+    payload = b"x" * (2 * 1024 * 1024 + 17)
+    result = subprocess.run(
+        [str(helper), "--check-input"],
+        input=payload,
+        capture_output=True,
+        check=False,
+        timeout=vision_ocr._TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert json.loads(result.stdout) == {"ok": True, "inputBytes": len(payload)}
 
 
 @pytest.mark.macos
