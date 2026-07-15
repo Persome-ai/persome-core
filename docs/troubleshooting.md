@@ -307,7 +307,7 @@ Fixes:
 
 1. **Check the reducer is emitting breadcrumbs.** Every sub_task should end with ` — raw: read_recent_capture(at="HH:MM", app_name="…")`. Open today's `event-YYYY-MM-DD.md` and verify. If a line has no breadcrumb, the reducer's output didn't match the canonical `[HH:MM-HH:MM, <app>]` prefix — check `logs/writer.log` for the reduced entry text.
 2. **Try `search_captures` directly.** Ask the agent *"search captures for <keyword>"* or *"what's in current_context"*. If those work, the FTS index is healthy and the issue is tool-selection, not retrieval.
-3. **Rebuild the captures index if it's empty or out of date.** Run `persome rebuild-captures-index`. Compare `SELECT COUNT(*) FROM captures` against `ls ~/.persome/capture-buffer | wc -l` — they should match modulo one active capture.
+3. **Rebuild the captures index if it's empty or out of date.** Run `persome stop`, `persome rebuild-captures-index`, then `persome start`. Compare `SELECT COUNT(*) FROM captures` against `ls ~/.persome/capture-buffer | wc -l` — they should match modulo captures retained while the Runtime was stopping.
 4. **Restart the client** after updating Persome — server-level `instructions` (which teach the two-layer model) are only read on reconnect.
 
 ## Long session got chopped in half
@@ -384,9 +384,10 @@ the retained snapshot/quarantine, then explicitly set the value to `markdown`
 or `evomem` and rerun a stopped-Runtime command. Persome reconciles the selected
 source before unfreezing; choosing evomem also replaces its conflicting
 Markdown projection.
-If the marker says `capture_buffer_replay_available: true`, run `persome
-rebuild-captures-index --merge` to upsert retained owner-only JSON without
-deleting older snapshot-backed captures before rebuilding downstream history.
+If the marker says `capture_buffer_replay_available: true`, stop the Runtime,
+run `persome rebuild-captures-index --merge` to upsert retained owner-only JSON
+without deleting older snapshot-backed captures, then start the Runtime before
+rebuilding downstream history.
 
 ## Resetting
 

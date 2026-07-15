@@ -8,6 +8,7 @@ and read surfaces must degrade explicitly instead of pretending health.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,29 @@ from persome import index_health, paths
 from persome.config import Config
 from persome.mcp import captures as captures_mod
 from persome.store import fts
+
+
+@pytest.mark.asyncio
+async def test_health_tick_publishes_before_its_first_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checked: list[Config] = []
+    cfg = Config()
+
+    async def cancel_after_check(function, passed_cfg):
+        checked.append(passed_cfg)
+        raise asyncio.CancelledError
+
+    async def unexpected_sleep(seconds: float) -> None:
+        pytest.fail(f"health tick slept for {seconds}s before its first publication")
+
+    monkeypatch.setattr(index_health.asyncio, "to_thread", cancel_after_check)
+    monkeypatch.setattr(index_health.asyncio, "sleep", unexpected_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await index_health.run_index_health_tick(cfg)
+
+    assert checked == [cfg]
 
 
 @pytest.fixture
@@ -94,7 +118,9 @@ def test_unindexed_buffer_backlog_degrades(ac_root: Path, fresh_counters: dict) 
     report = index_health.build_report(cfg)
     assert report["backlog"]["backlog"] == 3
     assert report["status"] == "degraded"
-    assert any("rebuild-captures-index" in a for a in report["recommended_actions"])
+    action = next(a for a in report["recommended_actions"] if "rebuild-captures-index" in a)
+    assert "persome stop" in action
+    assert "persome start" in action
 
 
 def test_orphaned_index_row_does_not_hide_unindexed_capture(
@@ -223,6 +249,8 @@ def test_search_captures_degrades_explicitly_on_corruption(
     message = str(excinfo.value)
     assert "evidence layer is degraded" in message
     assert "rebuild-captures-index" in message
+    assert "stop the Runtime" in message
+    assert "start the Runtime again" in message
 
 
 def test_search_captures_payload_carries_health_note(ac_root: Path) -> None:

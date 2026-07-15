@@ -333,8 +333,9 @@ def search_captures(
             raise RuntimeError(
                 "captures index unavailable (database/FTS corruption: "
                 f"{exc}); the raw-capture evidence layer is degraded and results "
-                "would be incomplete. Check `persome status`, then rebuild with "
-                "`persome rebuild-captures-index --merge`."
+                "would be incomplete. Check `persome status`, stop the Runtime, "
+                "rebuild with `persome rebuild-captures-index --merge`, then start "
+                "the Runtime again."
             ) from exc
         raise
     out: list[dict[str, Any]] = []

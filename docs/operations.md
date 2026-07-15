@@ -123,9 +123,10 @@ after a completed recovery marker is durable. Snapshot recovery remains
 best-effort: the marker records its timestamp and warns that writes since that
 snapshot may be absent. Retained capture-buffer JSON can be reconciled with
 `persome rebuild-captures-index --merge` when the marker reports a pending
-replay. Recovery mode preserves older snapshot-backed captures whose buffer
-JSON has already aged out; the command without `--merge` remains an exact
-buffer-only rebuild and deletes such rows.
+replay. Stop the Runtime before running this offline reconciliation, then start
+it again afterward. Recovery mode preserves older snapshot-backed captures
+whose buffer JSON has already aged out; the command without `--merge` remains
+an exact buffer-only rebuild and deletes such rows.
 Unreadable or semantically invalid versioned journals (missing fields, unknown
 phases, or paths outside the canonical recovery namespace) are themselves moved
 to a timestamped forensic quarantine before normal integrity checks continue;
