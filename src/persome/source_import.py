@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,7 +19,13 @@ from .timeline import store as timeline_store
 
 _TEXT_SUFFIXES = {".md", ".markdown", ".txt"}
 _MAX_FILE_BYTES = 2 * 1024 * 1024
+_MAX_DOCUMENTS = 2_000
+_MAX_TOTAL_BYTES = 128 * 1024 * 1024
+_MAX_IMPORT_SESSIONS = 2_000
 _CHUNK_CHARS = 12_000
+_COUNT_CACHE_TTL_SECONDS = 60.0
+_count_cache_lock = threading.Lock()
+_count_cache: dict[Path, tuple[float, int]] = {}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS source_imports (
@@ -40,6 +48,10 @@ class ImportResult:
     unchanged: int = 0
     skipped: int = 0
     session_ids: list[str] = field(default_factory=list)
+
+
+class ImportLimitError(ValueError):
+    """A source exceeded a bounded, owner-actionable import limit."""
 
 
 class ImportUI(Protocol):
@@ -92,30 +104,63 @@ def _documents(root: Path) -> list[Path]:
     if not root.is_dir():
         raise ValueError(f"import source is not a folder: {root}")
     found: list[Path] = []
-    for path in root.rglob("*"):
-        try:
-            relative = path.relative_to(root)
-            if any(part.startswith(".") for part in relative.parts):
+    total_bytes = 0
+    for directory, directory_names, file_names in os.walk(root, topdown=True, followlinks=False):
+        directory_path = Path(directory)
+        directory_names[:] = sorted(
+            (
+                name
+                for name in directory_names
+                if not name.startswith(".") and not (directory_path / name).is_symlink()
+            ),
+            key=str.casefold,
+        )
+        for name in sorted(file_names, key=str.casefold):
+            path = directory_path / name
+            if name.startswith(".") or path.suffix.lower() not in _TEXT_SUFFIXES:
                 continue
-            if not path.is_file() or path.is_symlink() or path.suffix.lower() not in _TEXT_SUFFIXES:
+            try:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                size = path.stat().st_size
+            except OSError:
                 continue
-            if path.stat().st_size > _MAX_FILE_BYTES:
+            if size > _MAX_FILE_BYTES:
                 continue
-        except OSError:
-            continue
-        found.append(path)
+            if len(found) >= _MAX_DOCUMENTS:
+                raise ImportLimitError(
+                    f"source has more than {_MAX_DOCUMENTS:,} importable documents; "
+                    "choose a smaller folder"
+                )
+            if total_bytes + size > _MAX_TOTAL_BYTES:
+                raise ImportLimitError(
+                    f"source exceeds the {_MAX_TOTAL_BYTES // (1024 * 1024)} MiB import limit; "
+                    "choose a smaller folder"
+                )
+            found.append(path)
+            total_bytes += size
     return sorted(found, key=lambda item: item.relative_to(root).as_posix().casefold())
 
 
 def count_documents(root: Path) -> int:
     """Return the safely importable text-file count without reading contents."""
-    return len(_documents(root.expanduser().resolve(strict=True)))
+    root = root.expanduser().resolve(strict=True)
+    _validate_source_root(root)
+    now = time.monotonic()
+    with _count_cache_lock:
+        cached = _count_cache.get(root)
+        if cached is not None and now - cached[0] < _COUNT_CACHE_TTL_SECONDS:
+            return cached[1]
+    count = len(_documents(root))
+    with _count_cache_lock:
+        _count_cache[root] = (now, count)
+    return count
 
 
 def _validate_source_root(root: Path) -> None:
     """Prevent generated Persome state from feeding back into its own model."""
-    private_root = paths.root()
-    if root == private_root or private_root in root.parents:
+    private_root = paths.root().expanduser().resolve()
+    if root == private_root or private_root in root.parents or root in private_root.parents:
         raise ValueError("the Persome data directory cannot be used as an import source")
 
 
@@ -196,10 +241,21 @@ def import_folder(root: Path, *, source_type: str = "folder") -> ImportResult:
                 for session_id in prior_ids:
                     session = session_store.get_by_id(conn, str(session_id))
                     if session is not None and session.modeled_at is None:
+                        if len(created_sessions) >= _MAX_IMPORT_SESSIONS:
+                            raise ImportLimitError(
+                                f"source exceeds the {_MAX_IMPORT_SESSIONS:,}-session import "
+                                "limit; choose a smaller folder"
+                            )
                         created_sessions.append(str(session_id))
                 continue
 
             modified = datetime.fromtimestamp(modified_ns / 1_000_000_000).astimezone()
+            latest = min(modified, datetime.now().astimezone()).replace(second=0)
+            if len(created_sessions) + len(parts) > _MAX_IMPORT_SESSIONS:
+                raise ImportLimitError(
+                    f"source exceeds the {_MAX_IMPORT_SESSIONS:,}-session import limit; "
+                    "choose a smaller folder"
+                )
             file_sessions: list[str] = []
             for index, part in enumerate(parts):
                 identity = f"{source_key}:{digest}:{index}"
@@ -207,7 +263,9 @@ def import_folder(root: Path, *, source_type: str = "folder") -> ImportResult:
                 session_id = f"import-{short}"
                 # Hash-derived microseconds keep windows stable and collision-free.
                 offset = int(short[:6], 16) % 900_000
-                start = modified.replace(second=0, microsecond=offset) + timedelta(minutes=index)
+                start = latest.replace(microsecond=offset) - timedelta(
+                    minutes=len(parts) - 1 - index
+                )
                 end = start + timedelta(seconds=59)
                 heading = f"Imported {source_type} note: {relative}"
                 block = timeline_store.TimelineBlock(
@@ -272,6 +330,15 @@ def build_imported_model(cfg: Any) -> Any:
     return run_model_build(cfg, trigger="source-import")
 
 
+def require_complete_model_build(result: Any) -> None:
+    """Reject a degraded build instead of presenting partial geometry as ready."""
+    manifest = getattr(result, "manifest", None)
+    degraded = manifest.get("degraded_stages", []) if isinstance(manifest, dict) else []
+    if getattr(result, "status", None) != "complete" or degraded:
+        detail = ", ".join(str(stage) for stage in degraded) or "unknown stage"
+        raise RuntimeError(f"personal model build is degraded ({detail}); retry setup")
+
+
 def offer_data_import(ui: ImportUI, cfg: Any) -> list[ImportResult]:
     """Show only locally relevant sources, import selections, then build once."""
     # Older test/product UIs can complete the hard onboarding gate without the
@@ -308,10 +375,10 @@ def offer_data_import(ui: ImportUI, cfg: Any) -> list[ImportResult]:
             results.append(import_folder(root, source_type=source_type))
         except (OSError, ValueError) as exc:
             ui.status(f"• Could not import {source_type}: {exc}")
-    if any(result.session_ids for result in results):
+    if results:
         imported = sum(result.imported for result in results)
         ui.status(f"Building your model from {imported} new or changed documents...")
-        build_imported_model(cfg)
+        require_complete_model_build(build_imported_model(cfg))
     if results:
         ui.status(
             "✓ Data import complete: "

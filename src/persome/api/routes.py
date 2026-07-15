@@ -492,13 +492,17 @@ def ingest_capture(body: CaptureIngestBody) -> ApiResponse:
 # ─── Personal model ───────────────────────────────────────────────────────
 
 
+def _persist_onboarding_task_locked() -> None:
+    paths.atomic_write_private_text(
+        paths.onboarding_state_file(),
+        __import__("json").dumps(_onboarding_task, ensure_ascii=False) + "\n",
+    )
+
+
 def _set_onboarding_task(**changes: Any) -> None:
     with _onboarding_task_lock:
         _onboarding_task.update(changes)
-        paths.atomic_write_private_text(
-            paths.onboarding_state_file(),
-            __import__("json").dumps(_onboarding_task, ensure_ascii=False) + "\n",
-        )
+        _persist_onboarding_task_locked()
 
 
 def _load_onboarding_task() -> dict[str, Any]:
@@ -539,7 +543,7 @@ def _run_onboarding_import(sources: list[tuple[str, Path]]) -> None:
         imported = sum(result.imported for result in results)
         unchanged = sum(result.unchanged for result in results)
         skipped = sum(result.skipped for result in results)
-        if any(result.session_ids for result in results):
+        if results:
             _set_onboarding_task(
                 stage="building",
                 message="Forming durable memories and relationships…",
@@ -547,7 +551,8 @@ def _run_onboarding_import(sources: list[tuple[str, Path]]) -> None:
                 unchanged=unchanged,
                 skipped=skipped,
             )
-            source_import.build_imported_model(_get_cfg())
+            outcome = source_import.build_imported_model(_get_cfg())
+            source_import.require_complete_model_build(outcome)
         _set_onboarding_task(
             stage="complete",
             message="Your personal model is ready.",
@@ -576,11 +581,18 @@ def onboarding_state() -> ApiResponse:
     vaults = source_import.discover_obsidian_vaults()
     if vaults:
         vault = vaults[0]
+        available = True
+        try:
+            detail = f"{source_import.count_documents(vault)} notes detected"
+        except (OSError, ValueError) as exc:
+            available = False
+            detail = f"Import unavailable: {exc}"
         sources.append(
             {
                 "type": "obsidian",
                 "label": f"Obsidian — {vault.name}",
-                "detail": f"{source_import.count_documents(vault)} notes detected",
+                "detail": detail,
+                "available": available,
             }
         )
     if source_import.notion_is_installed():
@@ -642,13 +654,11 @@ def onboarding_select_folder(
 def onboarding_import(body: dict[str, Any]) -> ApiResponse:
     from .. import source_import
 
-    with _onboarding_task_lock:
-        if _onboarding_task["stage"] in {"importing", "building"}:
-            raise HTTPException(status_code=409, detail="an onboarding import is already running")
     requested = body.get("sources")
     if not isinstance(requested, list) or len(requested) > 3:
         raise HTTPException(status_code=422, detail="sources must be a list of up to three items")
     resolved: list[tuple[str, Path]] = []
+    selected_paths: list[tuple[str, str]] = []
     for item in requested:
         if not isinstance(item, dict) or item.get("type") not in {"obsidian", "notion", "folder"}:
             raise HTTPException(status_code=422, detail="invalid import source")
@@ -666,23 +676,26 @@ def onboarding_import(body: dict[str, Any]) -> ApiResponse:
                 root = Path(raw_path).expanduser().resolve(strict=True)
             except OSError as exc:
                 raise HTTPException(status_code=422, detail="chosen folder is unavailable") from exc
-            with _onboarding_task_lock:
-                selection = (source_type, str(root))
-                if selection not in _onboarding_selected_paths:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="choose this folder from the onboarding page first",
-                    )
-                _onboarding_selected_paths.remove(selection)
+            selected_paths.append((source_type, str(root)))
         resolved.append((source_type, root))
-    _set_onboarding_task(
-        stage="importing",
-        message="Preparing selected sources…",
-        imported=0,
-        unchanged=0,
-        skipped=0,
-        error="",
-    )
+    with _onboarding_task_lock:
+        if _onboarding_task["stage"] in {"importing", "building"}:
+            raise HTTPException(status_code=409, detail="an onboarding import is already running")
+        if any(selection not in _onboarding_selected_paths for selection in selected_paths):
+            raise HTTPException(
+                status_code=409,
+                detail="choose this folder from the onboarding page first",
+            )
+        _onboarding_selected_paths.difference_update(selected_paths)
+        _onboarding_task.update(
+            stage="importing",
+            message="Preparing selected sources…",
+            imported=0,
+            unchanged=0,
+            skipped=0,
+            error="",
+        )
+        _persist_onboarding_task_locked()
     threading.Thread(target=_run_onboarding_import, args=(resolved,), daemon=True).start()
     return ApiResponse(data={"started": True})
 

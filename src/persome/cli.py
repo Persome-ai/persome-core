@@ -1034,12 +1034,16 @@ def import_data(
         f"[green]✓ Imported {result.imported} new/changed document(s)[/green]; "
         f"{result.unchanged} unchanged, {result.skipped} skipped."
     )
-    if build and result.session_ids:
-        console.print("Building your personal model from the imported history...")
+    if build:
+        action = "Building" if result.session_ids else "Verifying"
+        console.print(f"{action} your personal model from the imported history...")
         outcome = source_import.build_imported_model(config_mod.load())
-        console.print(f"[green]✓ Personal model build {outcome.status}[/green]")
-    elif build:
-        console.print("Nothing changed; the existing model is already up to date.")
+        try:
+            source_import.require_complete_model_build(outcome)
+        except RuntimeError as exc:
+            console.print(f"[red]Model build needs attention: {exc}[/red]")
+            raise typer.Exit(1) from exc
+        console.print("[green]✓ Personal model build complete[/green]")
 
 
 @app.command()

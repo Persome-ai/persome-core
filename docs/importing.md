@@ -14,8 +14,11 @@ attachments, and files larger than 2 MiB are excluded. All selected sources are
 staged first, then one shared model build creates the first personal model.
 Files are opened with the platform's no-follow flag, bounded to 2 MiB, and
 checked before and after reading; a note being edited during import is skipped
-and can be picked up safely on the next run. Persome also refuses to import its
-own private data directory, preventing a generated-model feedback loop.
+and can be picked up safely on the next run. One import is bounded to 2,000
+documents, 128 MiB of eligible text, and 2,000 staged sessions; a larger source
+must be split into smaller folders. Persome also refuses both its own private
+data directory and any parent folder containing it, preventing a generated-model
+feedback loop.
 
 Notion's application cache is never inspected or modified. Detecting
 `Notion.app` only makes the option relevant in onboarding; the user then chooses
@@ -34,7 +37,8 @@ The unified onboarding page follows four import states:
 3. **Import and build.** Status lines name each source as read-only. All sources
    stage idempotently, then share one model build through the production writer.
 4. **Receipt.** Onboarding reports new/changed, unchanged, and skipped files.
-   A failed build remains resumable because its pending sessions are retained.
+   A failed or degraded build remains resumable and is never presented as ready;
+   retries also rerun structural model formation when every source file is unchanged.
 
 This is the lowest-friction first import because an Obsidian vault is already a
 local folder of Markdown files. A plugin is not required for migration; a

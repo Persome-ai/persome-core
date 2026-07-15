@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import stat
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -52,6 +55,24 @@ def test_state_only_shows_detected_product_sources(tmp_path: Path, monkeypatch) 
     assert [item["type"] for item in data["sources"]] == ["obsidian", "folder"]
     assert data["sources"][0]["label"] == "Obsidian — Personal"
     assert "12 notes" in data["sources"][0]["detail"]
+    assert data["sources"][0]["available"] is True
+
+
+def test_state_disables_source_that_exceeds_import_bounds(tmp_path: Path, monkeypatch) -> None:
+    vault = tmp_path / "Personal"
+    vault.mkdir()
+    monkeypatch.setattr(source_import, "discover_obsidian_vaults", lambda: [vault])
+    monkeypatch.setattr(
+        source_import,
+        "count_documents",
+        lambda root: (_ for _ in ()).throw(source_import.ImportLimitError("too large")),
+    )
+    monkeypatch.setattr(source_import, "notion_is_installed", lambda: False)
+
+    data = routes.onboarding_state().data
+
+    assert data["sources"][0]["available"] is False
+    assert "too large" in data["sources"][0]["detail"]
 
 
 def test_browser_cannot_inject_an_unselected_local_path(tmp_path: Path) -> None:
@@ -79,6 +100,100 @@ def test_onboarding_assets_are_bundled() -> None:
     assert b"Bring your history" in script.body
     assert b"Your original files will not be changed" in script.body
     assert b"onboarding/state" not in script.body  # relative capability-scoped URL
+    assert b"selectionInitialized" in script.body
+    assert b"selected=new Set(sources" not in script.body
     assert b".screen" in css.body
     assert script.media_type == "text/javascript"
     assert css.media_type == "text/css"
+
+
+def test_unchanged_import_still_retries_structural_build(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    builds: list[object] = []
+    monkeypatch.setattr(
+        source_import,
+        "import_folder",
+        lambda root, *, source_type: source_import.ImportResult(
+            source_type=source_type,
+            root=root,
+            unchanged=1,
+        ),
+    )
+    monkeypatch.setattr(
+        source_import,
+        "build_imported_model",
+        lambda cfg: (
+            builds.append(cfg),
+            SimpleNamespace(status="complete", manifest={"degraded_stages": []}),
+        )[1],
+    )
+
+    routes._run_onboarding_import([("folder", tmp_path)])
+
+    assert len(builds) == 1
+    assert routes._onboarding_task["stage"] == "complete"
+
+
+def test_degraded_build_is_not_presented_as_ready(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        source_import,
+        "import_folder",
+        lambda root, *, source_type: source_import.ImportResult(
+            source_type=source_type,
+            root=root,
+            imported=1,
+            session_ids=["pending"],
+        ),
+    )
+    monkeypatch.setattr(
+        source_import,
+        "build_imported_model",
+        lambda cfg: SimpleNamespace(
+            status="degraded",
+            manifest={"degraded_stages": ["model_contract"]},
+        ),
+    )
+
+    routes._run_onboarding_import([("folder", tmp_path)])
+
+    assert routes._onboarding_task["stage"] == "failed"
+    assert "model_contract" in routes._onboarding_task["error"]
+
+
+def test_import_reservation_is_atomic_across_concurrent_requests(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    callers_ready = threading.Barrier(2)
+    release_background = threading.Event()
+
+    def discover() -> list[Path]:
+        callers_ready.wait(timeout=5)
+        return [vault]
+
+    monkeypatch.setattr(source_import, "discover_obsidian_vaults", discover)
+    monkeypatch.setattr(
+        routes,
+        "_run_onboarding_import",
+        lambda sources: release_background.wait(timeout=5),
+    )
+
+    def request() -> int:
+        try:
+            routes.onboarding_import({"sources": [{"type": "obsidian"}]})
+        except HTTPException as exc:
+            return exc.status_code
+        return 200
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(request), pool.submit(request)]
+            statuses = sorted(future.result() for future in futures)
+    finally:
+        release_background.set()
+
+    assert statuses == [200, 409]

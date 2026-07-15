@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -73,7 +76,11 @@ def test_onboarding_shows_only_detected_sources_and_builds_once(
         )
 
     monkeypatch.setattr(source_import, "import_folder", run_import)
-    monkeypatch.setattr(source_import, "build_imported_model", lambda cfg: builds.append(cfg))
+    monkeypatch.setattr(
+        source_import,
+        "build_imported_model",
+        lambda cfg: (builds.append(cfg), _complete_build())[1],
+    )
 
     results = source_import.offer_data_import(UI(), object())
 
@@ -154,3 +161,110 @@ def test_changed_note_gets_a_new_provenance_session(ac_root: Path, tmp_path: Pat
 def test_refuses_to_import_persome_generated_state(ac_root: Path) -> None:
     with pytest.raises(ValueError, match="Persome data directory"):
         source_import.import_folder(ac_root, source_type="folder")
+
+
+def _complete_build() -> SimpleNamespace:
+    return SimpleNamespace(status="complete", manifest={"degraded_stages": []})
+
+
+def test_refuses_source_that_contains_persome_state(ac_root: Path) -> None:
+    with pytest.raises(ValueError, match="Persome data directory"):
+        source_import.import_folder(ac_root.parent, source_type="folder")
+
+
+def test_document_walk_prunes_hidden_directories(tmp_path: Path, monkeypatch) -> None:
+    vault = tmp_path / "vault"
+    hidden = vault / ".git" / "objects"
+    hidden.mkdir(parents=True)
+    (vault / "visible.md").write_text("visible")
+    (hidden / "private.md").write_text("hidden")
+    real_walk = os.walk
+    pruned: list[bool] = []
+
+    def checked_walk(*args, **kwargs):
+        for directory, names, files in real_walk(*args, **kwargs):
+            is_root = Path(directory) == vault
+            yield directory, names, files
+            if is_root:
+                pruned.append(".git" not in names)
+
+    monkeypatch.setattr(source_import.os, "walk", checked_walk)
+
+    assert source_import.count_documents(vault) == 1
+    assert pruned == [True]
+
+
+def test_document_count_is_cached_for_onboarding_polling(tmp_path: Path, monkeypatch) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    calls: list[Path] = []
+
+    def documents(root: Path) -> list[Path]:
+        calls.append(root)
+        return [root / "one.md"]
+
+    monkeypatch.setattr(source_import, "_documents", documents)
+
+    assert source_import.count_documents(vault) == 1
+    assert source_import.count_documents(vault) == 1
+    assert calls == [vault]
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "limit", "files", "message"),
+    [
+        ("_MAX_DOCUMENTS", 1, {"one.md": "1", "two.md": "2"}, "documents"),
+        ("_MAX_TOTAL_BYTES", 3, {"one.md": "four"}, "MiB import limit"),
+    ],
+)
+def test_import_enforces_aggregate_source_limits(
+    tmp_path: Path,
+    monkeypatch,
+    limit_name: str,
+    limit: int,
+    files: dict[str, str],
+    message: str,
+) -> None:
+    vault = tmp_path / limit_name
+    vault.mkdir()
+    for name, content in files.items():
+        (vault / name).write_text(content)
+    monkeypatch.setattr(source_import, limit_name, limit)
+
+    with pytest.raises(source_import.ImportLimitError, match=message):
+        source_import.count_documents(vault)
+
+
+def test_import_enforces_aggregate_session_limit(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "long.md").write_text("one two three four five")
+    monkeypatch.setattr(source_import, "_CHUNK_CHARS", 5)
+    monkeypatch.setattr(source_import, "_MAX_IMPORT_SESSIONS", 1)
+
+    with pytest.raises(source_import.ImportLimitError, match="session import limit"):
+        source_import.import_folder(vault)
+
+
+def test_imported_session_windows_never_drift_into_the_future(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    note = vault / "future.md"
+    note.write_text("one two three four five")
+    future = time.time() + 86_400
+    os.utime(note, (future, future))
+    monkeypatch.setattr(source_import, "_CHUNK_CHARS", 5)
+
+    result = source_import.import_folder(vault)
+
+    with fts.cursor() as conn:
+        starts = [
+            session_store.get_by_id(conn, session_id).start_time
+            for session_id in result.session_ids
+        ]
+    assert starts == sorted(starts)
+    assert starts[-1] <= source_import.datetime.now().astimezone()
