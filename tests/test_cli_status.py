@@ -254,6 +254,38 @@ def test_status_renders_new_fields(ac_root: Path) -> None:
     assert "Accessibility" in result.output
 
 
+def test_status_capture_rebuild_guidance_uses_offline_sequence(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PERSOME_LLM_MOCK", "1")
+    paths.index_health_file().write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "generated_at": datetime.now().astimezone().isoformat(),
+                "status": "degraded",
+                "index": {"status": "ok", "problems": []},
+                "capture": {"state": "idle", "detail": None},
+                "backlog": {
+                    "backlog": 2,
+                    "orphaned_index_rows": 1,
+                },
+                "snapshot": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(cli.app, ["status"])
+
+    assert result.exit_code == 0, result.output
+    output = " ".join(result.output.split())
+    assert "Index Backlog" in output
+    assert "Index Orphans" in output
+    assert output.count("stop Runtime") == 2
+    assert output.count("then start Runtime") == 2
+
+
 def test_status_shows_version(ac_root: Path) -> None:
     """Status table includes the installed version string."""
     runner = CliRunner()

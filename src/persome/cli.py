@@ -792,13 +792,15 @@ def status() -> None:
             table.add_row(
                 "Index Backlog",
                 f"[yellow]{backlog} captures not searchable yet[/yellow] "
-                "(run `persome rebuild-captures-index --merge`)",
+                "(stop Runtime, rebuild with `persome rebuild-captures-index --merge`, "
+                "then start Runtime)",
             )
         if orphaned:
             table.add_row(
                 "Index Orphans",
                 f"[yellow]{orphaned} index rows have no capture file[/yellow] "
-                "(run `persome rebuild-captures-index --merge`)",
+                "(stop Runtime, rebuild with `persome rebuild-captures-index --merge`, "
+                "then start Runtime)",
             )
         snap = health_report.get("snapshot") or {}
         if snap.get("last_ok") is False:
