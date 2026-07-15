@@ -65,6 +65,16 @@ jobs:
       - name: Shell syntax
         run: bash -n install.sh uninstall.sh resources/*.sh
 
+      - name: Apple Health Swift package
+        if: runner.os == 'macOS'
+        run: |
+          swift test --package-path connectors/apple-health
+          cd connectors/apple-health
+          xcodebuild -scheme PersomeAppleHealth \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/persome-health-derived" \
+            CODE_SIGNING_ALLOWED=NO build
+
       - name: Tests (offline, mocked LLM)
         # The default offline gate: no network, no API key. Markers deselected:
         #   macos       — needs real AX permission / Swift capture helpers
