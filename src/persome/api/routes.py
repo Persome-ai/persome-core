@@ -784,6 +784,45 @@ def model_graph() -> dict[str, Any]:
         return payload
 
 
+def _share_card_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Keep only scrubbed summaries needed to render a share card.
+
+    The owner viewer intentionally receives an unredacted graph. Sharing must
+    cross a separate server-side boundary so raw receipts, identifiers, paths,
+    and source content never reach the export code by accident.
+    """
+
+    def summary(item: object) -> dict[str, Any] | None:
+        if not isinstance(item, dict):
+            return None
+        signature = str(item.get("signature") or "").strip()
+        if not signature:
+            return None
+        return {
+            "signature": signature,
+            "observations": int(item.get("observations") or 0),
+            "confidence": float(item.get("confidence") or 0.0),
+        }
+
+    root = summary(snapshot.get("root"))
+    faces = [
+        projected
+        for item in snapshot.get("faces") or []
+        if (projected := summary(item)) is not None
+    ]
+    return {"root": root, "faces": faces}
+
+
+@router.get("/model/share-card", tags=["model"])
+def model_share_card() -> dict[str, Any]:
+    """Return the minimal, canonically scrubbed HUMAN.md Card projection."""
+    from ..store import fts as fts_store
+
+    with fts_store.cursor() as conn:
+        snapshot = build_live_snapshot(conn, redact=True)
+    return {"model": _share_card_projection(snapshot)}
+
+
 @router.get("/model/evidence", tags=["model"])
 def model_evidence(
     ref: str = Query(..., min_length=1, max_length=1024),

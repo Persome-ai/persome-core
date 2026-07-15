@@ -228,6 +228,30 @@
         }
       }
     },
+    "/model/share-card": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "Model Share Card",
+        "description": "Return the minimal, canonically scrubbed HUMAN.md Card projection.",
+        "operationId": "model_share_card_model_share_card_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Model Share Card Model Share Card Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/model/evidence": {
       "get": {
         "tags": [

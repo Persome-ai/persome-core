@@ -14,6 +14,7 @@ import {
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
   SHARE_FILE_NAME,
+  buildXIntentUrl,
   drawShareCard,
 } from "./share.mjs";
 
@@ -48,7 +49,8 @@ const sliderLabel = document.getElementById("as-of-label");
 const zoomOutButton = document.getElementById("zoom-out");
 const zoomResetButton = document.getElementById("zoom-reset");
 const zoomInButton = document.getElementById("zoom-in");
-const shareButton = document.getElementById("human-card");
+const cardButton = document.getElementById("human-card");
+const shareButton = document.getElementById("share-x");
 const shareNoticeEl = document.getElementById("share-notice");
 const lineExplorerEl = document.getElementById("line-explorer");
 const lineSelectEl = document.getElementById("line-select");
@@ -152,6 +154,7 @@ const ZOOM_MIN_PERCENT = 50;
 const ZOOM_MAX_PERCENT = 400;
 const ZOOM_STEP_PERCENT = 25;
 const MODEL_GRAPH_TIMEOUT_MS = 45_000;
+const SHARE_CARD_TIMEOUT_MS = 15_000;
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function freshLayerObjects() {
@@ -765,19 +768,40 @@ function showShareNotice(title, message, failed = false) {
 }
 
 function setShareBusy(busy) {
-  shareButton.disabled = busy || !shareReady;
-  shareButton.setAttribute("aria-busy", String(busy));
-  shareButton.querySelector("b").textContent = busy ? "Preparing…" : "Card";
+  [cardButton, shareButton].forEach((button) => {
+    button.disabled = busy || !shareReady;
+    button.setAttribute("aria-busy", String(busy));
+  });
+  cardButton.querySelector("b").textContent = busy ? "Preparing…" : "Card";
+  shareButton.querySelector("b").textContent = busy ? "Preparing…" : "Share";
 }
 
-function createShareCardBlob() {
-  renderer.render(scene, camera);
+async function loadShareCardModel() {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SHARE_CARD_TIMEOUT_MS);
+  try {
+    const response = await fetch("./share-card", {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Share endpoint returned HTTP ${response.status}`);
+    const payload = await response.json();
+    if (!payload.model || !Array.isArray(payload.model.faces)) {
+      throw new Error("Share endpoint returned an invalid projection");
+    }
+    return payload.model;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function createShareCardBlob(shareModel) {
   const canvas = document.createElement("canvas");
   canvas.width = SHARE_CARD_WIDTH;
   canvas.height = SHARE_CARD_HEIGHT;
   const context = canvas.getContext("2d");
   if (!context) return Promise.reject(new Error("Canvas export is unavailable"));
-  drawShareCard(context, model);
+  drawShareCard(context, shareModel);
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
@@ -797,18 +821,45 @@ function downloadShareCard(blob) {
   window.setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 
-async function exportHumanCard() {
+function paintShareHandoff(popup) {
+  if (!popup) return;
+  popup.document.title = "Preparing your Persome HUMAN.md Card";
+  popup.document.body.innerHTML = `
+    <main style="min-height:100vh;display:grid;place-items:center;margin:0;background:#f3f0e9;color:#1f1d1b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+      <section style="width:min(440px,calc(100vw - 48px));padding:38px;border:1px solid rgba(31,29,27,.16);background:#fff;box-shadow:0 30px 100px rgba(31,29,27,.12)">
+        <p style="margin:0 0 18px;color:#cf4f36;font-size:11px;font-weight:750;letter-spacing:.16em">PERSOME · SHARE TO X</p>
+        <h1 style="margin:0;font-size:34px;line-height:1.05;letter-spacing:-.045em">Your HUMAN.md Card is downloading.</h1>
+        <p style="margin:18px 0 0;color:#6d6861;font-size:15px;line-height:1.65">In X, add <strong style="color:#1f1d1b">${SHARE_FILE_NAME}</strong> with the image button. Review the card before posting.</p>
+      </section>
+    </main>`;
+}
+
+async function exportHumanCard({ toX = false } = {}) {
+  const popup = toX ? window.open("about:blank", "_blank") : null;
+  if (toX) paintShareHandoff(popup);
   setShareBusy(true);
   pauseAutoRotate();
   try {
-    const blob = await createShareCardBlob();
+    const shareModel = await loadShareCardModel();
+    const blob = await createShareCardBlob(shareModel);
     downloadShareCard(blob);
     showShareNotice(
       "HUMAN.md Card downloaded",
-      "Private source content was not included.",
+      "Detected secrets, PII, paths, IDs, and evidence receipts were excluded. Review summaries before sharing.",
     );
+    if (toX) {
+      const intentUrl = buildXIntentUrl();
+      if (popup && !popup.closed) {
+        popup.opener = null;
+        popup.location.replace(intentUrl);
+        popup.focus();
+      } else {
+        window.location.assign(intentUrl);
+      }
+    }
     setShareBusy(false);
   } catch (error) {
+    if (popup && !popup.closed) popup.close();
     showShareNotice("Share image failed", error.message || String(error), true);
     setShareBusy(false);
   }
@@ -1491,7 +1542,8 @@ controls.addEventListener("start", () => {
 });
 document.getElementById("reset").addEventListener("click", resetCamera);
 document.getElementById("close-detail").addEventListener("click", clearSelection);
-shareButton.addEventListener("click", exportHumanCard);
+cardButton.addEventListener("click", () => exportHumanCard());
+shareButton.addEventListener("click", () => exportHumanCard({ toX: true }));
 
 slider.addEventListener("input", () => {
   updateCutoff();

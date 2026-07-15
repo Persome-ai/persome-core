@@ -18,6 +18,7 @@ from persome.evomem.store import NodeStore
 from persome.model import ActivitySource, ModelBuildCoordinator, create_build_manifest
 from persome.store import entries, fts, schema_faces
 from persome.store import relation_edges as edges_store
+from persome.store import schema_faces as schema_faces_store
 
 BUILD_KEYS = {
     "build_id",
@@ -236,6 +237,53 @@ class TestGraphJson:
             "receipts",
         }
 
+    def test_share_card_projection_scrubs_and_minimizes_owner_summaries(self, ac_root):
+        with fts.cursor() as conn:
+            schema_faces_store.ensure_schema(conn)
+            for face_id, level, signature, observations in (
+                (
+                    "face-private-id",
+                    1,
+                    "Uses alice@example.com from /Users/alice/private with sk-1234567890abcdef1234",
+                    4,
+                ),
+                ("root-private-id", 3, "Evidence-backed systems builder", 7),
+            ):
+                conn.execute(
+                    """
+                    INSERT INTO schema_faces
+                        (face_id, level, signature, members, footprints, provenance,
+                         observations, confidence, status, valid_from, created_at)
+                    VALUES (?, ?, ?, '[]', '[]', 'mined', ?, 0.9, 'active', ?, ?)
+                    """,
+                    (
+                        face_id,
+                        level,
+                        signature,
+                        observations,
+                        "2026-07-01T00:00:00+00:00",
+                        "2026-07-01T00:00:00+00:00",
+                    ),
+                )
+            conn.commit()
+
+        projection = routes.model_share_card()["model"]
+        serialized = json.dumps(projection)
+
+        assert set(projection) == {"root", "faces"}
+        assert set(projection["root"]) == {"signature", "observations", "confidence"}
+        assert set(projection["faces"][0]) == {"signature", "observations", "confidence"}
+        assert "[REDACTED]" in projection["faces"][0]["signature"]
+        for private_value in (
+            "alice@example.com",
+            "/Users/alice",
+            "sk-1234567890abcdef1234",
+            "face-private-id",
+            "root-private-id",
+            "receipt",
+        ):
+            assert private_value not in serialized
+
     def test_empty_store_returns_an_empty_snapshot(self, ac_root):
         graph = routes.model_graph()
         assert graph["model"]["points"] == []
@@ -320,7 +368,9 @@ class TestViewPage:
         assert "Local only" in body
         assert 'id="human-card"' in body
         assert 'title="Export your HUMAN.md Card" disabled>' in body
-        assert "Private source content was not included." in body
+        assert 'id="share-x"' in body
+        assert 'title="Share your HUMAN.md Card to X" disabled>' in body
+        assert "Detected secrets, PII, paths, IDs, and evidence receipts were excluded." in body
         assert 'id="share-notice"' in body
         assert 'aria-label="Zoom controls"' in body
         assert 'id="zoom-out"' in body
@@ -346,6 +396,7 @@ class TestViewPage:
         assert b"computeClusterLayout" in layout.body
         assert b"nodeEvidenceCards" in evidence.body
         assert b"humanCard" in share.body
+        assert b"buildXIntentUrl" in share.body
         assert b"drawShareCard" in share.body
         assert b'from "./layout.mjs"' in viewer.body
         assert b'from "./share.mjs"' in viewer.body
@@ -355,6 +406,7 @@ class TestViewPage:
         assert b"model.volumes" in viewer.body
         assert b"model.root" in viewer.body
         assert b'fetch("./graph"' in viewer.body
+        assert b'fetch("./share-card"' in viewer.body
         assert b"MODEL_GRAPH_TIMEOUT_MS = 45_000" in viewer.body
         assert b"modelLoadPromise" in viewer.body
         assert b"controller.abort()" in viewer.body
@@ -387,6 +439,7 @@ class TestViewPage:
         assert b"controls.zoomToCursor = true" in viewer.body
         assert b"downloadShareCard" in viewer.body
         assert b"shareReady = Boolean" in viewer.body
+        assert b"window.open" in viewer.body
         assert b"my-human-card.png" in share.body
         assert b"private source content" in share.body
         assert b"Built locally with Persome \xc2\xb7 Build yours" in share.body

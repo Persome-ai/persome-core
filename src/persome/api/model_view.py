@@ -53,6 +53,9 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
         <button id="human-card" class="share-button" type="button" aria-label="Export your HUMAN.md Card" title="Export your HUMAN.md Card" disabled>
           <span aria-hidden="true">H</span><b>Card</b>
         </button>
+        <button id="share-x" class="share-button" type="button" aria-label="Share your HUMAN.md Card to X" title="Share your HUMAN.md Card to X" disabled>
+          <span aria-hidden="true">X</span><b>Share</b>
+        </button>
         <div class="zoom-controls" role="group" aria-label="Zoom controls">
           <button id="zoom-out" class="icon-button" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
           <button id="zoom-reset" class="zoom-value" type="button" aria-label="Reset zoom to 100 percent" title="Reset zoom (0)">100%</button>
@@ -114,7 +117,7 @@ _MEMORY_VIEW_TEMPLATE = """<!doctype html>
 
     <div id="share-notice" class="share-notice" role="status" aria-live="polite" hidden>
       <span aria-hidden="true">↓</span>
-      <div><strong>HUMAN.md Card downloaded</strong><small>Private source content was not included.</small></div>
+      <div><strong>HUMAN.md Card downloaded</strong><small>Detected secrets, PII, paths, IDs, and evidence receipts were excluded. Review summaries before sharing.</small></div>
     </div>
 
     <footer class="timeline">

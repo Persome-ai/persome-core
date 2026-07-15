@@ -1,6 +1,40 @@
 export const SHARE_CARD_WIDTH = 1080;
 export const SHARE_CARD_HEIGHT = 1350;
 export const SHARE_FILE_NAME = "my-human-card.png";
+export const SHARE_URL = "https://github.com/Intuition-Lab/personal-model";
+export const SHARE_TEXTS = Object.freeze([
+  [
+    "I let @PersonalModel_ observe how I use my Mac, and apparently this is what I look like 😳",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+  [
+    "I let my @PersonalModel_ learn from how I use my Mac. I didn’t expect this is how it sees me 😳",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+  [
+    "I let @PersonalModel_ observe how I use my Mac, and this is the model it built 🤔",
+    "",
+    "#PersonalModel @PersonalModel_",
+  ].join("\n"),
+]);
+
+export function pickShareText(random = Math.random) {
+  const index = Math.floor(random() * SHARE_TEXTS.length);
+  return SHARE_TEXTS[Math.max(0, Math.min(index, SHARE_TEXTS.length - 1))];
+}
+
+export function buildXIntentUrl({
+  text,
+  url = SHARE_URL,
+  random = Math.random,
+} = {}) {
+  const params = new URLSearchParams();
+  params.set("text", text ?? pickShareText(random));
+  params.set("url", url);
+  return `https://x.com/intent/tweet?${params.toString()}`;
+}
 
 const CARD_FIELDS = Object.freeze([
   ["optimizesFor", "Optimizes for"],
@@ -29,23 +63,16 @@ function rankedPatterns(model = {}) {
 /**
  * Build the public projection used by the share card.
  *
- * Only Root/Face signatures are eligible. Receipts, quotes, paths, IDs, source
- * content, and other model metadata never cross this boundary. A future model
- * may provide explicit `root.human_card` copy; current models fall back to the
- * strongest public summaries.
+ * Only summaries from the server's canonically scrubbed `/model/share-card`
+ * projection are eligible. The raw owner graph must never be passed here.
  */
 export function humanCard(model = {}) {
-  const explicit = model.root?.human_card || {};
   const patterns = rankedPatterns(model);
   return {
-    optimizesFor: clean(explicit.optimizes_for || patterns[0]?.signature)
-      || "depth over speed",
-    currentRoot: clean(explicit.current_root || model.root?.signature)
-      || "still forming from local context",
-    decisionStyle: clean(explicit.decision_style || patterns[1]?.signature)
-      || "evidence first, intuition at the edge",
-    aiShould: clean(explicit.ai_should || patterns[2]?.signature)
-      || "challenge premature expansion",
+    optimizesFor: clean(patterns[0]?.signature) || "depth over speed",
+    currentRoot: clean(model.root?.signature) || "still forming from local context",
+    decisionStyle: clean(patterns[1]?.signature) || "evidence first, intuition at the edge",
+    aiShould: clean(patterns[2]?.signature) || "challenge premature expansion",
     neverExpose: "private source content",
   };
 }

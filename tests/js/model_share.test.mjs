@@ -5,6 +5,8 @@ import {
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
   SHARE_FILE_NAME,
+  SHARE_TEXTS,
+  buildXIntentUrl,
   humanCard,
 } from "../../resources/model_assets/share.mjs";
 
@@ -14,15 +16,12 @@ test("keeps the HUMAN.md Card portrait-sized and portable", () => {
   assert.equal(SHARE_FILE_NAME, "my-human-card.png");
 });
 
-test("uses explicit public card copy when the Root provides it", () => {
+test("uses only signatures from the server share projection", () => {
   const card = humanCard({
     root: {
-      signature: "A longer private portrait.",
+      signature: "turning personal context into agency",
       human_card: {
-        optimizes_for: "depth over speed",
-        current_root: "turning personal context into agency",
-        decision_style: "evidence first, intuition at the edge",
-        ai_should: "challenge premature expansion",
+        current_root: "raw owner-only copy must be ignored",
       },
     },
   });
@@ -34,6 +33,17 @@ test("uses explicit public card copy when the Root provides it", () => {
     aiShould: "challenge premature expansion",
     neverExpose: "private source content",
   });
+});
+
+test("retains the approved X composer handoff for the HUMAN.md Card", () => {
+  const intent = new URL(buildXIntentUrl({ random: () => 0 }));
+
+  assert.equal(SHARE_TEXTS.length, 3);
+  assert.equal(intent.origin, "https://x.com");
+  assert.equal(intent.pathname, "/intent/tweet");
+  assert.equal(intent.searchParams.get("text"), SHARE_TEXTS[0]);
+  assert.equal(intent.searchParams.get("url"), "https://github.com/Intuition-Lab/personal-model");
+  assert.ok(!intent.href.includes("localhost"));
 });
 
 test("falls back to bounded high-level summaries without leaking sources", () => {
