@@ -240,6 +240,81 @@ def test_runtime_proof_requires_health_and_fresh_readable_capture(
     assert proof.capture_path == capture_path
 
 
+def test_runtime_proof_accepts_healthy_components_with_aggregate_degradation(
+    ac_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture_path = paths.capture_buffer_dir() / "fresh.json"
+    capture_path.parent.mkdir(parents=True, exist_ok=True)
+    capture_path.write_text(
+        '{"timestamp":"2026-07-12T00:00:00+00:00","visible_text":"ready"}',
+        encoding="utf-8",
+    )
+    health_calls = 0
+
+    def health(host: str, port: int) -> dict[str, str]:
+        nonlocal health_calls
+        health_calls += 1
+        return {
+            "status": "degraded",
+            "ocr": "ready",
+            "ocr_worker": "ready",
+            "index": "ok",
+            "capture_pipeline": "ok",
+        }
+
+    monkeypatch.setattr(onboarding, "_running_daemon_pid", lambda: 4242)
+    monkeypatch.setattr(onboarding, "_health_payload", health)
+    monkeypatch.setattr(
+        onboarding,
+        "_runtime_permissions",
+        lambda host, port: {"accessibility": "granted", "screen_recording": "granted"},
+    )
+    monkeypatch.setattr(
+        onboarding,
+        "_request_runtime_capture",
+        lambda host, port: onboarding.CaptureRequestProof(capture_path, "daemon", "fresh-capture"),
+    )
+
+    proof = onboarding.ensure_runtime(restart=False)
+
+    assert proof.health == "degraded"
+    assert proof.ocr == "ready"
+    assert proof.capture_path == capture_path
+    assert health_calls >= 2
+
+
+@pytest.mark.parametrize(
+    ("index_state", "capture_state"),
+    [("degraded", "ok"), ("ok", "degraded"), ("unknown", "ok")],
+)
+def test_runtime_proof_rejects_degraded_core_components(
+    ac_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    index_state: str,
+    capture_state: str,
+) -> None:
+    monkeypatch.setattr(onboarding, "_running_daemon_pid", lambda: 4242)
+    monkeypatch.setattr(
+        onboarding,
+        "_health_payload",
+        lambda host, port: {
+            "status": "degraded",
+            "ocr": "ready",
+            "ocr_worker": "ready",
+            "index": index_state,
+            "capture_pipeline": capture_state,
+        },
+    )
+    monkeypatch.setattr(
+        onboarding,
+        "_runtime_permissions",
+        lambda host, port: {"accessibility": "granted", "screen_recording": "granted"},
+    )
+
+    with pytest.raises(onboarding.OnboardingError, match="status=degraded"):
+        onboarding.ensure_runtime(restart=False, timeout=0.01)
+
+
 def test_runtime_proof_rejects_degraded_ocr(ac_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(onboarding, "_running_daemon_pid", lambda: 4242)
     monkeypatch.setattr(

@@ -590,6 +590,27 @@ def _health_payload(host: str, port: int) -> dict[str, str] | None:
     return {str(key): str(value) for key, value in data.items()}
 
 
+def _runtime_components_ready(payload: dict[str, str] | None) -> bool:
+    """Accept aggregate degradation only when the core Runtime remains ready.
+
+    ``/health.status`` also reflects repairable search drift and optional
+    snapshot failures. Those states should remain visible to the owner, but
+    must not prevent an update from installing the code that can repair them.
+    OCR policy/worker state and macOS permissions are gated separately below.
+    """
+
+    if payload is None:
+        return False
+    status = payload.get("status")
+    if status == "ok":
+        return True
+    return bool(
+        status == "degraded"
+        and payload.get("index") == "ok"
+        and payload.get("capture_pipeline") == "ok"
+    )
+
+
 def _runtime_permissions(host: str, port: int) -> dict[str, str] | None:
     """Read live probes for the Runtime and its configured native helpers."""
     import httpx
@@ -935,10 +956,7 @@ def ensure_runtime(
             )
             worker = payload.get("ocr_worker") if payload is not None else None
             ocr_state = payload.get("ocr") if payload is not None else None
-            status_ready = bool(
-                payload is not None
-                and payload.get("status") in ({"ok"} if require_ocr else {"ok", "degraded"})
-            )
+            status_ready = _runtime_components_ready(payload)
         else:
             state = _runtime_state(pid, minimum_updated_at=proof_started_at)
             permissions_payload = state.get("permissions") if state is not None else None
@@ -1157,9 +1175,8 @@ def ensure_runtime(
         raise OnboardingError("the Runtime process changed after the capture proof")
     if http_enabled:
         final_payload = _health_payload(cfg.mcp.host, cfg.mcp.port)
-        if final_payload is None or (
-            require_ocr
-            and (final_payload.get("status") != "ok" or final_payload.get("ocr_worker") != "ready")
+        if not _runtime_components_ready(final_payload) or (
+            require_ocr and final_payload.get("ocr_worker") != "ready"
         ):
             raise OnboardingError("the daemon lost health after the capture smoke test")
         if (

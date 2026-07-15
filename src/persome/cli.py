@@ -792,13 +792,15 @@ def status() -> None:
             table.add_row(
                 "Index Backlog",
                 f"[yellow]{backlog} captures not searchable yet[/yellow] "
-                "(run `persome rebuild-captures-index --merge`)",
+                "(stop Runtime, rebuild with `persome rebuild-captures-index --merge`, "
+                "then start Runtime)",
             )
         if orphaned:
             table.add_row(
                 "Index Orphans",
                 f"[yellow]{orphaned} index rows have no capture file[/yellow] "
-                "(run `persome rebuild-captures-index --merge`)",
+                "(stop Runtime, rebuild with `persome rebuild-captures-index --merge`, "
+                "then start Runtime)",
             )
         snap = health_report.get("snapshot") or {}
         if snap.get("last_ok") is False:
@@ -3372,89 +3374,142 @@ def rebuild_captures_index(
 
     from .capture import s1_parser
 
+    _require_stopped_for_capture_rebuild()
     _init()
     buf = paths.capture_buffer_dir()
     files = sorted(p for p in buf.iterdir() if p.is_file() and p.suffix == ".json")
 
     indexed = 0
+    inserted = 0
+    updated = 0
+    unchanged = 0
     skipped = 0
-    with fts.cursor() as conn:
-        # OCR text is a DB-only backfill: raw JSON intentionally keeps an
-        # empty ``visible_text`` sentinel plus ``ocr_submitted=true``. Preserve
-        # those rows across both exact and merge rebuilds instead of silently
-        # replacing recognized text with the raw empty sentinel.
-        ocr_backfills = {
-            str(row["id"]): str(row["visible_text"] or "")
-            for row in conn.execute(
-                "SELECT id, visible_text FROM captures WHERE visible_text != ''"
-            ).fetchall()
-        }
-        # One explicit transaction prevents each capture upsert from becoming
-        # its own FTS5 commit. On a large retained buffer, per-row autocommit
-        # can amplify a small index into a multi-gigabyte WAL and WAL-index,
-        # exposing concurrent macOS readers to a fatal mmap page-in failure.
-        # It also makes exact reconciliation interruption-safe: either the
-        # complete replacement commits or SQLite restores the prior index.
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            # Exact rebuild is reconciliation, not just an upsert pass. Recovery
-            # merge intentionally preserves older snapshot rows whose source JSON
-            # has already aged out of the bounded capture buffer.
-            if not merge:
-                conn.execute("DELETE FROM captures")
-            for p in files:
-                try:
-                    data = json.loads(p.read_text())
-                except (OSError, json.JSONDecodeError) as exc:
-                    skipped += 1
-                    console.print(f"[yellow]skip {p.name}: {exc}[/yellow]")
-                    continue
-                if not isinstance(data, dict):
-                    skipped += 1
-                    console.print(f"[yellow]skip {p.name}: capture is not a JSON object[/yellow]")
-                    continue
-                preserve_ocr = bool(data.get("ocr_submitted")) and not str(
-                    data.get("visible_text") or ""
+    # Rebuilding every FTS segment must exclude daemon and MCP database
+    # activity for the complete transaction. A shared maintenance lock still
+    # permits another process to reset or resize the WAL index while SQLite is
+    # reading it, which can surface as an unrecoverable macOS SIGBUS rather
+    # than a catchable sqlite3 exception.
+    with fts.exclusive_database_maintenance():
+        # Close the check/start race before opening SQLite. A cooperative
+        # Runtime that starts after this point blocks on the exclusive gate.
+        _require_stopped_for_capture_rebuild()
+        with fts.cursor() as conn:
+            # One explicit transaction prevents each capture upsert from becoming
+            # its own FTS5 commit. On a large retained buffer, per-row autocommit
+            # can amplify a small index into a multi-gigabyte WAL and WAL-index,
+            # exposing concurrent macOS readers to a fatal mmap page-in failure.
+            # It also makes exact reconciliation interruption-safe: either the
+            # complete replacement commits or SQLite restores the prior index.
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                projection_fields = (
+                    "timestamp",
+                    "app_name",
+                    "bundle_id",
+                    "window_title",
+                    "focused_role",
+                    "focused_value",
+                    "visible_text",
+                    "url",
                 )
-                data = s1_parser.sanitize_capture(data)
-                preserved_ocr = s1_parser.sanitize_ocr_text(
-                    data,
-                    ocr_backfills.get(p.stem, ""),
+                existing_rows = conn.execute(
+                    "SELECT id, " + ", ".join(projection_fields) + " FROM captures"
+                ).fetchall()
+                # OCR text is a DB-only backfill: raw JSON intentionally keeps an
+                # empty ``visible_text`` sentinel plus ``ocr_submitted=true``.
+                # Preserve those rows across both exact and merge rebuilds instead
+                # of silently replacing recognized text with the raw empty sentinel.
+                ocr_backfills = {
+                    str(row["id"]): str(row["visible_text"] or "")
+                    for row in existing_rows
+                    if row["visible_text"]
+                }
+                # Startup integrity repair has already reconciled captures_fts
+                # against these authoritative rows. In merge mode, do not fire the
+                # UPDATE trigger for projections that are byte-for-byte identical:
+                # every such no-op would still delete and reinsert an FTS row.
+                existing_projections = (
+                    {
+                        str(row["id"]): tuple(row[field] for field in projection_fields)
+                        for row in existing_rows
+                    }
+                    if merge
+                    else {}
                 )
-                meta = data.get("window_meta") or {}
-                focused = data.get("focused_element") or {}
-                try:
-                    fts.insert_capture(
-                        conn,
-                        id=p.stem,
-                        timestamp=data.get("timestamp", ""),
-                        app_name=meta.get("app_name") or "",
-                        bundle_id=meta.get("bundle_id") or "",
-                        window_title=meta.get("title") or "",
-                        focused_role=focused.get("role") or "",
-                        focused_value=focused.get("value") or "",
-                        visible_text=(
+                # Exact rebuild is reconciliation, not just an upsert pass. Recovery
+                # merge intentionally preserves older snapshot rows whose source JSON
+                # has already aged out of the bounded capture buffer.
+                if not merge:
+                    conn.execute("DELETE FROM captures")
+                for p in files:
+                    try:
+                        data = json.loads(p.read_text())
+                    except (OSError, json.JSONDecodeError) as exc:
+                        skipped += 1
+                        console.print(f"[yellow]skip {p.name}: {exc}[/yellow]")
+                        continue
+                    if not isinstance(data, dict):
+                        skipped += 1
+                        console.print(
+                            f"[yellow]skip {p.name}: capture is not a JSON object[/yellow]"
+                        )
+                        continue
+                    preserve_ocr = bool(data.get("ocr_submitted")) and not str(
+                        data.get("visible_text") or ""
+                    )
+                    data = s1_parser.sanitize_capture(data)
+                    preserved_ocr = s1_parser.sanitize_ocr_text(
+                        data,
+                        ocr_backfills.get(p.stem, ""),
+                    )
+                    meta = data.get("window_meta") or {}
+                    focused = data.get("focused_element") or {}
+                    projection_kwargs = {
+                        "timestamp": data.get("timestamp", ""),
+                        "app_name": meta.get("app_name") or "",
+                        "bundle_id": meta.get("bundle_id") or "",
+                        "window_title": meta.get("title") or "",
+                        "focused_role": focused.get("role") or "",
+                        "focused_value": focused.get("value") or "",
+                        "visible_text": (
                             preserved_ocr
                             if preserve_ocr and not data.get("visible_text")
                             else data.get("visible_text") or ""
                         ),
-                        url=data.get("url") or "",
-                    )
-                    indexed += 1
-                except Exception as exc:  # noqa: BLE001
-                    skipped += 1
-                    console.print(f"[yellow]skip {p.name}: {exc}[/yellow]")
-                if indexed % 200 == 0 and indexed > 0:
-                    console.print(f"  staged {indexed} / {len(files)}…")
-            conn.commit()
-        except BaseException:
-            if conn.in_transaction:
-                conn.rollback()
-            raise
+                        "url": data.get("url") or "",
+                    }
+                    projection = tuple(projection_kwargs[field] for field in projection_fields)
+                    try:
+                        existed = p.stem in existing_projections
+                        if existed and existing_projections[p.stem] == projection:
+                            unchanged += 1
+                        else:
+                            fts.insert_capture(
+                                conn,
+                                id=p.stem,
+                                **projection_kwargs,
+                            )
+                            if existed:
+                                updated += 1
+                            else:
+                                inserted += 1
+                        indexed += 1
+                    except Exception as exc:  # noqa: BLE001
+                        skipped += 1
+                        console.print(f"[yellow]skip {p.name}: {exc}[/yellow]")
+                    if indexed % 200 == 0 and indexed > 0:
+                        console.print(f"  staged {indexed} / {len(files)}…")
+                conn.commit()
+            except BaseException:
+                if conn.in_transaction:
+                    conn.rollback()
+                raise
 
     console.print(
         f"[green]Captures index {'merged' if merge else 'rebuilt'}: "
-        f"{indexed} indexed, {skipped} skipped "
+        f"{indexed} indexed ({inserted} inserted, {updated} updated, "
+        f"{unchanged} unchanged), "
+        f"{skipped} skipped "
         f"(of {len(files)} files).[/green]"
     )
 
@@ -3476,6 +3531,19 @@ def _confirm(prompt: str, yes: bool) -> bool:
     if yes:
         return True
     return typer.confirm(prompt, default=False)
+
+
+def _require_stopped_for_capture_rebuild() -> None:
+    pid = _read_pid()
+    if pid is None and not _daemon_lock_is_held():
+        return
+    process = f" (pid {pid})" if pid is not None else ""
+    console.print(
+        f"[red]Refusing to rebuild the capture index while the Runtime is running{process}. "
+        "Run `persome stop` first. If an older editor or agent client remains connected, "
+        "restart it before retrying.[/red]"
+    )
+    raise typer.Exit(1)
 
 
 def _require_stopped_for_clean() -> None:

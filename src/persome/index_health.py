@@ -301,7 +301,10 @@ def build_report(cfg: Config) -> dict[str, Any]:
                 "restart the daemon so startup integrity can quarantine/recover the index"
             )
         if index_drift > cfg.index_health.backlog_warn_threshold or index_failure_broken:
-            actions.append("run `persome rebuild-captures-index --merge`")
+            actions.append(
+                "run `persome stop`, then `persome rebuild-captures-index --merge`, "
+                "then `persome start`"
+            )
         if recent_queue_drop:
             actions.append(
                 "check daemon load and capture-queue warnings; dropped triggers cannot replay"
@@ -403,7 +406,6 @@ async def run_index_health_tick(cfg: Config) -> None:
     logger.info("index-health tick loop started (every %ds)", interval)
     while True:
         try:
-            await asyncio.sleep(interval)
             started = time.monotonic()
             report = await asyncio.to_thread(check_once, cfg)
             elapsed_ms = (time.monotonic() - started) * 1000
@@ -416,3 +418,4 @@ async def run_index_health_tick(cfg: Config) -> None:
             raise
         except Exception as exc:  # noqa: BLE001 - the health loop must outlive one bad pass
             logger.error("index-health tick failed: %s", exc, exc_info=True)
+        await asyncio.sleep(interval)
