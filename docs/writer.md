@@ -111,9 +111,10 @@ delta apply.
 candidate filtering, and an LLM validation pass. Confirmed observations land in
 `skills/skill-*.md` with evidence and `stage: observed`. A single occurrence is
 insufficient. Timeline skill echoes are deduplicated by session, so repeated
-minute blocks inside one continuous episode count as one observation. The stage
-models a person's recurring behavior; it does not propose scripts or execute
-automation.
+minute blocks inside one continuous episode count as one observation. MCP
+`behavior_patterns` exposes the latest active evidence-backed playbooks beside
+the resident Root and Faces. The stage models a person's recurring behavior; it
+does not propose scripts, grant permission, or execute automation.
 
 ## Higher-level build
 

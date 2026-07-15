@@ -219,6 +219,66 @@ def test_verify_fact_passes_fresh_evidence(ac_root, _restore_fts_gates):
         assert out["freshest_age_days"] <= 2
 
 
+def test_verify_fact_explains_open_contradictions(ac_root, _restore_fts_gates):
+    from persome.store import contradictions as contradictions_store
+
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        fresh_ts = (datetime.now().astimezone() - timedelta(days=1)).isoformat()
+        _insert(conn, id="e-a", ts=fresh_ts, content="current version 0.4.2")
+        _insert(conn, id="e-b", ts=fresh_ts, content="current version 0.5.0")
+        key = contradictions_store.record(
+            conn,
+            a_id="e-a",
+            b_id="e-b",
+            path="topic-x.md",
+            a_body="current version 0.4.2",
+            b_body="current version 0.5.0",
+            reason="both claim to be the current version",
+        )
+
+        out = mcp_server._verify_fact(conn, claim="current version")
+
+    by_id = {item["id"]: item for item in out["evidence"]}
+    assert by_id["e-a"]["conflicted"] is True
+    assert by_id["e-a"]["contradictions"] == [
+        {
+            "pair_key": key,
+            "reason": "both claim to be the current version",
+            "competing_id": "e-b",
+            "competing_claim": "current version 0.5.0",
+        }
+    ]
+    assert by_id["e-b"]["contradictions"][0]["competing_id"] == "e-a"
+    assert "unresolved contradiction" in out["note"]
+
+
+def test_verify_fact_does_not_replay_closed_contradictions(ac_root, _restore_fts_gates):
+    from persome.store import contradictions as contradictions_store
+
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        fresh_ts = (datetime.now().astimezone() - timedelta(days=1)).isoformat()
+        _insert(conn, id="e-a", ts=fresh_ts, content="current version 0.4.2")
+        key = contradictions_store.record(
+            conn,
+            a_id="e-a",
+            b_id="e-retired",
+            path="topic-x.md",
+            a_body="current version 0.4.2",
+            b_body="current version 0.3.9",
+            reason="a newer version superseded the old claim",
+        )
+        contradictions_store.close(conn, key, status="resolved", keep_id="e-a")
+
+        out = mcp_server._verify_fact(conn, claim="current version")
+
+    item = next(evidence for evidence in out["evidence"] if evidence["id"] == "e-a")
+    assert item["conflicted"] is False
+    assert "contradictions" not in item
+    assert "unresolved contradiction" not in out["note"]
+
+
 def test_verify_fact_no_evidence_is_honest(ac_root, _restore_fts_gates):
     with fts.cursor() as conn:
         conn.executescript(fts.SCHEMA)
@@ -292,13 +352,37 @@ def test_build_server_wires_the_full_read_path(ac_root, _restore_fts_gates, monk
 
 
 def test_behavior_patterns_exposes_root_and_faces(ac_root):
+    from persome.store import entries as entries_store
     from persome.store import schema_faces as faces_store
 
     with fts.cursor() as conn:
         conn.executescript(fts.SCHEMA)
         # cold start: honest empties, never an error
         out = mcp_server._behavior_patterns(conn)
-        assert out == {"root": None, "faces": [], "rendered": ""}
+        assert out == {"root": None, "faces": [], "skills": [], "rendered": ""}
+        entries_store.create_file(
+            conn,
+            name="skills/skill-morning-triage",
+            description="Triage communication before opening the active project.",
+            tags=["skill", "observed"],
+        )
+        skill_id = entries_store.append_entry(
+            conn,
+            name="skills/skill-morning-triage.md",
+            content=(
+                "stage: observed\n\n"
+                "**Trigger**: weekday start\n"
+                "**Steps**: 1. Mail. 2. Slack. 3. Project.\n"
+                "**Boundaries**: observed ordering only"
+            ),
+            tags=["pattern", "observed"],
+        )
+        echo_id = entries_store.append_entry(
+            conn,
+            name="skills/skill-morning-triage.md",
+            content="Triggered with confidence 0.91: Mail and Slack were opened.",
+            tags=["triggered", "echo"],
+        )
         faces_store.upsert_root(
             conn,
             signature="\u9ad8\u5ea6\u7cfb\u7edf\u5316\u7684\u5f00\u53d1\u8005\uff0c\u6df1\u591c\u9ad8\u4ea7",
@@ -308,3 +392,58 @@ def test_behavior_patterns_exposes_root_and_faces(ac_root):
         out = mcp_server._behavior_patterns(conn)
         assert out["root"]["signature"].startswith("\u9ad8\u5ea6\u7cfb\u7edf\u5316")
         assert "Root" in out["rendered"] and "\u9ad8\u5ea6\u7cfb\u7edf\u5316" in out["rendered"]
+        assert out["skills"][0]["entry_id"] == skill_id
+        assert out["skills"][0]["entry_id"] != echo_id
+        assert out["skills"][0]["path"] == "skills/skill-morning-triage.md"
+        assert "**Steps**: 1. Mail. 2. Slack. 3. Project." in out["skills"][0]["playbook"]
+        assert "Triggered with confidence" not in out["skills"][0]["playbook"]
+        assert "Observed workflow" in out["rendered"]
+
+
+def test_behavior_patterns_excludes_skills_without_live_observed_playbook(ac_root):
+    from persome.store import entries as entries_store
+
+    with fts.cursor() as conn:
+        conn.executescript(fts.SCHEMA)
+        entries_store.create_file(
+            conn,
+            name="skill-echo-only",
+            description="Has an activation echo but no admitted playbook.",
+            tags=["skill"],
+        )
+        entries_store.append_entry(
+            conn,
+            name="skill-echo-only.md",
+            content="Triggered with confidence 0.88: matching activity.",
+            tags=["triggered", "echo"],
+        )
+        entries_store.create_file(
+            conn,
+            name="skills/skill-unobserved",
+            description="A candidate that has not passed observation gates.",
+            tags=["skill"],
+        )
+        entries_store.append_entry(
+            conn,
+            name="skills/skill-unobserved.md",
+            content="stage: candidate\n\n**Pattern**: one possible sequence",
+            tags=["pattern"],
+        )
+        entries_store.create_file(
+            conn,
+            name="skills/skill-dormant",
+            description="An observed playbook that is no longer active.",
+            tags=["skill", "observed"],
+            status="dormant",
+        )
+        entries_store.append_entry(
+            conn,
+            name="skills/skill-dormant.md",
+            content="stage: observed\n\n**Pattern**: retired workflow",
+            tags=["pattern", "observed"],
+        )
+
+        out = mcp_server._behavior_patterns(conn)
+
+    assert out["skills"] == []
+    assert out["rendered"] == ""

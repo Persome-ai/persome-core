@@ -56,10 +56,10 @@ Example stdio client configuration:
 | `related_events` | Retrieve time-adjacent context around one memory entry: overlapping timeline blocks plus nearest captures, anchored on parseable `occurred_at` else write time. Context is observed data, not evidence for the entry. |
 | `resolve_evidence` | Resolve model, memory, activity, and capture references through one progressive evidence contract. |
 | `recent_activity` | Read recent durable event entries. |
-| `behavior_patterns` | Read modeled behavioral patterns and their support. |
+| `behavior_patterns` | Read modeled behavioral patterns plus evidence-backed observed workflow playbooks. |
 | `get_model_snapshot` | Return the versioned Point/Line/Face/Volume/Root model snapshot. |
 | `entity_graph` | Read the entity/relation graph; retained as a compatibility model view. |
-| `verify_fact` | Check a claim against current and superseded memory. |
+| `verify_fact` | Check a claim's freshness and explain existing open contradiction ledger rows. |
 | `remember` | Append an explicit, auditable memory. |
 | `correct_memory` | Supersede or revoke memory through the correction workflow. |
 | `process_pending_model_work` | Process a bounded number of pending sessions with the connected client's model allowance through MCP Sampling. |
@@ -97,6 +97,16 @@ as direct proof. Display `label` as the human-readable card title and keep
 are returned separately in `history`. Follow each returned `reference` to move
 down one layer; a retained receipt whose payload is no longer available returns
 `status=missing`.
+
+`behavior_patterns` includes only active skill files with a current
+evidence-backed observed-pattern entry. Later trigger echoes do not replace the
+playbook. A playbook can guide personalization and imitation, but it never grants
+a client permission to execute the observed actions.
+
+`verify_fact` remains a deterministic read: it does not judge whether a claim is
+true. When a recalled entry participates in an open contradiction ledger row,
+the result includes the recorded reason and bounded competing claim. Resolved or
+dismissed rows are not replayed.
 
 ## Transport
 

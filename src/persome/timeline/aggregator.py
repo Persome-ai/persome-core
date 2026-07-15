@@ -14,6 +14,7 @@ fields are back-rendered via ``ax_tree_to_markdown`` as a fallback.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, tzinfo
 from pathlib import Path
 
@@ -456,6 +457,54 @@ def _echo_skill_hints(block: store.TimelineBlock, skill_hints: list[dict]) -> No
             logger.warning("timeline: failed to echo skill hint to %s: %s", hint["skill"], exc)
 
 
+def _estimate_tokens(text: str) -> int:
+    """Return a cheap deterministic prompt-budget proxy.
+
+    CJK characters count individually; other text uses a conservative 4:1
+    character ratio. This is a hard local cap, not a provider tokenizer claim.
+    """
+    cjk = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
+    return cjk + (len(text) - cjk + 3) // 4
+
+
+def _registered_skills_section(
+    rows: list,
+    *,
+    events_text: str,
+    max_registered: int,
+    token_budget: int,
+) -> tuple[str, set[str]]:
+    """Render only relevance-ranked skills that fit the configured hard caps."""
+    if max_registered <= 0 or token_budget <= 0:
+        return "", set()
+
+    terms = set(re.findall(r"[a-z0-9_-]+|[\u4e00-\u9fff]", events_text.casefold()))
+
+    def rank(row: object) -> tuple[int, str]:
+        text = f"{row.path} {row.description}".casefold()
+        row_terms = set(re.findall(r"[a-z0-9_-]+|[\u4e00-\u9fff]", text))
+        return (-len(terms & row_terms), row.path)
+
+    header = "\n\n## Registered Skills\n\n"
+    selected: list[str] = []
+    selected_paths: set[str] = set()
+    used = _estimate_tokens(header)
+    for row in sorted(rows, key=rank):
+        if len(selected) >= max_registered:
+            break
+        description = " ".join(str(row.description).split())
+        line = f"- {row.path}" + (f": {description}" if description else "")
+        cost = _estimate_tokens(line + "\n")
+        if used + cost > token_budget:
+            continue
+        selected.append(line)
+        selected_paths.add(row.path)
+        used += cost
+    if not selected:
+        return "", set()
+    return header + "\n".join(selected), selected_paths
+
+
 def produce_block_for_window(
     cfg: Config,
     *,
@@ -499,15 +548,20 @@ def produce_block_for_window(
 
     skill_rows: list = []
     if cfg.skill_check.enabled:
+        # Pattern detection writes nested skills/skill-*.md files while legacy
+        # user-authored skills can still be flat. Register both active layouts.
         with fts_store.cursor() as conn:
-            skill_rows = [f for f in fts_store.list_files(conn) if f.path.startswith("skill-")]
-    skill_paths = {r.path for r in skill_rows}
-    if skill_rows:
-        skill_index_section = "\n\n## Registered Skills\n\n" + "\n".join(
-            f"- {r.path}: {r.description}" for r in skill_rows
-        )
-    else:
-        skill_index_section = ""
+            skill_rows = [
+                f
+                for f in fts_store.list_files(conn)
+                if f.path.startswith("skill-") or f.path.startswith("skills/skill-")
+            ]
+    skill_index_section, skill_paths = _registered_skills_section(
+        skill_rows,
+        events_text=events_text,
+        max_registered=cfg.skill_check.max_registered,
+        token_budget=cfg.skill_check.token_budget,
+    )
 
     system_text = load_prompt("timeline_block.system.md")
     user_text = load_prompt("timeline_block.user.md").format(

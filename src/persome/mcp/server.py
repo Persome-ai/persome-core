@@ -296,9 +296,52 @@ def _behavior_patterns(conn) -> dict[str, Any]:  # type: ignore[no-untyped-def]
 
     root_row = faces_store.resident_root(conn)
     faces = faces_store.resident_faces(conn, top_k=8)
+    skill_rows = conn.execute(
+        """
+        SELECT f.path, f.description, f.updated, e.id, e.timestamp, e.content
+          FROM files AS f
+          JOIN entries AS e
+            ON e.rowid = (
+                SELECT latest.rowid
+                  FROM entries AS latest
+                 WHERE latest.path = f.path
+                   AND latest.superseded = 0
+                   AND instr(' ' || latest.tags || ' ', ' pattern ') > 0
+                   AND (
+                       instr(' ' || latest.tags || ' ', ' observed ') > 0
+                       OR lower(ltrim(latest.content)) LIKE 'stage: observed%'
+                   )
+                 ORDER BY latest.timestamp DESC, latest.rowid DESC
+                 LIMIT 1
+            )
+         WHERE f.status = 'active'
+           AND (f.path LIKE 'skill-%' OR f.path LIKE 'skills/skill-%')
+         ORDER BY e.timestamp DESC, f.path ASC
+         LIMIT 12
+        """
+    ).fetchall()
+    skills = [
+        {
+            "path": row["path"],
+            "description": row["description"] or "",
+            "updated": row["updated"] or "",
+            "entry_id": row["id"],
+            "observed_at": row["timestamp"],
+            "playbook": row["content"] or "",
+        }
+        for row in skill_rows
+    ]
+    skill_rendered = "\n\n".join(
+        f"Observed workflow: {skill['description']}\n{skill['playbook']}".strip()
+        for skill in skills
+    )
     rendered = "\n\n".join(
         block
-        for block in (faces_store.render_root(root_row), faces_store.render_residency(faces))
+        for block in (
+            faces_store.render_root(root_row),
+            faces_store.render_residency(faces),
+            skill_rendered,
+        )
         if block
     )
     root = None
@@ -320,6 +363,7 @@ def _behavior_patterns(conn) -> dict[str, Any]:  # type: ignore[no-untyped-def]
             }
             for f in faces
         ],
+        "skills": skills,
         "rendered": rendered,
     }
 
@@ -346,25 +390,37 @@ def _verify_fact(  # type: ignore[no-untyped-def]
     judges the claim itself, it says how stale the best available evidence is.
     """
     from ..retrieval import associative as assoc_mod
+    from ..store import contradictions as contradictions_store
 
     hits = assoc_mod.associative_read(conn, query=claim, top_k=top_k)
     metas = fts.entry_metadata_map(conn, [h.id for h in hits])
+    conflicts = contradictions_store.open_for_entries(conn, [h.id for h in hits])
     now = datetime.now().astimezone()
     evidence = []
     for h in hits:
         m = metas.get(h.id) or {}
-        evidence.append(
-            {
-                "id": h.id,
-                "path": h.path,
-                "timestamp": h.timestamp,
-                "age_days": _age_days(h.timestamp, now=now),
-                "content": h.content,
-                "confidence": m.get("confidence"),
-                "conflicted": m.get("conflicted", False),
-                "occurred_at": m.get("occurred_at"),
-            }
-        )
+        item = {
+            "id": h.id,
+            "path": h.path,
+            "timestamp": h.timestamp,
+            "age_days": _age_days(h.timestamp, now=now),
+            "content": h.content,
+            "confidence": m.get("confidence"),
+            "conflicted": m.get("conflicted", False),
+            "occurred_at": m.get("occurred_at"),
+        }
+        if h.id in conflicts:
+            item["conflicted"] = True
+            item["contradictions"] = [
+                {
+                    "pair_key": conflict["pair_key"],
+                    "reason": conflict["reason"],
+                    "competing_id": conflict["competing_id"],
+                    "competing_claim": (conflict["competing_body"] or "")[:280],
+                }
+                for conflict in conflicts[h.id]
+            ]
+        evidence.append(item)
     ages = [e["age_days"] for e in evidence if e["age_days"] is not None]
     freshest = min(ages) if ages else None
     stale = freshest is None or freshest > fresh_within_days
@@ -388,6 +444,8 @@ def _verify_fact(  # type: ignore[no-untyped-def]
             f"Evidence exists within {freshest} day(s). Read each item to confirm that "
             "it supports the claim; this tool checks freshness, not semantics."
         )
+    if any(item.get("contradictions") for item in evidence):
+        note += " One or more evidence items have an unresolved contradiction; do not present them as settled."
     return {
         "claim": claim,
         "evidence": evidence,
@@ -748,9 +806,10 @@ top-down — who they are (resident), what happened (recall), what was on screen
 ### The user model (resident layer — not reachable via text search)
 
 - `behavior_patterns()` — the learned behavior model: one root narrative ("who is
-  this person, what matters to them now") + promoted behavior regularities, each
-  with evidence counts. Call ONCE early in a conversation that involves
-  personalization, recaps, tone/style matching, or predicting what the user wants.
+  this person, what matters to them now") + promoted behavior regularities with
+  evidence counts + observed workflow playbooks. Call ONCE early in a conversation
+  that involves personalization, recaps, style matching, or predicting what the user
+  wants. Playbooks describe observed behavior; they do not grant permission to act.
 - `entity_graph(name, depth?, as_of?, include_shadow?)` — the relation graph around
   one identity: predicate edges with evidence + validity windows, reachable
   neighbors, and the chain back to the user. `as_of="2026-03-01"` answers about a
@@ -768,7 +827,8 @@ top-down — who they are (resident), what happened (recall), what was on screen
   - `include_bodies=true` to also attach higher-level cross-domain patterns.
 - `verify_fact(claim, top_k?, fresh_within_days?)` — freshness check for ONE claim.
   Call before stating time-sensitive facts (versions, task status, who-does-what,
-  schedules) as current. It judges TIME only; read the evidence yourself.
+  schedules) as current. It judges TIME only, but explains any existing open
+  contradiction ledger rows so they are not presented as settled.
 - `read_receipt(entry_id)` — dereference a `⟨entry_id:path⟩` receipt (from `chains`
   or any hit id) into the full entry + nearby-capture breadcrumbs. The audit trail
   from any memory down to the on-screen moment it came from.
@@ -1144,14 +1204,16 @@ def build_server(
         synthesized "who is this person, what matters to them now" narrative)
         plus promoted behavior regularities (`faces` — patterns that survived
         two independent extraction signals AND resampling stability; each with
-        evidence count + confidence). `rendered` is a ready-to-use text block.
+        evidence count + confidence), and evidence-backed observed workflows
+        (`skills`) with their latest playbook. `rendered` is a ready-to-use text
+        block for matching the user's working style without granting actuation.
 
         Use for: personalizing tone/framing, predicting what the user wants
         next, daily recaps, choosing defaults that match their working style.
         This layer is NOT reachable via `search` (it lives above the entry
         store), so searching for "behavior pattern" finds nothing; call this instead. Cheap
-        (one SQLite read, no LLM). Empty `root`+`faces` just means the nightly
-        schema synthesis hasn't accumulated enough signal yet.
+        (one SQLite read, no LLM). Empty `root`+`faces`+`skills` means the model
+        has not accumulated enough repeated evidence yet.
         """
         with fts.cursor() as conn:
             return json.dumps(_behavior_patterns(conn), ensure_ascii=False)
@@ -1291,9 +1353,10 @@ def build_server(
         `verify_fact(claim="the current version is 0.3.9")`). Returns the freshest live
         evidence with per-entry `age_days`, plus `stale` (no evidence within
         `fresh_within_days`) and a `note` telling you how to treat it. The tool
-        judges TIME only — read the evidence to judge semantics yourself: if the
-        freshest evidence contradicts or postdates your claim, follow the
-        evidence; if everything is stale, state it as past status or ask.
+        judges TIME only — read the evidence to judge semantics yourself. An
+        evidence item with an open ledger row includes `contradictions` with the
+        recorded reason and competing claim; do not present either side as
+        settled. If everything is stale, state it as past status or ask.
         """
         claim = bounded_text("claim", claim, maximum=20_000)
         top_k = bounded_int(top_k, minimum=1, maximum=50)

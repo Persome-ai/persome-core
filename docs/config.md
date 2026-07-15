@@ -301,6 +301,22 @@ owner-only `.index-health.json` sidecar and surface through `persome status`,
 [`runtime-internals.md`](runtime-internals.md) and
 [`capture.md`](capture.md).
 
+## Timeline skill matching
+
+```toml
+[skill_check]
+enabled = true
+max_registered = 20
+token_budget = 1000
+```
+
+When skill matching is enabled, each timeline call receives only the most
+relevant active flat or nested skill paths. `max_registered` limits the number
+of complete registry rows, while `token_budget` caps the whole Registered Skills
+prompt section using a deterministic local estimate. Oversized rows are skipped
+without truncation, and returned hints are accepted only for paths that were
+actually included in that call's prompt.
+
 ## Higher geometry
 
 ```toml
@@ -400,6 +416,11 @@ Snapshots are verified before atomic promotion. Integrity failures are emitted
 as structured error logs. The old runtime SSE event bus no longer exists.
 `freeze_writes_on_failure` is intentionally off because a false positive under
 Markdown authority should not halt observation.
+
+`contradiction_check_enabled` remains off by default because generation spends
+nightly LLM calls. This does not disable the read contract: `verify_fact`
+explains any existing open ledger rows, while resolved or dismissed rows remain
+historical and are not returned.
 
 ## Retrieval
 
