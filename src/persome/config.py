@@ -247,6 +247,8 @@ class MemoryDecayConfig:
 class SkillCheckConfig:
     # Detect skill matches inside the per-minute timeline LLM call.
     enabled: bool = True
+    max_registered: int = 20  # relevance-ranked skills exposed to one timeline call
+    token_budget: int = 1000  # deterministic proxy cap for the whole registry section
 
 
 @dataclass
@@ -751,6 +753,8 @@ port = 8742
 
 [skill_check]
 enabled = true                    # detect skill matches inside the per-minute timeline LLM call
+max_registered = 20              # maximum relevance-ranked skills exposed to one call
+token_budget = 1000              # deterministic cap for the Registered Skills section
 
 
 [schema]

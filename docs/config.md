@@ -301,6 +301,22 @@ owner-only `.index-health.json` sidecar and surface through `persome status`,
 [`runtime-internals.md`](runtime-internals.md) and
 [`capture.md`](capture.md).
 
+## Timeline skill matching
+
+```toml
+[skill_check]
+enabled = true
+max_registered = 20
+token_budget = 1000
+```
+
+When skill matching is enabled, each timeline call receives only the most
+relevant active flat or nested skill paths. `max_registered` limits the number
+of complete registry rows, while `token_budget` caps the whole Registered Skills
+prompt section using a deterministic local estimate. Oversized rows are skipped
+without truncation, and returned hints are accepted only for paths that were
+actually included in that call's prompt.
+
 ## Higher geometry
 
 ```toml

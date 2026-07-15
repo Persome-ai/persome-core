@@ -151,6 +151,76 @@ def test_skill_prefix_allowed_in_create_file(ac_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# bounded Registered Skills prompt section
+# ---------------------------------------------------------------------------
+
+
+def test_registered_skills_section_applies_top_k_by_relevance() -> None:
+    class Row:
+        def __init__(self, path: str, description: str) -> None:
+            self.path = path
+            self.description = description
+
+    rows = [
+        Row("skill-code-review.md", "Use for reviewing a GitHub pull request."),
+        Row("skill-standup.md", "Use for a weekday Lark standup status update."),
+        Row("skill-calendar.md", "Use for calendar scheduling."),
+    ]
+    section, paths = aggregator._registered_skills_section(
+        rows,
+        events_text="User typed a status update in the Lark standup channel",
+        max_registered=1,
+        token_budget=1000,
+    )
+    assert paths == {"skill-standup.md"}
+    assert "skill-standup.md" in section
+    assert "skill-code-review.md" not in section
+
+
+def test_registered_skills_section_honors_token_cap_without_partial_lines() -> None:
+    class Row:
+        path = "skill-standup.md"
+        description = "Use for Lark standup updates."
+
+    full, paths = aggregator._registered_skills_section(
+        [Row()], events_text="Lark standup", max_registered=10, token_budget=1000
+    )
+    exact_budget = aggregator._estimate_tokens(full)
+    capped, capped_paths = aggregator._registered_skills_section(
+        [Row()], events_text="Lark standup", max_registered=10, token_budget=exact_budget - 1
+    )
+    assert paths == {"skill-standup.md"}
+    assert aggregator._estimate_tokens(full) <= exact_budget
+    assert capped == ""
+    assert capped_paths == set()
+
+
+def test_registered_skills_section_backfills_after_oversized_relevant_row() -> None:
+    class Row:
+        def __init__(self, path: str, description: str) -> None:
+            self.path = path
+            self.description = description
+
+    short = Row("skill-short.md", "Use for Lark updates.")
+    short_section, _ = aggregator._registered_skills_section(
+        [short], events_text="Lark standup", max_registered=1, token_budget=1000
+    )
+    budget = aggregator._estimate_tokens(short_section)
+    oversized = Row("skill-oversized.md", "Lark standup " * 500)
+
+    section, paths = aggregator._registered_skills_section(
+        [oversized, short],
+        events_text="Lark standup",
+        max_registered=1,
+        token_budget=budget,
+    )
+
+    assert paths == {"skill-short.md"}
+    assert "skill-oversized.md" not in section
+    assert aggregator._estimate_tokens(section) <= budget
+
+
+# ---------------------------------------------------------------------------
 # produce_block_for_window — skill_hints round-trip
 # ---------------------------------------------------------------------------
 
@@ -343,6 +413,46 @@ def test_produce_block_drops_unregistered_skill_hints(ac_root: Path, fake_llm) -
     fake_llm.set_default("timeline", _SKILL_HINTS_PAYLOAD)
 
     cfg = config_mod.load(ac_root / "config.toml")
+    block = aggregator.produce_block_for_window(cfg, start=win_start, end=win_end)
+
+    assert block is not None
+    assert block.skill_hints == []
+
+
+def test_produce_block_drops_registered_skill_hidden_by_prompt_cap(ac_root: Path, fake_llm) -> None:
+    with fts.cursor() as conn:
+        entries_mod.create_file(
+            conn,
+            name="skill-morning-standup",
+            description="Use for a weekday Lark standup status update.",
+            tags=["skill"],
+        )
+        entries_mod.create_file(
+            conn,
+            name="skill-code-review",
+            description="Use for reviewing a GitHub pull request.",
+            tags=["skill"],
+        )
+
+    hidden_hint = json.dumps(
+        {
+            "entries": ["[Lark] standup channel: user typed a status update. Involving: —."],
+            "skill_hints": [
+                {
+                    "skill": "skill-code-review.md",
+                    "confidence": 0.92,
+                    "rationale": "model returned a registered path that was not shown",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    start = datetime(2026, 5, 21, 9, 10, tzinfo=_TZ)
+    win_start, win_end = _seed_window(start)
+    fake_llm.set_default("timeline", hidden_hint)
+    cfg = config_mod.load(ac_root / "config.toml")
+    cfg.skill_check.max_registered = 1
+
     block = aggregator.produce_block_for_window(cfg, start=win_start, end=win_end)
 
     assert block is not None
