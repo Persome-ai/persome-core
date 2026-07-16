@@ -220,6 +220,13 @@ selected projections and preserve receipts/history.
   contract is temporarily backed by MCP Sampling. The connected client spends
   its own model allowance; Persome receives completions, never its login token.
   This override is request-scoped and does not enable unattended daemon calls.
+- When `[agent_funding].enabled=true`, ordinary daemon stages use the selected
+  authenticated coding-agent CLI before provider resolution. Persome sends a
+  role-preserving transcript and function schemas over stdin, validates the
+  structured response envelope, and never reads the client's OAuth store.
+  Daily invocation, timeout, and parallel-process caps are enforced before the
+  call; transport failures are terminal for that writer attempt so automatic
+  retries cannot multiply subscription spend.
 - Terminal finalization sets `sessions.modeled_at` only after every enabled
   stage completes or reports a deliberate benign skip.
 - Semantic-stage errors degrade the model and remain retryable; they do not

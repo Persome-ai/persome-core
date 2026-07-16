@@ -140,21 +140,38 @@ persome llm setup
 persome llm status --check
 ```
 
-Alternatively, a trusted MCP client that supports Sampling with tools can
-explicitly call `process_pending_model_work`. That path uses the model allowance
-already available to the connected agent without exposing its login token to
-Persome; it does not power unattended background processing.
+Alternatively, explicitly lend an existing coding-agent subscription to the
+background Runtime. The client CLI keeps and refreshes its own login; Persome
+stores only its executable path, routing policy, and a durable daily call cap:
+
+```text
+persome llm agent setup --client codex --daily-call-limit 50 --check
+# also supported: claude-code, cursor-agent
+persome llm status
+```
+
+A trusted MCP client that supports Sampling with tools can still call
+`process_pending_model_work` for a one-request, 1–10-session batch. Both paths
+use the connected agent allowance without exposing its OAuth token to Persome;
+the CLI bridge is the opt-in path that also powers unattended stages.
 
 ### 3. Connect a trusted MCP client
 
 Register whichever owner-local clients you use:
 
 ```text
-persome install claude-code
-persome install codex
+persome install claude-code --fund-model
+persome install codex --fund-model
+persome install cursor-agent --fund-model
 persome install claude-desktop
 persome install opencode
 ```
+
+`--fund-model` is explicit consent to let background semantic stages consume
+the client's subscription, with a default cap of 50 model invocations per
+local day. Omit it to install only the MCP server, or change the cap with
+`--daily-call-limit`. `persome llm agent disable` revokes that consent without
+logging the client out or deleting a fallback provider profile.
 
 These stdio registrations launch the MCP process on demand, so the daemon does
 not need to be running after onboarding has initialized the local database, and
@@ -164,7 +181,8 @@ must run `persome start` once before stdio clients use it. Stdio writes remain
 available while the daemon is stopped, but WAL maintenance waits for the daemon;
 start it periodically if you use write tools in that mode so the WAL stays bounded.
 
-For Cursor, generate a stdio configuration and merge its `mcpServers.persome` object into `.cursor/mcp.json` or `~/.cursor/mcp.json`:
+For another Cursor-compatible setup, you can still generate a stdio object and
+merge `mcpServers.persome` manually:
 
 ```text
 persome install mcp-json --filename persome-mcp.json

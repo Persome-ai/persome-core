@@ -125,6 +125,16 @@ def writer_state() -> Path:
     return root() / ".writer-state.json"
 
 
+def agent_funding_usage_file() -> Path:
+    """Durable, secret-free daily allowance ledger for agent-funded calls."""
+    return root() / ".agent-funding-usage.json"
+
+
+def agent_funding_usage_lock() -> Path:
+    """Cross-process lock protecting the agent-funded allowance ledger."""
+    return root() / ".agent-funding-usage.lock"
+
+
 def index_health_file() -> Path:
     """Latest index-health/capture-heartbeat report published by the daemon.
 

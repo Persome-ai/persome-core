@@ -135,6 +135,23 @@ class WriterConfig:
 
 
 @dataclass
+class AgentFundingConfig:
+    """Use an authenticated coding-agent CLI as the model transport.
+
+    The executable remains the credential owner. Persome stores only this
+    routing policy and never reads or copies the client's OAuth material.
+    """
+
+    enabled: bool = False
+    client: str = ""  # codex | claude-code | cursor-agent
+    executable: str = ""
+    model: str = ""  # empty = the client's subscription default
+    daily_call_limit: int = 50
+    timeout_seconds: float = 180.0
+    max_parallel_calls: int = 1
+
+
+@dataclass
 class SessionConfig:
     # Hard cut: no capture-worthy events for this many minutes
     gap_minutes: int = 5
@@ -450,6 +467,7 @@ class Config:
     reducer: ReducerConfig = field(default_factory=ReducerConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     writer: WriterConfig = field(default_factory=WriterConfig)
+    agent_funding: AgentFundingConfig = field(default_factory=AgentFundingConfig)
     evomem: EvomemConfig = field(default_factory=EvomemConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
@@ -567,6 +585,7 @@ def load(path: Path | None = None) -> Config:
         reducer=_build_dataclass(ReducerConfig, _as_dict(raw.get("reducer"))),
         classifier=_build_dataclass(ClassifierConfig, _as_dict(raw.get("classifier"))),
         writer=_build_dataclass(WriterConfig, _as_dict(raw.get("writer"))),
+        agent_funding=_build_dataclass(AgentFundingConfig, _as_dict(raw.get("agent_funding"))),
         evomem=_build_dataclass(EvomemConfig, _as_dict(raw.get("evomem"))),
         search=_build_dataclass(SearchConfig, _as_dict(raw.get("search"))),
         mcp=_build_dataclass(MCPConfig, _as_dict(raw.get("mcp"))),
@@ -687,6 +706,18 @@ soft_limit_tokens = 20000
 context_token_limit = 80000      # trim message history when estimated tokens exceed this
 llm_retry_attempts = 6           # retry LLM call this many times on transient failure
 consolidation_cadence = 8        # run pending per-file compaction every N completed sessions
+
+[agent_funding]
+# Opt-in bridge to an already-authenticated coding-agent CLI. Enable with
+# `persome llm agent setup`; Persome stores no OAuth token. The durable daily
+# call cap bounds unattended use across daemon restarts.
+enabled = false
+client = ""                      # codex | claude-code | cursor-agent
+executable = ""                  # setup saves the resolved absolute CLI path
+model = ""                       # empty = the agent subscription's default model
+daily_call_limit = 50
+timeout_seconds = 180.0
+max_parallel_calls = 1
 
 [session]
 gap_minutes = 5            # hard cut: idle > 5 min ends the session

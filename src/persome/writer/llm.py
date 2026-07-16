@@ -301,6 +301,20 @@ def call_llm(
             max_tokens=model_cfg.max_tokens or _DEFAULT_MAX_TOKENS,
         )
 
+    # An explicitly enabled coding-agent CLI can lend its existing OAuth /
+    # subscription entitlement to unattended stages. The CLI remains the
+    # credential owner; Persome sends prompts over stdin and stores only a
+    # bounded routing policy plus a daily call counter.
+    if cfg.agent_funding.enabled:
+        from .agent_cli import complete as complete_with_agent
+
+        return complete_with_agent(
+            cfg.agent_funding,
+            messages=messages,
+            tools=tools,
+            max_tokens=model_cfg.max_tokens or _DEFAULT_MAX_TOKENS,
+        )
+
     override = os.environ.get("PERSOME_FALLBACK_MODEL")
     if override:
         model_cfg = ModelConfig(**{**model_cfg.__dict__, "model": override})
@@ -666,11 +680,13 @@ def _call_llm_with_retry(
             return resp
 
         except Exception as exc:  # noqa: BLE001
-            # Cancellation and timeout are terminal for a request-funded run.
-            # Retrying would either waste time or create another allowance spend.
+            # Cancellation, timeout, and agent-CLI transport failures are
+            # terminal for funded runs. Retrying would create another allowance
+            # spend without changing the underlying authentication/config state.
+            from .agent_cli import AgentFundingError
             from .agent_funded import SamplingRequestCancelled
 
-            if isinstance(exc, SamplingRequestCancelled):
+            if isinstance(exc, (SamplingRequestCancelled, AgentFundingError)):
                 raise
             exc_type = type(exc).__name__.lower()
             exc_str = str(exc).lower()

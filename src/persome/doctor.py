@@ -1,4 +1,4 @@
-"""``persome doctor`` — offline self-check for a bring-your-own-provider install.
+"""``persome doctor`` — offline self-check for provider or agent-funded installs.
 
 Each check returns a :class:`Check` with a three-state status:
 
@@ -7,11 +7,11 @@ Each check returns a :class:`Check` with a three-state status:
 * ``warn`` — ⚠ inconclusive or degraded (e.g. base URL unreachable from this
   network, AX trust unknowable off-macOS); never affects the exit code.
 
-Design constraints (BYO-key onboarding):
+Design constraints:
 
-* **Zero LLM calls.** The only network I/O is a single HTTP ``HEAD`` against the
-  configured provider endpoint (3s timeout), and even that failing is a
-  warning only — a firewalled machine must still be able to get a green doctor.
+* **Zero LLM calls.** Provider mode performs one HTTP ``HEAD`` against the
+  configured endpoint (3s timeout). Agent-funded mode instead asks the local
+  client CLI for login status. Neither spends model allowance.
 * **No persistent side effects** beyond creating the data root when probing
   writability. Doctor never compiles helpers, never touches the on-disk DB,
   never writes config. Its SQLite feature probe is in-memory only.
@@ -97,7 +97,11 @@ def _llm_profile() -> ResolvedLLMProfile:
     return resolve_profile(config_mod.load().model_for("default"))
 
 
-def check_env_file(profile: ResolvedLLMProfile | None = None) -> Check:
+def check_env_file(
+    profile: ResolvedLLMProfile | None = None,
+    *,
+    agent_funding_enabled: bool = False,
+) -> Check:
     """The dotenv secret store exists and is private (0600 — no group/other bits)."""
     profile = profile or _llm_profile()
     p = paths.env_file()
@@ -116,12 +120,12 @@ def check_env_file(profile: ResolvedLLMProfile | None = None) -> Check:
                 f"{p} missing ({profile.api_key_env} is available in this shell; "
                 "writing it to the env file survives restarts)",
             )
-        return Check(
-            "env file",
-            "fail",
-            f"{p} missing — run `persome llm setup`, then rerun install.sh "
-            "to provision the screenshot key",
+        route_hint = (
+            "rerun install.sh to provision local bearer/screenshot secrets"
+            if agent_funding_enabled
+            else "run `persome llm setup`, then rerun install.sh to provision the screenshot key"
         )
+        return Check("env file", "fail", f"{p} missing — {route_hint}")
     try:
         mode = stat.S_IMODE(p.stat().st_mode)
     except OSError as exc:
@@ -148,6 +152,36 @@ def check_api_key(profile: ResolvedLLMProfile | None = None) -> Check:
         "fail",
         f"{profile.api_key_env} is not set for {profile.provider_label} — run `persome llm setup`",
     )
+
+
+def check_agent_funding(config: config_mod.AgentFundingConfig) -> Check:
+    """Validate client-owned login and the local cap without spending a call."""
+    from .writer.agent_cli import (
+        AgentFundingError,
+        client_capability_status,
+        client_status,
+        usage_status,
+        validate_config,
+    )
+
+    try:
+        validate_config(config)
+        status = client_status(config.client, config.executable)
+        capability = client_capability_status(config.client, config.executable)
+        usage = usage_status(config)
+    except (AgentFundingError, ValueError) as exc:
+        return Check("Agent-funded LLM", "fail", str(exc))
+    if not status.entitlement_ready:
+        return Check("Agent-funded LLM", "fail", f"{config.client}: {status.detail}")
+    if not capability.supported:
+        return Check("Agent-funded LLM", "fail", f"{config.client}: {capability.detail}")
+    detail = (
+        f"{config.client} {status.auth_method}; "
+        f"{usage.used}/{usage.limit} calls used today; OAuth token remains client-owned"
+    )
+    if usage.remaining == 0:
+        return Check("Agent-funded LLM", "warn", detail + " (daily cap reached)")
+    return Check("Agent-funded LLM", "ok", detail)
 
 
 def check_screenshot_key() -> Check:
@@ -415,19 +449,25 @@ def run_checks(host: str, port: int) -> list[Check]:
     cfg = config_mod.load()
     profile = resolve_profile(cfg.model_for("default"))
     checks: list[Check] = [
-        check_env_file(profile),
+        check_env_file(profile, agent_funding_enabled=cfg.agent_funding.enabled),
         check_local_api_token(),
         check_sqlite_secure_fts(),
-        check_api_key(profile),
-        check_screenshot_key(),
-        check_base_url(profile),
-        *check_helpers(cfg.capture),
-        check_ax_trust(cfg.capture),
-        check_screen_recording(cfg.capture),
-        check_ocr(cfg.capture),
-        check_root_writable(),
-        check_port(host, port),
     ]
+    if cfg.agent_funding.enabled:
+        checks.append(check_agent_funding(cfg.agent_funding))
+    else:
+        checks.extend([check_api_key(profile), check_base_url(profile)])
+    checks.extend(
+        [
+            check_screenshot_key(),
+            *check_helpers(cfg.capture),
+            check_ax_trust(cfg.capture),
+            check_screen_recording(cfg.capture),
+            check_ocr(cfg.capture),
+            check_root_writable(),
+            check_port(host, port),
+        ]
+    )
     return checks
 
 

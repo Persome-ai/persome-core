@@ -142,6 +142,23 @@ port = 8742
 
 ## Agent-funded modeling
 
+There are two credential-owner-preserving routes:
+
+1. `[agent_funding]` invokes an authenticated Codex, Claude Code, or Cursor
+   Agent CLI for normal background stages. Enable it explicitly with
+   `persome llm agent setup` or an installer's `--fund-model` flag. A durable
+   per-day invocation cap, per-call timeout, and concurrency limit bound spend.
+2. `process_pending_model_work` borrows the originating MCP session for one
+   explicit bounded batch and requires Sampling with tools.
+
+The CLI bridge passes prompts on stdin with a scrubbed environment. It never
+opens `~/.codex/auth.json`, Claude credentials, Cursor credentials, or another
+OAuth store. Codex runs ephemeral in a read-only sandbox with user MCP/config
+disabled; Claude disables built-in tools, MCP servers, settings, and session
+persistence. Cursor runs without `--force` in an empty private temporary
+directory because its current CLI does not expose equivalent isolation flags.
+Only enable any route for a trusted client account.
+
 `process_pending_model_work(max_sessions=1)` is the provider-neutral path for
 using a model entitlement already available in Codex, Claude, or another MCP
 client. Persome negotiates the client's `sampling` and `sampling.tools`
@@ -156,8 +173,9 @@ the per-call Sampling deadline does the same, and either path rejects further
 Sampling calls so no additional client allowance is spent.
 Clients that only implement MCP tools return
 `client_missing_sampling_with_tools`; use another compatible client, a local
-provider, or a configured API provider in that case. Existing scheduled writers
-continue to use the configured provider route.
+provider, a configured API provider, or the agent CLI bridge in that case.
+Scheduled writers use `[agent_funding]` when it is enabled and otherwise retain
+the configured provider route.
 
 The same loopback ASGI app serves `/model` and the authenticated REST
 routes. Use `persome model open` for a one-time browser bootstrap.

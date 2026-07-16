@@ -809,12 +809,24 @@ def status() -> None:
             table.add_row("", f"[yellow]→ {action}[/yellow]")
 
     table.add_row("Install", _install_source())
-    credential = "ready" if default_profile.credential_ready else "credential missing"
-    table.add_row(
-        "LLM",
-        f"{default_profile.provider_label} / {default_profile.protocol} / "
-        f"{default_profile.model} ({credential})",
-    )
+    if cfg.agent_funding.enabled:
+        from .writer.agent_cli import client_status, usage_status
+
+        agent_status = client_status(cfg.agent_funding.client, cfg.agent_funding.executable)
+        agent_usage = usage_status(cfg.agent_funding)
+        readiness = "ready" if agent_status.entitlement_ready else agent_status.detail
+        table.add_row(
+            "LLM",
+            f"{cfg.agent_funding.client} subscription / agent-cli "
+            f"({readiness}; {agent_usage.used}/{agent_usage.limit} calls today)",
+        )
+    else:
+        credential = "ready" if default_profile.credential_ready else "credential missing"
+        table.add_row(
+            "LLM",
+            f"{default_profile.provider_label} / {default_profile.protocol} / "
+            f"{default_profile.model} ({credential})",
+        )
 
     buf = paths.capture_buffer_dir()
     if buf.exists():
@@ -869,11 +881,11 @@ def status() -> None:
 
 @app.command()
 def doctor() -> None:
-    """Self-check a bring-your-own-provider install (offline; zero LLM calls).
+    """Self-check provider or agent-funded setup (offline; zero LLM calls).
 
     Prints one ✓/✗/⚠ line per prerequisite — env file present + private (0600),
-    local API bearer token present, selected provider credential configured,
-    endpoint reachable (HEAD, warn-only), Swift capture helpers compiled, macOS
+    local API bearer token present, selected provider or agent login available,
+    provider endpoint reachable (HEAD, warn-only), Swift capture helpers compiled, macOS
     Accessibility and Screen Recording trust, local OCR readiness, data root
     writable, daemon port available. Exits 1 if any check FAILS; warnings never
     fail.
@@ -1173,6 +1185,24 @@ def _ping_stages(cfg: config_mod.Config, stages: tuple[str, ...]) -> dict:
 
     from .providers import resolve_profile
     from .writer.llm import PingResult, ping_stage
+
+    # Ordinary `persome status` must not silently consume subscription
+    # allowance. Agent login and the durable cap have dedicated local status
+    # surfaces; `persome llm status --check` is the explicit paid probe.
+    if cfg.agent_funding.enabled:
+        from .writer.agent_cli import client_status
+
+        status = client_status(cfg.agent_funding.client, cfg.agent_funding.executable)
+        return {
+            stage: PingResult(
+                stage=stage,
+                model=cfg.agent_funding.model or "client-default",
+                ok=status.entitlement_ready,
+                latency_ms=None,
+                error=None if status.entitlement_ready else status.detail,
+            )
+            for stage in stages
+        }
 
     # Dedup by effective profile — common case is
     # one model for all four stages, which should hit the network once.
@@ -1886,10 +1916,173 @@ app.add_typer(launchagent_app, name="launchagent")
 
 llm_app = typer.Typer(help="Choose and verify the Runtime's LLM provider.")
 app.add_typer(llm_app, name="llm")
+llm_agent_app = typer.Typer(
+    help="Use an authenticated Codex, Claude Code, or Cursor Agent subscription."
+)
+llm_app.add_typer(llm_agent_app, name="agent")
 
 
 def _interactive_terminal() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _agent_funding_config(
+    *,
+    client: str,
+    executable: str = "",
+    model: str = "",
+    daily_call_limit: int = 50,
+    timeout_seconds: float = 180.0,
+    max_parallel_calls: int = 1,
+) -> config_mod.AgentFundingConfig:
+    from .writer import agent_cli
+
+    normalized = agent_cli.normalize_client(client)
+    resolved = agent_cli.find_executable(normalized, executable)
+    if resolved is None:
+        expected = executable or {"codex": "codex", "claude-code": "claude"}.get(
+            normalized, "cursor-agent"
+        )
+        console.print(f"[red]`{expected}` is not an executable file.[/red]")
+        raise typer.Exit(1)
+    capability = agent_cli.client_capability_status(normalized, resolved)
+    if not capability.supported:
+        console.print(f"[red]{normalized} cannot run the safe bridge:[/red] {capability.detail}")
+        raise typer.Exit(1)
+    status = agent_cli.client_status(normalized, resolved)
+    if not status.entitlement_ready:
+        console.print(
+            f"[red]{normalized} has no usable subscription/OAuth login:[/red] {status.detail}"
+        )
+        console.print(f"[dim]Log in with `{Path(resolved).name}` first, then retry.[/dim]")
+        raise typer.Exit(1)
+    if not 1 <= daily_call_limit <= 10_000:
+        console.print("[red]--daily-call-limit must be between 1 and 10000.[/red]")
+        raise typer.Exit(2)
+    if not 10 <= timeout_seconds <= 3600:
+        console.print("[red]--timeout-seconds must be between 10 and 3600.[/red]")
+        raise typer.Exit(2)
+    if not 1 <= max_parallel_calls <= 8:
+        console.print("[red]--max-parallel-calls must be between 1 and 8.[/red]")
+        raise typer.Exit(2)
+    return config_mod.AgentFundingConfig(
+        enabled=True,
+        client=normalized,
+        executable=resolved,
+        model=model,
+        daily_call_limit=daily_call_limit,
+        timeout_seconds=timeout_seconds,
+        max_parallel_calls=max_parallel_calls,
+    )
+
+
+def _save_agent_funding_from_installer(
+    *, client: str, executable: str, daily_call_limit: int
+) -> None:
+    """Honor an installer's explicit ``--fund-model`` consent flag."""
+    from .writer import agent_cli
+
+    funding = _agent_funding_config(
+        client=client,
+        executable=executable,
+        daily_call_limit=daily_call_limit,
+    )
+    agent_cli.save_config(funding)
+    console.print(
+        f"[green]Enabled agent-funded modeling via {funding.client}.[/green] "
+        f"Daily cap: {funding.daily_call_limit} model calls."
+    )
+    console.print("[dim]Persome stored the CLI path and budget policy, not its login token.[/dim]")
+
+
+@llm_agent_app.command("setup")
+def llm_agent_setup(
+    client: str = typer.Option(..., "--client", help="codex | claude-code | cursor-agent"),
+    executable: str = typer.Option("", "--executable", help="Override the client CLI path."),
+    model: str = typer.Option("", "--model", help="Optional client model override."),
+    daily_call_limit: int = typer.Option(
+        50, "--daily-call-limit", help="Hard model invocations per local calendar day."
+    ),
+    timeout_seconds: float = typer.Option(
+        180.0, "--timeout-seconds", help="Deadline for each client invocation."
+    ),
+    max_parallel_calls: int = typer.Option(
+        1, "--max-parallel-calls", help="Maximum concurrent client processes."
+    ),
+    check: bool = typer.Option(
+        False, "--check", help="Spend one call to verify structured tool selection before saving."
+    ),
+) -> None:
+    """Opt in to unattended model building through an existing agent login."""
+    from .writer import agent_cli
+
+    paths.ensure_dirs()
+    config_mod.write_default_if_missing()
+    funding = _agent_funding_config(
+        client=client,
+        executable=executable,
+        model=model,
+        daily_call_limit=daily_call_limit,
+        timeout_seconds=timeout_seconds,
+        max_parallel_calls=max_parallel_calls,
+    )
+    if check:
+        with console.status("Testing one agent-funded completion and tool call..."):
+            result = agent_cli.probe(funding)
+        if not result.completion_ok or not result.tool_call_ok:
+            console.print(
+                f"[red]Agent-funded probe failed. Nothing was saved.[/red] {result.error}"
+            )
+            raise typer.Exit(1)
+        console.print("[green]✓ Agent-funded completion and tool selection work[/green]")
+    agent_cli.save_config(funding)
+    console.print(f"[green]✓ Enabled agent-funded modeling via {funding.client}.[/green]")
+    console.print(f"  Executable: {funding.executable}")
+    console.print(f"  Daily cap: {funding.daily_call_limit} model calls")
+    console.print("  Credential: owned and refreshed by the client; not stored by Persome")
+    console.print("  Next: persome llm status")
+
+
+@llm_agent_app.command("status")
+def llm_agent_status() -> None:
+    """Show agent login and durable budget status without spending allowance."""
+    from .writer import agent_cli
+
+    cfg = config_mod.load()
+    funding = cfg.agent_funding
+    if not funding.enabled:
+        console.print("[yellow]Agent-funded modeling is disabled.[/yellow]")
+        console.print("[dim]Enable it with `persome llm agent setup --client ...`.[/dim]")
+        return
+    status, capability, usage = agent_cli.configured_status(funding)
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_row("Route", f"agent subscription ({funding.client})")
+    table.add_row("Executable", status.executable)
+    table.add_row("Login", status.detail)
+    table.add_row("Capability", capability.detail)
+    table.add_row("Model", funding.model or "client default")
+    table.add_row("Daily budget", f"{usage.used}/{usage.limit} calls used")
+    table.add_row("Parallelism", str(funding.max_parallel_calls))
+    table.add_row("Timeout", f"{funding.timeout_seconds:g}s per call")
+    console.print(table)
+    if not status.entitlement_ready or not capability.supported:
+        raise typer.Exit(1)
+
+
+@llm_agent_app.command("disable")
+def llm_agent_disable() -> None:
+    """Stop agent-funded calls while preserving the previous provider profile."""
+    from dataclasses import replace
+
+    from .writer import agent_cli
+
+    cfg = config_mod.load()
+    if not cfg.agent_funding.enabled:
+        console.print("[yellow]Agent-funded modeling is already disabled.[/yellow]")
+        return
+    agent_cli.save_config(replace(cfg.agent_funding, enabled=False))
+    console.print("[green]Agent-funded modeling disabled.[/green]")
+    console.print("[dim]Any configured API/local provider becomes the active route again.[/dim]")
 
 
 def _llm_credential_summary(spec: ProviderSpec) -> str:
@@ -1959,6 +2152,39 @@ def llm_status(
 
     env_file_mod.load_env_file(paths.env_file())
     cfg = config_mod.load()
+    if cfg.agent_funding.enabled:
+        from .writer import agent_cli
+
+        funding = cfg.agent_funding
+        status, capability, usage = agent_cli.configured_status(funding)
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_row("Route", f"agent subscription ({funding.client})")
+        table.add_row("Protocol", "agent-cli structured bridge")
+        table.add_row("Model", funding.model or "client default")
+        table.add_row("Executable", status.executable)
+        table.add_row(
+            "Capability",
+            capability.detail if capability.supported else f"[red]{capability.detail}[/red]",
+        )
+        table.add_row(
+            "Credential",
+            "[green]client-owned[/green] (not stored by Persome)"
+            if status.entitlement_ready
+            else f"[red]{status.detail}[/red]",
+        )
+        table.add_row("Daily budget", f"{usage.used}/{usage.limit} calls used")
+        table.add_row("Timeout", f"{funding.timeout_seconds:g}s per call")
+        console.print(table)
+        if not status.entitlement_ready or not capability.supported:
+            raise typer.Exit(1)
+        if check:
+            with console.status("Testing one agent-funded completion and tool call..."):
+                result = agent_cli.probe(funding)
+            if not result.completion_ok or not result.tool_call_ok:
+                console.print(f"[red]✗ Agent-funded probe failed:[/red] {result.error}")
+                raise typer.Exit(1)
+            console.print("[green]✓ Completion and tool selection work[/green]")
+        return
     profile = resolve_profile(cfg.model_for("default"))
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("Provider", f"{profile.provider_label} ({profile.provider})")
@@ -2335,6 +2561,14 @@ def launchagent_status() -> None:
 def install_claude_code(
     name: str = typer.Option("persome", help="MCP server name shown to the client."),
     scope: str = typer.Option("user", help="Claude Code scope: user | local | project."),
+    fund_model: bool = typer.Option(
+        False,
+        "--fund-model",
+        help="Explicitly allow background modeling through this Claude Code login.",
+    ),
+    daily_call_limit: int = typer.Option(
+        50, "--daily-call-limit", help="Daily model-call cap used with --fund-model."
+    ),
 ) -> None:
     """Add Persome to Claude Code as an owner-local stdio MCP subprocess."""
     _init()
@@ -2375,6 +2609,12 @@ def install_claude_code(
     verb = "Updated" if replaced else "Registered"
     console.print(f"[green]{verb} {name!r} in Claude Code ({scope} scope).[/green]")
     console.print(f"  command: {' '.join(stdio_command)}")
+    if fund_model:
+        _save_agent_funding_from_installer(
+            client="claude-code",
+            executable=claude_bin,
+            daily_call_limit=daily_call_limit,
+        )
 
 
 def _claude_desktop_config_path() -> Path:
@@ -2454,6 +2694,14 @@ def install_claude_desktop(
 @install_app.command("codex")
 def install_codex(
     name: str = typer.Option("persome", help="MCP server name shown to the client."),
+    fund_model: bool = typer.Option(
+        False,
+        "--fund-model",
+        help="Explicitly allow background modeling through this Codex login.",
+    ),
+    daily_call_limit: int = typer.Option(
+        50, "--daily-call-limit", help="Daily model-call cap used with --fund-model."
+    ),
 ) -> None:
     """Add Persome to Codex as an owner-local stdio MCP subprocess."""
     _init()
@@ -2486,6 +2734,66 @@ def install_codex(
     verb = "Updated" if replaced else "Registered"
     console.print(f"[green]{verb} {name!r} in Codex CLI.[/green]")
     console.print(f"  command: {' '.join(stdio_command)}")
+    if fund_model:
+        _save_agent_funding_from_installer(
+            client="codex",
+            executable=codex_bin,
+            daily_call_limit=daily_call_limit,
+        )
+
+
+def _cursor_agent_config_path() -> Path:
+    return Path.home() / ".cursor" / "mcp.json"
+
+
+@install_app.command("cursor-agent")
+def install_cursor_agent(
+    name: str = typer.Option("persome", help="MCP server name shown to the client."),
+    fund_model: bool = typer.Option(
+        False,
+        "--fund-model",
+        help="Explicitly allow background modeling through this Cursor login.",
+    ),
+    daily_call_limit: int = typer.Option(
+        50, "--daily-call-limit", help="Daily model-call cap used with --fund-model."
+    ),
+) -> None:
+    """Add Persome to Cursor Agent as an owner-local stdio MCP subprocess."""
+    _init()
+    cursor_bin = shutil.which("cursor-agent")
+    if not cursor_bin:
+        console.print(
+            "[red]`cursor-agent` CLI not found on PATH.[/red] "
+            "Install Cursor CLI first, or edit ~/.cursor/mcp.json manually."
+        )
+        raise typer.Exit(1)
+
+    cfg_path = _cursor_agent_config_path()
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    data = _load_claude_desktop_config(cfg_path)
+    servers = data.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        console.print(f"[red]`mcpServers` in {cfg_path} is not an object.[/red]")
+        raise typer.Exit(1)
+    stdio_command = _stdio_mcp_command()
+    replaced = name in servers
+    servers[name] = {"command": stdio_command[0], "args": stdio_command[1:]}
+    try:
+        _write_private_json(cfg_path, data)
+    except (OSError, RuntimeError) as exc:
+        console.print(f"[red]Could not write {cfg_path}:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    verb = "Updated" if replaced else "Registered"
+    console.print(f"[green]{verb} {name!r} in Cursor Agent.[/green]")
+    console.print(f"  file: {cfg_path}")
+    console.print(f"  command: {' '.join(stdio_command)}")
+    if fund_model:
+        _save_agent_funding_from_installer(
+            client="cursor-agent",
+            executable=cursor_bin,
+            daily_call_limit=daily_call_limit,
+        )
 
 
 def _opencode_config_path() -> Path:
