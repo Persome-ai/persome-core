@@ -62,6 +62,14 @@ executables. Granting only the terminal or daemon is not equivalent.
 `integration` tests use a real provider or the complete local OCR runtime and
 remain outside the offline gate.
 
+The OAuth-safe agent bridge has an offline regression suite; it mocks client
+processes and asserts structured tool adaptation, durable budget enforcement,
+and removal of provider/token variables from the child environment:
+
+```bash
+uv run pytest tests/test_agent_cli_funding.py tests/test_agent_funded_sampling.py -q
+```
+
 ## 4. Verify generated contracts
 
 ```bash

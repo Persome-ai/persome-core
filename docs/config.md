@@ -88,7 +88,27 @@ require reliable structured output. Without a hosted credential or keyless
 local endpoint, Persome still captures and serves BM25. A connected client that
 advertises MCP Sampling with tools can explicitly call
 `process_pending_model_work` to process a bounded backlog with the client's own
-model allowance; otherwise semantic model stages remain degraded.
+model allowance. For unattended stages, opt into the coding-agent CLI bridge:
+
+```toml
+[agent_funding]
+enabled = true
+client = "codex"               # codex | claude-code | cursor-agent
+executable = "/absolute/path/to/codex"
+model = ""                     # empty = client subscription default
+daily_call_limit = 50          # durable across daemon restarts
+timeout_seconds = 180.0
+max_parallel_calls = 1
+```
+
+Use `persome llm agent setup --client ...` instead of editing this section.
+Setup accepts only a client-owned subscription/OAuth login, saves no token, and
+can spend one budgeted verification call with `--check`. Each attempted model
+invocation reserves one daily unit before launching the client, so crashes,
+timeouts, and invalid responses cannot bypass the cap. When the cap is reached,
+semantic work fails closed until the next local calendar day; Persome does not
+silently fall back to a paid API profile. `persome llm agent disable` restores
+the previous provider route.
 
 Hosted presets currently include Anthropic, OpenAI, DeepSeek, OpenRouter,
 Gemini, Groq, Mistral, xAI, Qwen, Moonshot/Kimi, Zhipu GLM, SiliconFlow,

@@ -110,7 +110,12 @@ configured capabilities:
    Stage prompts can contain derived personal context, including raw memory
    text, screen text, window titles, URLs, focused-field values, and timeline
    blocks.
-2. `OPENAI_BASE_URL` receives embedding inputs when hybrid dense retrieval is
+2. When `[agent_funding]` is explicitly enabled, the selected Codex, Claude
+   Code, or Cursor Agent CLI receives the same stage prompts on stdin and sends
+   them under its own account policy. Persome never reads the client's OAuth
+   files or persists a refresh token. The child gets a minimal environment with
+   API-key/token variables removed; a durable daily call ledger bounds use.
+3. `OPENAI_BASE_URL` receives embedding inputs when hybrid dense retrieval is
    enabled and a provider is configured.
 
 Capture and BM25 retrieval work without provider credentials. LLM-dependent

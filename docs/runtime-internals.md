@@ -15,7 +15,11 @@ PERSOME_LOCAL_API_TOKEN
 
 `config.toml` contains behavior plus the provider id, protocol, model, endpoint,
 and key variable name, never the key value. `persome llm setup` writes that
-profile only after a live check. `[capture].ocr_policy` records OCR intent:
+profile only after a live check. `[agent_funding]` is an alternative opt-in
+route that stores a client id, absolute executable path, model override, and
+spend bounds only. The client owns authentication; `.agent-funding-usage.json`
+records a secret-free daily invocation count under a cross-process owner-only
+lock. `[capture].ocr_policy` records OCR intent:
 `auto` is unconfigured, while `enabled` and `disabled` are durable user choices
 that ordinary onboarding and updates preserve. `PERSOME_ROOT`
 redirects the entire runtime for tests or isolated profiles.
