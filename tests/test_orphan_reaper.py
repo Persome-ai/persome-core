@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from persome.evomem.engine import EvoMemory
 from persome.store import fts
 from persome.writer import delta_apply, orphan_reaper
 
@@ -20,7 +19,7 @@ def _cfg(enabled=True, ttl=30):
 
 def _mint(clean):
     with fts.cursor() as conn:
-        delta_apply.apply_delta(conn, None, clean, memory=EvoMemory())
+        delta_apply.apply_delta(conn, None, clean)
 
 
 def _active_points(prefix):
@@ -173,7 +172,7 @@ def test_fact_rows_not_treated_as_entities(ac_root):
         ],
     }
     with fts.cursor() as conn:
-        delta_apply.apply_delta(conn, cfg, clean, memory=EvoMemory())
+        delta_apply.apply_delta(conn, cfg, clean)
 
         conn.row_factory = None
         fact_n = conn.execute(

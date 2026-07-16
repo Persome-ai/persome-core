@@ -305,6 +305,7 @@ def _upsert_shadow(
     source_id: str | None = None,
     source_receipt: str | None = None,
     status: str = "shadow",
+    commit: bool = True,
 ) -> None:
     """New evidence adds an edge; existing open edge ratchets its strength.
 
@@ -318,7 +319,12 @@ def _upsert_shadow(
     eid = seen.get(key)
     if eid is not None:
         if edges_store.reinforce_edge(
-            conn, edge_id=eid, observations=observations, confidence=confidence, additive=additive
+            conn,
+            edge_id=eid,
+            observations=observations,
+            confidence=confidence,
+            additive=additive,
+            commit=commit,
         ):
             tally.reinforced += 1
         if status == "active":
@@ -345,6 +351,7 @@ def _upsert_shadow(
         source_id=source_id,
         source_receipt=source_receipt,
         status=status,
+        commit=commit,
     )
     seen[key] = new_id
     tally.new += 1

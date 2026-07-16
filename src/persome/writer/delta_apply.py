@@ -9,10 +9,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from ..evomem import integrity as evo_integrity
 from ..evomem import relation_extractor as rex
+from ..evomem import store as evo_store
 from ..evomem.engine import EvoMemory
-from ..evomem.models import MemoryLayer
+from ..evomem.models import MemoryLayer, MemoryNode
 from ..evomem.person_graph import _slug as _entity_slug
+from ..evomem.store import NodeStore
 from ..logger import get
 from ..store import entries as entries_store
 from ..store import relation_edges as edges_store
@@ -49,6 +52,21 @@ class ApplyResult:
     supersedes_applied: int = 0
     skipped_reason: str = ""
     errors: list[str] = field(default_factory=list)
+
+
+class _ConnectionNodeStore(NodeStore):
+    """Route deterministic Point writes through the caller's transaction."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        # NodeStore.__init__ opens another autocommit connection. Runtime schema
+        # setup already happened at fts.cursor(), so retain only the shared scope.
+        self.user_id = "default"
+        self.agent_id = "default"
+        self._conn = conn
+
+    def save(self, node: MemoryNode) -> None:
+        evo_integrity.ensure_writes_allowed()
+        self._upsert_node(self._conn, node)
 
 
 def _canonical_of(who: dict[str, Any] | None) -> str | None:
@@ -114,14 +132,11 @@ def _apply_entities(conn: sqlite3.Connection, mem: EvoMemory, clean: dict, r: Ap
 
 
 def _stamp_entities_valid_until(conn: sqlite3.Connection, file_names: list[str], at: str) -> None:
-    with contextlib.suppress(Exception):
-        conn.commit()
-        conn.executemany(
-            "UPDATE evo_nodes SET valid_until = ? WHERE file_name = ? AND is_latest = 1"
-            " AND valid_until IS NULL",
-            [(at, fn) for fn in file_names],
-        )
-        conn.commit()
+    conn.executemany(
+        "UPDATE evo_nodes SET valid_until = ? WHERE file_name = ? AND is_latest = 1"
+        " AND valid_until IS NULL",
+        [(at, fn) for fn in file_names],
+    )
 
 
 def _route_assertion_stem(
@@ -210,6 +225,7 @@ def _apply_relations(
                     dst_kind=dst_kind,
                     polarity=_norm_polarity(rel.get("polarity")),
                     additive=bool(rel.get("cooccurrence")),
+                    commit=False,
                 )
             except ValueError:
                 continue
@@ -221,7 +237,7 @@ def _apply_relations(
             if rel.get("ended"):
                 key = rex._edge_key(src, dst, predicate.value)  # noqa: SLF001
                 eid = seen.get(key)
-                if eid and edges_store.close_edge(conn, edge_id=eid, at=now):
+                if eid and edges_store.close_edge(conn, edge_id=eid, at=now, commit=False):
                     r.edges_closed += 1
         except Exception as exc:  # noqa: BLE001
             r.errors.append(f"relation: {exc}")
@@ -259,6 +275,7 @@ def _apply_events(
                         observations=1,
                         src_kind=_endpoint_kind(pc, kinds),
                         dst_kind=EntityKind.EVENT.value,
+                        commit=False,
                     )
                 except ValueError:
                     continue
@@ -293,6 +310,7 @@ def _apply_floor(
                 dst_kind=_endpoint_kind(canonical, kinds),
                 additive=True,
                 status="active",  # direct observed attention, not an inferred semantic claim
+                commit=False,
             )
         except ValueError:
             continue
@@ -334,24 +352,49 @@ def apply_delta(
     conn: sqlite3.Connection,
     cfg: Any,
     clean: dict,
-    *,
-    memory: EvoMemory | None = None,
 ) -> ApplyResult:
-    r = ApplyResult()
     if not clean:
-        r.skipped_reason = "empty"
-        return r
-    mem = memory or EvoMemory()
-    kinds = _entity_kind_map(clean)
-    _apply_supersede(conn, clean, r)
-    _apply_entities(conn, mem, clean, r)
+        return ApplyResult(skipped_reason="empty")
 
-    if getattr(getattr(cfg, "memory_delta", None), "apply_assertions", False):
-        _apply_assertions(conn, mem, clean, kinds, r)
-    _apply_floor(conn, clean, kinds, r)
-    _apply_relations(conn, clean, kinds, r)
-    _apply_events(conn, clean, kinds, r)
-    return r
+    # fts connections autocommit. A savepoint plus a connection-bound NodeStore
+    # keeps Points and Lines in one transaction so an item-level failure cannot
+    # leave successful siblings behind for a retry to reinforce.
+    evo_store.ensure_schema(conn)
+    edges_store.ensure_schema(conn)
+    savepoint = "persome_delta_apply"
+    original_row_factory = conn.row_factory
+    conn.execute(f"SAVEPOINT {savepoint}")
+    try:
+        r = ApplyResult()
+        mem = EvoMemory(store=_ConnectionNodeStore(conn))
+        kinds = _entity_kind_map(clean)
+        _apply_entities(conn, mem, clean, r)
+
+        if getattr(getattr(cfg, "memory_delta", None), "apply_assertions", False):
+            _apply_assertions(conn, mem, clean, kinds, r)
+        _apply_floor(conn, clean, kinds, r)
+        _apply_relations(conn, clean, kinds, r)
+        _apply_events(conn, clean, kinds, r)
+        # Corrections are a separate, user-directed head. Do not touch their
+        # Markdown projection if any canonical model item already failed.
+        if not r.errors:
+            conn.row_factory = sqlite3.Row
+            _apply_supersede(conn, clean, r)
+
+        if r.errors:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            return ApplyResult(skipped_reason="rolled_back", errors=list(r.errors))
+        conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+        return r
+    except BaseException:
+        with contextlib.suppress(sqlite3.Error):
+            conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+        with contextlib.suppress(sqlite3.Error):
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+        raise
+    finally:
+        conn.row_factory = original_row_factory
 
 
 def _norm_polarity(p: Any) -> str:

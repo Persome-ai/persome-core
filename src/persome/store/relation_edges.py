@@ -145,6 +145,25 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
     if fts.is_client_process():
         return
+    have = {row[1] for row in conn.execute("PRAGMA table_info(relation_edges)").fetchall()}
+    required = {
+        "edge_id",
+        "src_identity",
+        "dst_identity",
+        "predicate",
+        "label",
+        "valid_from",
+        "valid_to",
+        "provenance",
+        "confidence",
+        "quote",
+        "status",
+        "created_at",
+        *{name for name, _decl in _EXTRA_COLUMNS},
+    }
+    indexes = {str(row[1]) for row in conn.execute("PRAGMA index_list(relation_edges)")}
+    if required.issubset(have) and {"ix_edges_src", "ix_edges_dst"}.issubset(indexes):
+        return
     conn.executescript(SCHEMA)
     have = {row[1] for row in conn.execute("PRAGMA table_info(relation_edges)").fetchall()}
     for name, decl in _EXTRA_COLUMNS:
@@ -177,6 +196,7 @@ def add_edge(
     source_kind: str | None = None,
     source_id: str | None = None,
     source_receipt: str | None = None,
+    commit: bool = True,
 ) -> str:
     """Append one relation edge. Returns its ``edge_id``.
 
@@ -261,11 +281,18 @@ def add_edge(
             source[2] or None,
         ),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return eid
 
 
-def close_edge(conn: sqlite3.Connection, *, edge_id: str, at: str | None = None) -> bool:
+def close_edge(
+    conn: sqlite3.Connection,
+    *,
+    edge_id: str,
+    at: str | None = None,
+    commit: bool = True,
+) -> bool:
     """Close a relation's valid-time interval (stamp ``valid_to``). Append-only: it fires once
     (``WHERE valid_to IS NULL`` refuses a re-close / reopen) and never touches ``created_at``.
     Together with :func:`reinforce_edge` these are the only TWO mutations this table allows —
@@ -277,7 +304,8 @@ def close_edge(conn: sqlite3.Connection, *, edge_id: str, at: str | None = None)
         "UPDATE relation_edges SET valid_to = ? WHERE edge_id = ? AND valid_to IS NULL",
         (ts, edge_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cur.rowcount > 0
 
 
@@ -321,6 +349,7 @@ def reinforce_edge(
     confidence: float | None = None,
     at: str | None = None,
     additive: bool = False,
+    commit: bool = True,
 ) -> bool:
     """Monotone evidence reinforcement: raise an OPEN edge's strength to ``observations``.
 
@@ -379,7 +408,8 @@ def reinforce_edge(
             "WHERE edge_id = ? AND valid_to IS NULL AND observations < ?",
             (obs, ts, edge_id, obs),
         )
-    conn.commit()
+    if commit:
+        conn.commit()
     return obs_cur.rowcount > 0 or conf_grew
 
 

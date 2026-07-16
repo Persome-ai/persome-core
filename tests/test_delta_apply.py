@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from persome.evomem.engine import EvoMemory
 from persome.store import fts
 from persome.store import relation_edges as edges_store
 from persome.writer import delta_apply
@@ -12,14 +11,14 @@ from persome.writer import delta_apply
 
 def _apply(clean: dict) -> delta_apply.ApplyResult:
     with fts.cursor() as conn:
-        return delta_apply.apply_delta(conn, None, clean, memory=EvoMemory())
+        return delta_apply.apply_delta(conn, None, clean)
 
 
 def _apply_cfg(clean: dict, **flags) -> delta_apply.ApplyResult:
     """apply with a real memory_delta cfg (e.g. apply_assertions=True)."""
     cfg = SimpleNamespace(memory_delta=SimpleNamespace(**flags))
     with fts.cursor() as conn:
-        return delta_apply.apply_delta(conn, cfg, clean, memory=EvoMemory())
+        return delta_apply.apply_delta(conn, cfg, clean)
 
 
 def _point_files(prefix: str) -> list[str]:
@@ -118,6 +117,66 @@ def test_idempotent_rerun_sees_not_remints(ac_root):
     r2 = _apply(clean)
     assert r1.entities_minted == 1 and r1.entities_seen == 0
     assert r2.entities_minted == 0 and r2.entities_seen == 1
+
+
+def test_late_item_error_rolls_back_prior_model_writes_across_retries(ac_root, monkeypatch):
+    baseline = {
+        "entities": [{"ref": "张伟", "kind": "person", "ended": False, "quote": "和张伟对齐"}],
+        "relations": [],
+        "events": [],
+        "assertions": [],
+    }
+    assert _apply(baseline).entities_minted == 1
+
+    clean = {
+        "entities": [
+            {"ref": "张伟", "kind": "person", "ended": False, "quote": "和张伟对齐"},
+            {"ref": "李四", "kind": "person", "ended": False, "quote": "和李四对齐"},
+        ],
+        "relations": [
+            {
+                "src": {"ref": "self"},
+                "dst": {"ref": "张伟"},
+                "predicate": "knows",
+                "polarity": "0",
+                "ended": False,
+                "quote": "和张伟对齐",
+                "confidence": 0.9,
+            }
+        ],
+        "events": [],
+        "assertions": [],
+    }
+    real_add_edge = edges_store.add_edge
+    attempted_predicates: list[str] = []
+
+    def fail_after_floor(conn, **kwargs):
+        predicate = str(kwargs["predicate"])
+        attempted_predicates.append(predicate)
+        if predicate == "knows":
+            raise RuntimeError("synthetic late relation failure")
+        return real_add_edge(conn, **kwargs)
+
+    monkeypatch.setattr(edges_store, "add_edge", fail_after_floor)
+
+    for _attempt in range(2):
+        result = _apply(clean)
+        assert result.skipped_reason == "rolled_back"
+        assert result.errors == ["relation: synthetic late relation failure"]
+        with fts.cursor() as conn:
+            point_files = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT file_name FROM evo_nodes WHERE is_latest=1 AND status='active'"
+                )
+            }
+            edges = conn.execute(
+                "SELECT dst_identity, predicate, observations FROM relation_edges"
+            ).fetchall()
+        assert point_files == {"person-张伟.md"}
+        assert [tuple(row) for row in edges] == [("张伟", "engaged_with", 1)]
+
+    assert attempted_predicates == ["engaged_with", "knows"] * 2
 
 
 def test_relations_mint_edges_with_polarity(ac_root):

@@ -281,6 +281,39 @@ def query_range(
     return [_row_to_block(r) for r in rows]
 
 
+def query_overlapping_latest(
+    conn: sqlite3.Connection,
+    window_start: datetime,
+    window_end: datetime,
+    limit: int = 50,
+) -> list[TimelineBlock]:
+    """Newest strict-overlap blocks, returned in chronological order.
+
+    Session modeling historically retained the latest ``limit`` complete
+    blocks. This variant preserves that truncation policy while admitting the
+    partial first and last minute of ``[window_start, window_end)``. Blocks that
+    merely touch either boundary remain excluded.
+    """
+    if window_end.timestamp() <= window_start.timestamp():
+        return []
+    rows = conn.execute(
+        """
+        SELECT * FROM (
+            SELECT * FROM timeline_blocks
+             WHERE persome_epoch(end_time) > ?
+               AND persome_epoch(start_time) < ?
+             ORDER BY persome_epoch(start_time) DESC,
+                      persome_epoch(end_time) DESC
+             LIMIT ?
+        )
+         ORDER BY persome_epoch(start_time) ASC,
+                  persome_epoch(end_time) ASC
+        """,
+        (window_start.timestamp(), window_end.timestamp(), min(limit, 200)),
+    ).fetchall()
+    return [_row_to_block(row) for row in rows]
+
+
 def query_overlapping(
     conn: sqlite3.Connection,
     window_start: datetime,

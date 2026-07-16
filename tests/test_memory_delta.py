@@ -415,6 +415,41 @@ def test_session_window_uses_strict_overlap_at_both_boundaries(ac_root, fake_llm
     assert "touches after" not in sent
 
 
+def test_overlap_limit_keeps_latest_blocks_then_returns_them_chronologically(
+    ac_root, fake_llm
+) -> None:
+    first_start = datetime(2026, 7, 2, 9, 0).astimezone()
+    with fts.cursor() as conn:
+        for index in range(121):
+            timeline_store.insert(
+                conn,
+                _block(
+                    first_start + timedelta(minutes=index),
+                    [f"block-{index:03d}"],
+                    ["Feishu"],
+                ),
+            )
+    fake_llm.set_default(
+        delta_mod.STAGE,
+        _payload(entities=[], assertions=[], relations=[], events=[]),
+    )
+    cfg = _cfg()
+    cfg.memory_delta.max_blocks = 120
+
+    result = delta_mod.run_after_session(
+        cfg,
+        session_id="bounded-overlap-session",
+        start_time=first_start + timedelta(seconds=30),
+        end_time=first_start + timedelta(minutes=121, seconds=-30),
+    )
+
+    assert result.written
+    sent = "".join(block["text"] for block in fake_llm.calls[0]["messages"][1]["content"])
+    assert sum(f"block-{index:03d}" in sent for index in range(121)) == 120
+    assert "block-000" not in sent
+    assert sent.index("block-001") < sent.index("block-120")
+
+
 def test_apply_result_errors_leave_delta_failed(ac_root, fake_llm, monkeypatch) -> None:
     from persome.writer import delta_apply
 

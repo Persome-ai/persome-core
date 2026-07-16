@@ -91,6 +91,27 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     """Create/migrate the canonical node store in an owner process only."""
     if fts.is_client_process():
         return
+    have = {str(row[1]) for row in conn.execute("PRAGMA table_info(evo_nodes)")}
+    required = {
+        "node_id",
+        "user_id",
+        "agent_id",
+        "content",
+        "layer",
+        "supersedes",
+        "superseded_by",
+        "is_latest",
+        "status",
+        "memory_at",
+        "gmt_created",
+        *{name for name, _decl in _SSOT_COLUMNS},
+    }
+    indexes = {str(row[1]) for row in conn.execute("PRAGMA index_list(evo_nodes)")}
+    if required.issubset(have) and {
+        "idx_evo_nodes_scope",
+        "idx_evo_nodes_latest",
+    }.issubset(indexes):
+        return
     conn.executescript(_CREATE_SQL)
     _migrate(conn)
 

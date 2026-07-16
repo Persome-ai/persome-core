@@ -425,7 +425,7 @@ def run_after_session(
             # Session boundaries are event timestamps while timeline blocks are
             # minute-aligned. Strict overlap keeps the partial first/last minute
             # without admitting blocks that only touch either boundary.
-            blocks = tl_store.query_overlapping(
+            blocks = tl_store.query_overlapping_latest(
                 conn,
                 start_time,
                 end_time,

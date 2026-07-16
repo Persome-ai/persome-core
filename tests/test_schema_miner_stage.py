@@ -293,7 +293,6 @@ def test_tool_and_org_prefixes_are_mined(ac_root):
 
 
 def test_collect_fact_bundles_from_evomem_reads_evo_nodes(ac_root):
-    from persome.evomem.engine import EvoMemory
     from persome.writer import delta_apply
 
     cfg_da = SimpleNamespace(memory_delta=SimpleNamespace(apply_assertions=True))
@@ -317,7 +316,7 @@ def test_collect_fact_bundles_from_evomem_reads_evo_nodes(ac_root):
             name="person-\u674e\u56db.md",
             facts=[f"\u674e\u56db\u4e8b\u5b9e{i}" for i in range(4)],
         )  # legacy entries
-        delta_apply.apply_delta(conn, cfg_da, clean, memory=EvoMemory())
+        delta_apply.apply_delta(conn, cfg_da, clean)
         legacy = {
             b.source_path for b in stage.collect_fact_bundles(conn, from_evomem=False, min_facts=4)
         }
