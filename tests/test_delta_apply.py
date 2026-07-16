@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import sqlite3
 from types import SimpleNamespace
 
+from persome.store import entries as entries_store
 from persome.store import fts
 from persome.store import relation_edges as edges_store
 from persome.writer import delta_apply
@@ -30,6 +32,149 @@ def _point_files(prefix: str) -> list[str]:
                 "SELECT DISTINCT file_name FROM evo_nodes WHERE file_name LIKE ?", (f"{prefix}-%",)
             )
         ]
+
+
+def _seed_source_entry() -> tuple[str, str]:
+    name = "user-profile.md"
+    with fts.cursor() as conn:
+        entries_store.create_file(conn, name=name, description="identity", tags=["identity"])
+        entry_id = entries_store.append_entry(
+            conn,
+            name=name,
+            content="Example source fact",
+            tags=["identity"],
+        )
+    return name, entry_id
+
+
+def test_fresh_schema_inside_caller_transaction_does_not_commit_marker(ac_root):
+    conn = sqlite3.connect(ac_root / "fresh-apply.db", isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("CREATE TABLE caller_marker(value TEXT)")
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO caller_marker(value) VALUES ('uncommitted')")
+
+        result = delta_apply.apply_delta(
+            conn,
+            None,
+            {"entities": [{"ref": "Alice", "kind": "person", "ended": False, "quote": "x"}]},
+        )
+
+        assert result.skipped_reason == "schema_not_initialized"
+        assert result.errors
+        assert conn.in_transaction
+        assert conn.execute("SELECT COUNT(*) FROM caller_marker").fetchone()[0] == 1
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master"
+                " WHERE type='table' AND name IN ('evo_nodes', 'relation_edges')"
+            ).fetchone()[0]
+            == 0
+        )
+        conn.rollback()
+        assert conn.execute("SELECT COUNT(*) FROM caller_marker").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_initialized_schema_apply_stays_inside_caller_transaction(ac_root):
+    assert not _apply({"entities": [], "relations": [], "events": []}).errors
+    with fts.cursor() as conn:
+        conn.execute("CREATE TABLE caller_marker(value TEXT)")
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO caller_marker(value) VALUES ('uncommitted')")
+
+        result = delta_apply.apply_delta(
+            conn,
+            None,
+            {"entities": [{"ref": "Alice", "kind": "person", "ended": False, "quote": "x"}]},
+        )
+
+        assert not result.errors
+        assert conn.in_transaction
+        assert conn.execute("SELECT COUNT(*) FROM evo_nodes").fetchone()[0] == 1
+        conn.rollback()
+        assert conn.execute("SELECT COUNT(*) FROM caller_marker").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM evo_nodes").fetchone()[0] == 0
+
+
+def test_supersede_batch_is_rejected_before_markdown_side_effects(ac_root):
+    name, entry_id = _seed_source_entry()
+    path = ac_root / "memory" / name
+    before = path.read_bytes()
+    with fts.cursor() as conn:
+        result = delta_apply.apply_delta(
+            conn,
+            None,
+            {
+                "supersede": [
+                    {"file": name, "entry_id": entry_id, "reason": "valid first item"},
+                    {"file": name, "entry_id": "missing", "reason": "invalid later item"},
+                ]
+            },
+        )
+        row = conn.execute("SELECT superseded FROM entries WHERE id=?", (entry_id,)).fetchone()
+
+    assert result.skipped_reason == "unsupported_supersede"
+    assert result.errors
+    assert path.read_bytes() == before
+    assert row is not None and row["superseded"] == 0
+
+
+def test_supersede_is_rejected_before_evomem_authority_writes(ac_root):
+    (ac_root / "config.toml").write_text('[evomem]\nwrite_authority = "evomem"\n', encoding="utf-8")
+    name, entry_id = _seed_source_entry()
+    with fts.cursor() as conn:
+        before = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT node_id, status, is_latest, valid_until, superseded_by"
+                " FROM evo_nodes ORDER BY node_id"
+            )
+        ]
+        result = delta_apply.apply_delta(
+            conn,
+            None,
+            {"supersede": [{"file": name, "entry_id": entry_id, "reason": "invalid batch"}]},
+        )
+        after = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT node_id, status, is_latest, valid_until, superseded_by"
+                " FROM evo_nodes ORDER BY node_id"
+            )
+        ]
+
+    assert result.skipped_reason == "unsupported_supersede"
+    assert result.errors
+    assert after == before
+
+
+def test_mixed_supersede_and_model_delta_is_rejected_as_one_batch(ac_root):
+    name, entry_id = _seed_source_entry()
+    path = ac_root / "memory" / name
+    before = path.read_bytes()
+    with fts.cursor() as conn:
+        result = delta_apply.apply_delta(
+            conn,
+            None,
+            {
+                "supersede": [{"file": name, "entry_id": entry_id, "reason": "mixed"}],
+                "entities": [{"ref": "Bob", "kind": "person", "ended": False, "quote": "x"}],
+            },
+        )
+        evo_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='evo_nodes'"
+        ).fetchone()
+        point_count = (
+            conn.execute("SELECT COUNT(*) FROM evo_nodes").fetchone()[0] if evo_table else 0
+        )
+
+    assert result.skipped_reason == "unsupported_supersede"
+    assert result.errors
+    assert path.read_bytes() == before
+    assert point_count == 0
 
 
 def test_entities_mint_kind_aware_points(ac_root):
@@ -121,7 +266,9 @@ def test_idempotent_rerun_sees_not_remints(ac_root):
 
 def test_late_item_error_rolls_back_prior_model_writes_across_retries(ac_root, monkeypatch):
     baseline = {
-        "entities": [{"ref": "张伟", "kind": "person", "ended": False, "quote": "和张伟对齐"}],
+        "entities": [
+            {"ref": "Alice", "kind": "person", "ended": False, "quote": "aligned with Alice"}
+        ],
         "relations": [],
         "events": [],
         "assertions": [],
@@ -130,17 +277,17 @@ def test_late_item_error_rolls_back_prior_model_writes_across_retries(ac_root, m
 
     clean = {
         "entities": [
-            {"ref": "张伟", "kind": "person", "ended": False, "quote": "和张伟对齐"},
-            {"ref": "李四", "kind": "person", "ended": False, "quote": "和李四对齐"},
+            {"ref": "Alice", "kind": "person", "ended": False, "quote": "aligned with Alice"},
+            {"ref": "Bob", "kind": "person", "ended": False, "quote": "aligned with Bob"},
         ],
         "relations": [
             {
                 "src": {"ref": "self"},
-                "dst": {"ref": "张伟"},
+                "dst": {"ref": "Alice"},
                 "predicate": "knows",
                 "polarity": "0",
                 "ended": False,
-                "quote": "和张伟对齐",
+                "quote": "aligned with Alice",
                 "confidence": 0.9,
             }
         ],
@@ -173,8 +320,8 @@ def test_late_item_error_rolls_back_prior_model_writes_across_retries(ac_root, m
             edges = conn.execute(
                 "SELECT dst_identity, predicate, observations FROM relation_edges"
             ).fetchall()
-        assert point_files == {"person-张伟.md"}
-        assert [tuple(row) for row in edges] == [("张伟", "engaged_with", 1)]
+        assert point_files == {"person-alice.md"}
+        assert [tuple(row) for row in edges] == [("Alice", "engaged_with", 1)]
 
     assert attempted_predicates == ["engaged_with", "knows"] * 2
 

@@ -63,6 +63,31 @@ def after_write(conn: sqlite3.Connection, *, name: str, entry_ids: Sequence[str]
         _record_miss(f"{name} {list(entry_ids)}: {exc!r}")
 
 
+def repair_after_markdown_commit(
+    conn: sqlite3.Connection,
+    *,
+    name: str,
+    entry_ids: Sequence[str],
+) -> bool:
+    """Strictly catch up an established shadow after a source-first failure.
+
+    The correction operation has already frozen Markdown as its authority, so
+    this repair must not re-read a config file that may have changed mid-write.
+    An empty evo store means no shadow baseline exists yet and is not stale.
+    """
+
+    ids = [entry_id for entry_id in entry_ids if entry_id]
+    if not ids or not _evo_ready(conn):
+        return True
+    return _shadow_write(
+        conn,
+        name=name,
+        entry_ids=ids,
+        source_authority="markdown",
+        shadow_enabled=True,
+    )
+
+
 def note_out_of_band_rewrite(names: Sequence[str]) -> None:
     try:
         if not config_mod.load().evomem.shadow_write_enabled:
@@ -96,29 +121,38 @@ def _evo_ready(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
-def _shadow_write(conn: sqlite3.Connection, *, name: str, entry_ids: list[str]) -> None:
+def _shadow_write(
+    conn: sqlite3.Connection,
+    *,
+    name: str,
+    entry_ids: list[str],
+    source_authority: str | None = None,
+    shadow_enabled: bool | None = None,
+) -> bool:
     cfg = config_mod.load()
-    if not cfg.evomem.shadow_write_enabled or not entry_ids:
-        return
+    enabled = cfg.evomem.shadow_write_enabled if shadow_enabled is None else shadow_enabled
+    if not enabled or not entry_ids:
+        return True
 
     from . import inversion
 
-    if inversion.evomem_active():
-        return
+    authority = inversion.authority() if source_authority is None else source_authority
+    if authority == "evomem":
+        return True
     path = files_mod.memory_path(name)
     file_name = files_mod.memory_name(path)
     if "/" in file_name:
-        return
+        return True
     prefix = files_mod.validate_prefix(file_name)
     if prefix == "event":
-        return
+        return True
     if not _evo_ready(conn):
         _record_miss(
             f"{name}: evo_nodes is empty or missing; run `persome evomem-backfill` "
             "to establish a baseline",
             alert=False,
         )
-        return
+        return False
 
     parsed = files_mod.read_file(path)
     by_id = {e.id: e for e in parsed.entries}
@@ -127,7 +161,7 @@ def _shadow_write(conn: sqlite3.Connection, *, name: str, entry_ids: list[str]) 
         e = by_id.get(eid)
         if e is None:
             _record_miss(f"{name}: entry {eid} could not be parsed after write; batch skipped")
-            return
+            return False
         affected.append(e)
 
     file_ids = set(by_id)
@@ -168,7 +202,7 @@ def _shadow_write(conn: sqlite3.Connection, *, name: str, entry_ids: list[str]) 
                 f"{name}: chain endpoints or reciprocal pointers are missing from evo_nodes:"
                 f" {'; '.join(sorted(set(stale)))}; batch skipped to avoid a partial chain"
             )
-            return
+            return False
 
     placeholders = ",".join("?" * len(batch))
     ids = sorted(batch)
@@ -218,3 +252,4 @@ def _shadow_write(conn: sqlite3.Connection, *, name: str, entry_ids: list[str]) 
         conn.execute("ROLLBACK")
         raise
     _log.debug("shadow write ok: %s → %d node(s)", name, len(nodes))
+    return True

@@ -25,6 +25,35 @@ from . import fts
 logger = get("persome.store")
 
 
+class SourceCorrectionConflictError(RuntimeError):
+    """A correction targets a source entry that already has a different outcome."""
+
+
+class SourceAuthorityCommittedError(RuntimeError):
+    """The source of truth changed, but one of its derived projections failed."""
+
+    def __init__(
+        self,
+        *,
+        authority: str,
+        operation: str,
+        name: str,
+        old_entry_id: str,
+        successor_id: str | None,
+        cause: BaseException,
+    ) -> None:
+        self.authority = authority
+        self.operation = operation
+        self.name = name
+        self.old_entry_id = old_entry_id
+        self.successor_id = successor_id
+        self.cause = cause
+        super().__init__(
+            f"{authority} source committed {operation} for {name}#{old_entry_id}, "
+            f"but projection failed: {type(cause).__name__}: {cause}"
+        )
+
+
 def _now_iso_minute() -> str:
     # Keep the established minute-local wire shape. Entry search has a broad
     # historical TEXT contract; changing it to aware ISO requires a dedicated
@@ -82,6 +111,36 @@ def _render_supersede_provenance(*, old_entry_id: str, reason: str) -> str:
     safe_reason = html.escape(reason.replace("\r", " ").replace("\n", " "), quote=False)
     safe_reason = safe_reason.replace("--", "&#45;&#45;")
     return f"<!-- supersedes: {old_entry_id}; reason: {safe_reason} -->"
+
+
+def _replacement_before_provenance(body: str, *, old_entry_id: str) -> str | None:
+    """Return a successor's semantic replacement when its final marker matches ``old``."""
+
+    lines = body.rstrip().splitlines()
+    if not lines:
+        return None
+    marker = lines[-1].strip()
+    prefix = f"<!-- supersedes: {old_entry_id}; reason: "
+    if not marker.startswith(prefix) or not marker.endswith(" -->"):
+        return None
+    return "\n".join(lines[:-1]).strip()
+
+
+def _matching_markdown_successor(
+    entries: list[files_mod.ParsedEntry],
+    *,
+    old_entry_id: str,
+    successor_id: str,
+    replacement: str,
+) -> str | None:
+    successors = [entry for entry in entries if entry.id == successor_id]
+    if len(successors) != 1:
+        return None
+    observed = _replacement_before_provenance(
+        successors[0].body,
+        old_entry_id=old_entry_id,
+    )
+    return successor_id if observed == replacement.strip() else None
 
 
 def _insert_derived_entry(
@@ -526,9 +585,15 @@ def supersede_entry(
     confidence: str | None = None,
     conflicted: bool = False,
     occurred_at: str | None = None,
+    source_authority: str | None = None,
 ) -> str:
     evo_integrity.ensure_writes_allowed()
-    if evo_inversion.routes_to_engine(name):
+    route_to_engine = (
+        evo_inversion.routes_to_engine(name)
+        if source_authority is None
+        else evo_inversion.routes_to_engine_for_authority(name, source_authority)
+    )
+    if route_to_engine:
         return evo_inversion.supersede_entry(
             conn,
             name=name,
@@ -555,6 +620,21 @@ def supersede_entry(
         target = next((e for e in parsed.entries if e.id == old_entry_id), None)
         if target is None:
             raise ValueError(f"entry {old_entry_id} not found in {path.name}")
+        body = new_content.strip()
+        if target.superseded_by:
+            existing_id = _matching_markdown_successor(
+                parsed.entries,
+                old_entry_id=old_entry_id,
+                successor_id=target.superseded_by,
+                replacement=body,
+            )
+            if existing_id is not None:
+                # A caller retry after a source-first/projection-second failure
+                # must converge on the existing head instead of minting a fork.
+                return existing_id
+            raise SourceCorrectionConflictError(
+                f"entry {old_entry_id} already has a different successor {target.superseded_by}"
+            )
 
         # Build replacement heading and body in the file
         ts = _now_iso_minute()
@@ -590,7 +670,6 @@ def supersede_entry(
             text = _strike_entry_body(text, entry_id=old_entry_id, body=target.body)
 
         # 3) Append the new entry at the end
-        body = new_content.strip()
         provenance = _render_supersede_provenance(
             old_entry_id=old_entry_id,
             reason=reason,
@@ -613,41 +692,62 @@ def supersede_entry(
         # (live equivalent of rebuild walking the #superseded-by tag we just
         # wrote to markdown).
         prefix = _ensure_prefix(name)
-        derived_supersede_rows(
-            conn,
-            old_entry_id=old_entry_id,
-            new_entry_id=new_id,
-            path_name=file_name,
-            prefix=prefix,
-            ts=ts,
-            tags_str=" ".join(new_tags),
-            content=body,
-            confidence=confidence,
-            conflicted=conflicted,
-            occurred_at=occurred_at,
-        )
-        fts.upsert_file(
-            conn,
-            fts.FileRow(
-                path=file_name,
+        try:
+            derived_supersede_rows(
+                conn,
+                old_entry_id=old_entry_id,
+                new_entry_id=new_id,
+                path_name=file_name,
                 prefix=prefix,
-                description=str(post.metadata.get("description", "")),
-                tags=" ".join(post.metadata.get("tags", []) or []),
-                status=str(post.metadata.get("status", "active")),
-                entry_count=int(post.metadata.get("entry_count", 0)),
-                created=str(post.metadata.get("created", "")),
-                updated=str(post.metadata.get("updated", "")),
-                needs_compact=1 if post.metadata.get("needs_compact") else 0,
-            ),
-        )
+                ts=ts,
+                tags_str=" ".join(new_tags),
+                content=body,
+                confidence=confidence,
+                conflicted=conflicted,
+                occurred_at=occurred_at,
+            )
+            fts.upsert_file(
+                conn,
+                fts.FileRow(
+                    path=file_name,
+                    prefix=prefix,
+                    description=str(post.metadata.get("description", "")),
+                    tags=" ".join(post.metadata.get("tags", []) or []),
+                    status=str(post.metadata.get("status", "active")),
+                    entry_count=int(post.metadata.get("entry_count", 0)),
+                    created=str(post.metadata.get("created", "")),
+                    updated=str(post.metadata.get("updated", "")),
+                    needs_compact=1 if post.metadata.get("needs_compact") else 0,
+                ),
+            )
 
-        evo_shadow.after_write(conn, name=name, entry_ids=[old_entry_id, new_id])
+            evo_shadow.after_write(conn, name=name, entry_ids=[old_entry_id, new_id])
+        except Exception as exc:
+            raise SourceAuthorityCommittedError(
+                authority="markdown",
+                operation="supersede",
+                name=file_name,
+                old_entry_id=old_entry_id,
+                successor_id=new_id,
+                cause=exc,
+            ) from exc
     return new_id
 
 
-def mark_entry_deleted(conn: sqlite3.Connection, *, name: str, entry_id: str) -> None:
+def mark_entry_deleted(
+    conn: sqlite3.Connection,
+    *,
+    name: str,
+    entry_id: str,
+    source_authority: str | None = None,
+) -> None:
     evo_integrity.ensure_writes_allowed()
-    if evo_inversion.routes_to_engine(name):
+    route_to_engine = (
+        evo_inversion.routes_to_engine(name)
+        if source_authority is None
+        else evo_inversion.routes_to_engine_for_authority(name, source_authority)
+    )
+    if route_to_engine:
         return evo_inversion.mark_entry_deleted(conn, name=name, entry_id=entry_id)
     path = files_mod.memory_path(name)
     file_name = files_mod.memory_name(path)
@@ -658,7 +758,6 @@ def mark_entry_deleted(conn: sqlite3.Connection, *, name: str, entry_id: str) ->
         target = next((e for e in parsed.entries if e.id == entry_id), None)
         if target is None:
             raise ValueError(f"entry {entry_id} not found in {path.name}")
-
         body_is_struck = _body_is_striked(target.body)
         explicit_until = _encoded_tag_value(target.tags, "valid-until:")
         explicit_status = _encoded_tag_value(target.tags, "status:")
@@ -698,6 +797,7 @@ def mark_entry_deleted(conn: sqlite3.Connection, *, name: str, entry_id: str) ->
         # same atomic Markdown write, closing the file/DB race and making a
         # fresh restore lossless. Bump ``updated`` and refresh the files row in
         # the same write (merged_bug_002b).
+        source_is_retired = body_is_struck or status_retires_refinement
         if strike_body or encode_temporal_tag or encode_shadow_status:
             text = path.read_text()
             if encode_shadow_status:
@@ -717,29 +817,46 @@ def mark_entry_deleted(conn: sqlite3.Connection, *, name: str, entry_id: str) ->
             post = frontmatter.loads(text)
             post.metadata["updated"] = files_mod.today()
             files_mod.atomic_write_text(path, frontmatter.dumps(post) + "\n")
+            source_is_retired = True
             prefix = _ensure_prefix(name)
-            fts.upsert_file(
-                conn,
-                fts.FileRow(
-                    path=file_name,
-                    prefix=prefix,
-                    description=str(post.metadata.get("description", "")),
-                    tags=" ".join(post.metadata.get("tags", []) or []),
-                    status=str(post.metadata.get("status", "active")),
-                    entry_count=int(post.metadata.get("entry_count", 0)),
-                    created=str(post.metadata.get("created", "")),
-                    updated=str(post.metadata.get("updated", "")),
-                    needs_compact=1 if post.metadata.get("needs_compact") else 0,
-                ),
+        try:
+            if strike_body or encode_temporal_tag or encode_shadow_status:
+                fts.upsert_file(
+                    conn,
+                    fts.FileRow(
+                        path=file_name,
+                        prefix=prefix,
+                        description=str(post.metadata.get("description", "")),
+                        tags=" ".join(post.metadata.get("tags", []) or []),
+                        status=str(post.metadata.get("status", "active")),
+                        entry_count=int(post.metadata.get("entry_count", 0)),
+                        created=str(post.metadata.get("created", "")),
+                        updated=str(post.metadata.get("updated", "")),
+                        needs_compact=1 if post.metadata.get("needs_compact") else 0,
+                    ),
+                )
+
+            # FTS + temporal: mirror supersede_entry's retire half (no new entry).
+            # Keep the encoded tag in the incremental projection too, so it is
+            # already byte-equivalent to the next rebuild.
+            conn.execute(
+                "UPDATE entries SET tags=? WHERE id=?",
+                (" ".join(updated_tags), entry_id),
             )
+            derived_retire_rows(conn, entry_id=entry_id, ts=ts)
 
-        # FTS + temporal: mirror supersede_entry's retire half (no new entry).
-        # Keep the encoded tag in the incremental projection too, so it is
-        # already byte-equivalent to the next rebuild.
-        conn.execute("UPDATE entries SET tags=? WHERE id=?", (" ".join(updated_tags), entry_id))
-        derived_retire_rows(conn, entry_id=entry_id, ts=ts)
-
-        evo_shadow.after_write(conn, name=name, entry_ids=[entry_id])
+            evo_shadow.after_write(conn, name=name, entry_ids=[entry_id])
+        except Exception as exc:
+            if not source_is_retired:
+                raise
+            raise SourceAuthorityCommittedError(
+                authority="markdown",
+                operation="retire",
+                name=file_name,
+                old_entry_id=entry_id,
+                successor_id=None,
+                cause=exc,
+            ) from exc
 
 
 class _RebuildSourceChanged(RuntimeError):

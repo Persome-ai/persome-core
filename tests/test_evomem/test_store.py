@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from persome.evomem.models import MemoryLayer, MemoryNode, MemoryStatus
@@ -60,6 +62,50 @@ def test_save_and_supersede_backfills_new_supersedes_pointer(store):
     new = MemoryNode(node_id="b", content="\u559d\u8336", layer=MemoryLayer.L2_FACT)
     store.save_and_supersede(new, old_id="a")
     assert store.get("b").supersedes == ["a"]
+
+
+def test_save_and_supersede_rejects_second_head(store):
+    store.save(MemoryNode(node_id="a", content="v1", layer=MemoryLayer.L2_FACT))
+    store.save_and_supersede(
+        MemoryNode(node_id="b", content="v2", layer=MemoryLayer.L2_FACT),
+        old_id="a",
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="already has successor"):
+        store.save_and_supersede(
+            MemoryNode(node_id="c", content="competing v2", layer=MemoryLayer.L2_FACT),
+            old_id="a",
+        )
+
+    assert store.get("c") is None
+    old, head = store.get("a"), store.get("b")
+    assert old is not None and old.superseded_by == ["b"]
+    assert head is not None and head.is_latest
+
+
+def test_save_and_supersede_exact_transition_retry_is_idempotent(store):
+    store.save(MemoryNode(node_id="a", content="v1", layer=MemoryLayer.L2_FACT))
+    replacement = MemoryNode(node_id="b", content="v2", layer=MemoryLayer.L2_FACT)
+    store.save_and_supersede(replacement, old_id="a")
+    store.save_and_supersede(replacement, old_id="a")
+
+    assert store.get("a").superseded_by == ["b"]
+    assert [node.node_id for node in store.all_latest()] == ["b"]
+
+
+def test_delayed_transition_retry_does_not_resurrect_an_old_head(store):
+    store.save(MemoryNode(node_id="a", content="v1", layer=MemoryLayer.L2_FACT))
+    b = MemoryNode(node_id="b", content="v2", layer=MemoryLayer.L2_FACT)
+    store.save_and_supersede(b, old_id="a")
+    store.save_and_supersede(
+        MemoryNode(node_id="c", content="v3", layer=MemoryLayer.L2_FACT),
+        old_id="b",
+    )
+
+    store.save_and_supersede(b, old_id="a")
+
+    assert [node.node_id for node in store.all_latest()] == ["c"]
+    assert store.get("b").superseded_by == ["c"]
 
 
 def test_save_and_supersede_missing_old_raises(store):

@@ -17,7 +17,6 @@ from ..evomem.models import MemoryLayer, MemoryNode
 from ..evomem.person_graph import _slug as _entity_slug
 from ..evomem.store import NodeStore
 from ..logger import get
-from ..store import entries as entries_store
 from ..store import relation_edges as edges_store
 from ..store.relation_edges import EntityKind, Predicate
 
@@ -25,6 +24,13 @@ logger = get("persome.writer.delta_apply")
 
 SELF_IDENTITY = "self"
 EVENT_PREFIX = "event:"
+_SUPERSEDE_ERROR = (
+    "supersede is unsupported in atomic delta batches; use writer.correct.update_memory"
+)
+_SCHEMA_TRANSACTION_ERROR = (
+    "atomic delta apply requires initialized evo_nodes and relation_edges schemas "
+    "inside a caller-owned transaction"
+)
 
 
 _KIND_PREFIX = {"person": "person", "org": "org", "project": "project", "artifact": "tool"}
@@ -326,41 +332,37 @@ def _endpoint_kind(identity: str, kinds: dict[str, str]) -> str:
     return _KIND_ENUM[k].value if k in _KIND_ENUM else EntityKind.PERSON.value
 
 
-def _apply_supersede(conn: sqlite3.Connection, clean: dict, r: ApplyResult) -> None:
-    for item in clean.get("supersede") or []:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("file", "")).strip()
-        eid = str(item.get("entry_id", "")).strip()
-        if not name or not eid:
-            continue
-        try:
-            repl = str(item.get("replacement", "")).strip()
-            reason = str(item.get("reason", "") or "memory update")[:300]
-            if repl:
-                entries_store.supersede_entry(
-                    conn, name=name, old_entry_id=eid, new_content=repl, reason=reason
-                )
-            else:
-                entries_store.mark_entry_deleted(conn, name=name, entry_id=eid)
-            r.supersedes_applied += 1
-        except Exception as exc:  # noqa: BLE001 — one bad target never drops the rest
-            r.errors.append(f"supersede {name}#{eid}: {exc}")
-
-
 def apply_delta(
     conn: sqlite3.Connection,
     cfg: Any,
     clean: dict,
 ) -> ApplyResult:
+    if clean.get("supersede"):
+        # Markdown-authority corrections write a filesystem SSOT; evomem
+        # authority corrections open their own canonical connection. Neither can
+        # participate in this SQLite savepoint, so reject the whole batch before
+        # schema setup or any structured model mutation.
+        return ApplyResult(skipped_reason="unsupported_supersede", errors=[_SUPERSEDE_ERROR])
     if not clean:
         return ApplyResult(skipped_reason="empty")
 
     # fts connections autocommit. A savepoint plus a connection-bound NodeStore
     # keeps Points and Lines in one transaction so an item-level failure cannot
     # leave successful siblings behind for a retry to reinforce.
-    evo_store.ensure_schema(conn)
-    edges_store.ensure_schema(conn)
+    node_schema_ready = evo_store.schema_is_current(conn)
+    edge_schema_ready = edges_store.schema_is_current(conn)
+    if conn.in_transaction and not (node_schema_ready and edge_schema_ready):
+        # executescript() implicitly commits. Never initialize a missing schema
+        # underneath a caller-owned transaction: their writes must remain theirs
+        # to commit or roll back.
+        return ApplyResult(
+            skipped_reason="schema_not_initialized",
+            errors=[_SCHEMA_TRANSACTION_ERROR],
+        )
+    if not node_schema_ready:
+        evo_store.ensure_schema(conn)
+    if not edge_schema_ready:
+        edges_store.ensure_schema(conn)
     savepoint = "persome_delta_apply"
     original_row_factory = conn.row_factory
     conn.execute(f"SAVEPOINT {savepoint}")
@@ -375,11 +377,6 @@ def apply_delta(
         _apply_floor(conn, clean, kinds, r)
         _apply_relations(conn, clean, kinds, r)
         _apply_events(conn, clean, kinds, r)
-        # Corrections are a separate, user-directed head. Do not touch their
-        # Markdown projection if any canonical model item already failed.
-        if not r.errors:
-            conn.row_factory = sqlite3.Row
-            _apply_supersede(conn, clean, r)
 
         if r.errors:
             conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")

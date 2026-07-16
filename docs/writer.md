@@ -79,6 +79,17 @@ operation does not require users to discover or fill the setting themselves.
 Persome's own localhost `/model` output is removed from the delta evidence so a
 rendered Face, Volume, or Root cannot train the next model window on itself.
 
+`delta_apply` is deliberately limited to the SQLite-backed Point/Line update.
+It rejects any batch that also contains an explicit source supersede, because a
+Markdown or evomem source-of-truth change cannot share that SQLite savepoint.
+User-directed corrections instead use the single correction entrance: one
+write-authority decision is frozen for the operation, same-file writers are
+serialized across threads and processes, and evomem head replacement is a
+transactional compare-and-swap. After the source commits, the retrieval
+projection is rebuilt. A projection failure is reported as a committed but
+degraded correction and retrying the same replacement is idempotent; a
+different replacement for the same retired head is rejected.
+
 The deterministic `self engaged_with <entity>` attention floor is direct
 observational evidence, so it becomes an active Line on the first applied
 window. LLM semantic relations remain shadow candidates. Repeated deterministic

@@ -87,10 +87,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(f"ALTER TABLE evo_nodes ADD COLUMN {name} {decl}")
 
 
-def ensure_schema(conn: sqlite3.Connection) -> None:
-    """Create/migrate the canonical node store in an owner process only."""
-    if fts.is_client_process():
-        return
+def schema_is_current(conn: sqlite3.Connection) -> bool:
+    """Whether atomic node writes can proceed without schema-changing SQL."""
     have = {str(row[1]) for row in conn.execute("PRAGMA table_info(evo_nodes)")}
     required = {
         "node_id",
@@ -107,10 +105,17 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         *{name for name, _decl in _SSOT_COLUMNS},
     }
     indexes = {str(row[1]) for row in conn.execute("PRAGMA index_list(evo_nodes)")}
-    if required.issubset(have) and {
+    return required.issubset(have) and {
         "idx_evo_nodes_scope",
         "idx_evo_nodes_latest",
-    }.issubset(indexes):
+    }.issubset(indexes)
+
+
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create/migrate the canonical node store in an owner process only."""
+    if fts.is_client_process():
+        return
+    if schema_is_current(conn):
         return
     conn.executescript(_CREATE_SQL)
     _migrate(conn)
@@ -291,24 +296,59 @@ class NodeStore:
         integrity.ensure_writes_allowed()
         new_id = node.node_id
         with fts.cursor() as conn:
-            old = conn.execute(
-                "SELECT superseded_by FROM evo_nodes WHERE node_id=? AND user_id=? AND agent_id=?",
-                (old_id, self.user_id, self.agent_id),
-            ).fetchone()
-            if old is None:
-                raise KeyError(f"save_and_supersede: missing old node {old_id!r}")
-
-            old_superseded_by = json.loads(old["superseded_by"] or "[]")
-            if new_id not in old_superseded_by:
-                old_superseded_by.append(new_id)
-
-            if old_id not in node.supersedes:
-                node.supersedes.append(old_id)
-
-            conn.execute("BEGIN")
+            # Claim the old head before reading it. A correction, session tick,
+            # and CLI process may all target the same node; a read-before-BEGIN
+            # lets both writers mint active successors. BEGIN IMMEDIATE plus the
+            # in-transaction head check makes the transition a single CAS.
+            conn.execute("BEGIN IMMEDIATE")
             try:
+                old = conn.execute(
+                    "SELECT superseded_by, is_latest, status FROM evo_nodes "
+                    "WHERE node_id=? AND user_id=? AND agent_id=?",
+                    (old_id, self.user_id, self.agent_id),
+                ).fetchone()
+                if old is None:
+                    raise KeyError(f"save_and_supersede: missing old node {old_id!r}")
+
+                old_superseded_by = json.loads(old["superseded_by"] or "[]")
+                already_this_transition = old_superseded_by == [new_id]
+                if old_superseded_by and not already_this_transition:
+                    raise sqlite3.IntegrityError(
+                        f"save_and_supersede: old node {old_id!r} already has successor"
+                    )
+                if not already_this_transition and (
+                    not bool(old["is_latest"]) or str(old["status"]) != "active"
+                ):
+                    raise sqlite3.IntegrityError(
+                        f"save_and_supersede: old node {old_id!r} is not an active head"
+                    )
+                if already_this_transition:
+                    existing_row = conn.execute(
+                        "SELECT * FROM evo_nodes WHERE node_id=? AND user_id=? AND agent_id=?",
+                        (new_id, self.user_id, self.agent_id),
+                    ).fetchone()
+                    existing = _row_to_node(existing_row) if existing_row is not None else None
+                    if existing is None or old_id not in existing.supersedes:
+                        raise sqlite3.IntegrityError(
+                            f"save_and_supersede: broken existing transition to {new_id!r}"
+                        )
+                    if not existing.is_latest or existing.status is not MemoryStatus.ACTIVE:
+                        # A delayed replay of a->b after b->c must not upsert b
+                        # and resurrect it as a competing active head.
+                        conn.execute("COMMIT")
+                        return
+                    if existing.superseded_by:
+                        raise sqlite3.IntegrityError(
+                            f"save_and_supersede: active successor {new_id!r} has descendants"
+                        )
+                if not old_superseded_by:
+                    old_superseded_by = [new_id]
+
+                if old_id not in node.supersedes:
+                    node.supersedes.append(old_id)
+
                 self._upsert_node(conn, node)
-                conn.execute(
+                updated = conn.execute(
                     "UPDATE evo_nodes SET superseded_by=?, status=?, is_latest=0,"
                     " valid_until=COALESCE(valid_until, ?)"
                     " WHERE node_id=? AND user_id=? AND agent_id=?",
@@ -320,7 +360,11 @@ class NodeStore:
                         self.user_id,
                         self.agent_id,
                     ),
-                )
+                ).rowcount
+                if updated != 1:
+                    raise sqlite3.IntegrityError(
+                        f"save_and_supersede: lost old-node claim for {old_id!r}"
+                    )
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")

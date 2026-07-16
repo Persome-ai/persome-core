@@ -140,11 +140,8 @@ _EXTRA_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
-def ensure_schema(conn: sqlite3.Connection) -> None:
-    from . import fts
-
-    if fts.is_client_process():
-        return
+def schema_is_current(conn: sqlite3.Connection) -> bool:
+    """Whether edge writes can proceed without schema-changing SQL."""
     have = {row[1] for row in conn.execute("PRAGMA table_info(relation_edges)").fetchall()}
     required = {
         "edge_id",
@@ -162,7 +159,15 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         *{name for name, _decl in _EXTRA_COLUMNS},
     }
     indexes = {str(row[1]) for row in conn.execute("PRAGMA index_list(relation_edges)")}
-    if required.issubset(have) and {"ix_edges_src", "ix_edges_dst"}.issubset(indexes):
+    return required.issubset(have) and {"ix_edges_src", "ix_edges_dst"}.issubset(indexes)
+
+
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    from . import fts
+
+    if fts.is_client_process():
+        return
+    if schema_is_current(conn):
         return
     conn.executescript(SCHEMA)
     have = {row[1] for row in conn.execute("PRAGMA table_info(relation_edges)").fetchall()}

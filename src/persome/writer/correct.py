@@ -1,13 +1,13 @@
 """update_memory — the ONE directed memory-update entry point (2026-07-04 spec).
 
 **First principles (model mindset — manage Memory like weights):** "correcting a memory" is
-not a special operation — it is an UPDATE. Memory = weights; there is one update mechanism
-(input → delta → apply). Observation is the *self-supervised* update (pre-training: the pipeline
-watches the screen → memory-delta modeling → ``delta_apply``). A user saying "this is
-wrong" is the *supervised* update (post-training / SFT: the user's statement is the ground-truth
-label — authoritative, no quote-gate). So a "correction" is just a **directed update**, reusing
-the same executor (``delta_apply``, now with a ⊖ supersede leg → a delta is a complete update =
-add ∧ retract).
+not a special operation — it is an UPDATE. Memory = weights. Observation is the
+*self-supervised* update (pre-training: the pipeline watches the screen → memory-delta modeling
+→ atomic ``delta_apply``). A user saying "this is wrong" is the *supervised* update
+(post-training / SFT: the user's statement is the ground-truth label — authoritative, no
+quote-gate). Corrections use one authority-specific source write: Markdown authority updates the
+file SSOT; evomem authority updates its canonical chain. They cannot be mixed into the SQLite-only
+observation transaction.
 
 Backprop framing: the error shows up at the OUTPUT (recall/apex said X, user says X is wrong);
 retrieval traces it back to the SOURCE facts (credit assignment); we supersede the source
@@ -30,10 +30,12 @@ from types import SimpleNamespace
 from typing import Any
 
 from ..evomem import identity
+from ..evomem import inversion as evo_inversion
+from ..evomem import shadow as evo_shadow
 from ..evomem._json import parse_json_object
 from ..logger import get
+from ..store import entries as entries_store
 from ..store import fts
-from ..writer import delta_apply
 from ..writer import llm as llm_mod
 
 logger = get("persome.writer.correct")
@@ -188,6 +190,91 @@ def _apply_entity_op(
         return []
 
 
+def _apply_single_supersede(
+    conn: sqlite3.Connection,
+    items: list[dict],
+) -> tuple[str, str, bool]:
+    """Apply one correction through the configured source-of-truth entrance."""
+    if len(items) != 1:
+        raise ValueError("a correction must supersede exactly one source entry")
+    if conn.in_transaction:
+        raise RuntimeError("cannot supersede across stores inside a caller-owned transaction")
+    item = items[0]
+    name = str(item.get("file", "")).strip()
+    entry_id = str(item.get("entry_id", "")).strip()
+    if not name or not entry_id:
+        raise ValueError("supersede requires file and entry_id")
+    replacement = str(item.get("replacement", "")).strip()
+    reason = str(item.get("reason", "") or "memory update")[:300]
+    rebuild_authority = evo_inversion.authority()
+    source_authority = (
+        "evomem"
+        if evo_inversion.routes_to_engine_for_authority(name, rebuild_authority)
+        else "markdown"
+    )
+    committed_error: entries_store.SourceAuthorityCommittedError | None = None
+    successor_id: str | None = None
+    try:
+        if replacement:
+            successor_id = entries_store.supersede_entry(
+                conn,
+                name=name,
+                old_entry_id=entry_id,
+                new_content=replacement,
+                reason=reason,
+                source_authority=rebuild_authority,
+            )
+        else:
+            entries_store.mark_entry_deleted(
+                conn,
+                name=name,
+                entry_id=entry_id,
+                source_authority=rebuild_authority,
+            )
+    except entries_store.SourceAuthorityCommittedError as exc:
+        # Source-of-truth writes intentionally precede disposable projections.
+        # Preserve that committed outcome and converge the index below instead
+        # of telling the caller that nothing happened and inviting a fork.
+        committed_error = exc
+        source_authority = exc.authority
+        successor_id = exc.successor_id
+
+    projection_ready = True
+    projection_note = ""
+    try:
+        entries_store.rebuild_index(conn, source_authority=rebuild_authority)
+    except Exception as exc:  # noqa: BLE001 - source commit is still authoritative
+        projection_ready = False
+        projection_note = f"projection degraded: {type(exc).__name__}: {exc}"
+        logger.exception(
+            "update_memory: %s source committed but projection rebuild failed",
+            source_authority,
+        )
+    else:
+        try:
+            if source_authority == "markdown":
+                projection_ready = evo_shadow.repair_after_markdown_commit(
+                    conn,
+                    name=name,
+                    entry_ids=[entry_id, successor_id or ""],
+                )
+            elif source_authority == "evomem":
+                evo_inversion.repair_markdown_projection(conn, name)
+        except Exception as exc:  # noqa: BLE001 - source remains authoritative
+            projection_ready = False
+            logger.exception("update_memory: authority projection repair failed")
+            projection_note = f"authority projection degraded: {type(exc).__name__}: {exc}"
+        if not projection_ready and not projection_note:
+            projection_note = "authority projection degraded"
+        if committed_error is not None and projection_ready:
+            projection_note = "projection recovered after source-first commit"
+
+    receipt = f"superseded {name}#{entry_id}"
+    if projection_note:
+        receipt += f" ({projection_note})"
+    return receipt, name, projection_ready
+
+
 def _reforward(cfg: Any, conn: sqlite3.Connection, files: set[str]) -> list[str]:
     """Re-run the FORWARD pass on the affected path after a weight (fact) update — the closed
     loop: update the weight → re-run forward so the change propagates to the resident apex NOW,
@@ -226,9 +313,9 @@ def update_memory(
 ) -> UpdateResult:
     """Directed memory update: an authoritative statement (``signal``) → the memory delta it
     implies (which beliefs to supersede/replace at the source, or an entity-level op) → applied
-    through the SAME executor as observation (``delta_apply``, ⊖ supersede leg). ``source`` marks
-    the update's authority (user = supervised label). Injectable ``llm_call`` for tests; ``dry_run``
-    previews. Never raises. Downstream Face, Volume, and Root structures re-derive from the updated truth."""
+    through the configured Markdown/evomem source authority. ``source`` marks the update's
+    authority (user = supervised label). Injectable ``llm_call`` for tests; ``dry_run`` previews.
+    Never raises. Downstream Face, Volume, and Root structures re-derive from the updated truth."""
     signal = (signal or "").strip()
     if not signal:
         return UpdateResult("noop", reason="empty", ok=False)
@@ -259,25 +346,41 @@ def update_memory(
                 "update", applied=_plan(supersede, entity_op), reason=reason, ok=False
             )
 
+        if supersede and entity_op and entity_op.get("op") in _ENTITY_OPS:
+            return UpdateResult(
+                "error",
+                reason="combined source supersede and entity operation is not atomic",
+                ok=False,
+            )
+
         applied: list[str] = []
         kind = "update"
         touched_files: set[str] = set()
-        if supersede:  # fact/point layer → reuse the shared update executor (delta_apply ⊖ leg)
-            r = delta_apply.apply_delta(conn, cfg, {"supersede": supersede})
-            for s in supersede:
-                if s.get("entry_id"):
-                    applied.append(f"superseded {s.get('file')}#{s.get('entry_id')}")
-                    if s.get("file"):
-                        touched_files.add(str(s["file"]))
-            if r.errors:
-                applied.append(f"errors: {r.errors}")
+        projection_ready = True
+        if supersede:
+            try:
+                receipt, touched, projection_ready = _apply_single_supersede(conn, supersede)
+            except Exception as exc:  # noqa: BLE001 - explicit fail-closed correction result
+                logger.warning("update_memory: supersede failed: %s", exc)
+                return UpdateResult(
+                    "error",
+                    reason=f"supersede failed: {type(exc).__name__}: {exc}",
+                    ok=False,
+                )
+            applied.append(receipt)
+            touched_files.add(touched)
         if entity_op and entity_op.get("op") in _ENTITY_OPS:  # entity layer → retype verbs
             applied += _apply_entity_op(entity_op, cfg, conn, signal=signal, source=source)
             kind = "entity_update" if not supersede else "update"
 
         # Closed loop: weight update (backward) → re-run the forward pass on the affected path so
         # the correction reaches the resident apex immediately (not on the next daily tick).
-        if reforward and touched_files and any("superseded" in a for a in applied):
+        if (
+            reforward
+            and projection_ready
+            and touched_files
+            and any("superseded" in a for a in applied)
+        ):
             applied += _reforward(cfg, conn, touched_files)
 
         _log_update(signal, kind, applied, reason, source)

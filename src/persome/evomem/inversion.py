@@ -67,6 +67,14 @@ def evomem_active() -> bool:
 
 def routes_to_engine(name: str) -> bool:
     """Return whether an evomem-authoritative write owns this target file."""
+    return routes_to_engine_for_authority(name, authority())
+
+
+def routes_to_engine_for_authority(name: str, source_authority: str) -> bool:
+    """Route ``name`` under one already-snapshotted authority decision."""
+
+    if source_authority not in {"markdown", "evomem"}:
+        raise ValueError("source_authority must be 'markdown' or 'evomem'")
     try:
         if "/" in name:
             return False  # Projections cannot route into skills/ subdirectories.
@@ -74,7 +82,7 @@ def routes_to_engine(name: str) -> bool:
             return False  # Append-only event logs never enter evo_nodes.
     except ValueError:
         return False
-    return evomem_active()
+    return source_authority == "evomem"
 
 
 # Projection failure counters
@@ -213,7 +221,8 @@ def _project(
     path: Path,
     nodes: list,
     file_row: sqlite3.Row | fts.FileRow | Mapping[str, Any],
-) -> None:
+    strict: bool = False,
+) -> bool:
     """Project Markdown best-effort, recording failures without raising."""
     from ..store import projector
 
@@ -223,8 +232,12 @@ def _project(
         )
         files_mod.atomic_write_text(path, text)
         record_projection_state(conn, path.name, text)
+        return True
     except Exception as exc:  # noqa: BLE001 - projection is disposable derived state
         _record_miss(f"{path.name}: {exc!r}")
+        if strict:
+            raise
+        return False
 
 
 def _finish_file_write(
@@ -233,7 +246,8 @@ def _finish_file_write(
     path: Path,
     prefix: str,
     soft_limit_tokens: int | None = None,
-) -> None:
+    strict_projection: bool = False,
+) -> bool:
     """Update file metadata and project the file after a canonical write."""
     from ..store import projector
 
@@ -261,7 +275,13 @@ def _finish_file_write(
         needs_compact=1 if needs_compact else 0,
     )
     fts.upsert_file(conn, file_row)
-    _project(conn, path=path, nodes=nodes, file_row=file_row)
+    return _project(
+        conn,
+        path=path,
+        nodes=nodes,
+        file_row=file_row,
+        strict=strict_projection,
+    )
 
 
 # Evomem-authoritative write verbs; signatures mirror store/entries.py.
@@ -448,21 +468,58 @@ def supersede_entry(
         valid_from=ts,
     )
     with files_mod.file_lock(path):
+        current_old = engine.store.get(old_entry_id)
+        if current_old is None or current_old.file_name != path.name:
+            raise ValueError(f"entry {old_entry_id} not found in {path.name}")
+        if current_old.superseded_by:
+            if len(current_old.superseded_by) == 1:
+                existing_id = current_old.superseded_by[0]
+                existing = engine.store.get(existing_id)
+                if (
+                    existing is not None
+                    and old_entry_id in existing.supersedes
+                    and entries_mod._replacement_before_provenance(
+                        existing.content,
+                        old_entry_id=old_entry_id,
+                    )
+                    == body
+                ):
+                    # Retry after a canonical commit/projection failure: return
+                    # the existing head instead of creating a second branch.
+                    return existing_id
+            raise entries_mod.SourceCorrectionConflictError(
+                f"entry {old_entry_id} already has a different canonical successor"
+            )
         engine.commit_supersede(node, old_id=old_entry_id, old_valid_until=ts)
-        entries_mod.derived_supersede_rows(
-            conn,
-            old_entry_id=old_entry_id,
-            new_entry_id=new_id,
-            path_name=path.name,
-            prefix=prefix,
-            ts=ts,
-            tags_str=" ".join(new_tags),
-            content=body,
-            confidence=confidence,
-            conflicted=conflicted,
-            occurred_at=occurred_at,
-        )
-        _finish_file_write(conn, path=path, prefix=prefix)
+        try:
+            entries_mod.derived_supersede_rows(
+                conn,
+                old_entry_id=old_entry_id,
+                new_entry_id=new_id,
+                path_name=path.name,
+                prefix=prefix,
+                ts=ts,
+                tags_str=" ".join(new_tags),
+                content=body,
+                confidence=confidence,
+                conflicted=conflicted,
+                occurred_at=occurred_at,
+            )
+            _finish_file_write(
+                conn,
+                path=path,
+                prefix=prefix,
+                strict_projection=True,
+            )
+        except Exception as exc:
+            raise entries_mod.SourceAuthorityCommittedError(
+                authority="evomem",
+                operation="supersede",
+                name=path.name,
+                old_entry_id=old_entry_id,
+                successor_id=new_id,
+                cause=exc,
+            ) from exc
     return new_id
 
 
@@ -479,30 +536,47 @@ def mark_entry_deleted(conn: sqlite3.Connection, *, name: str, entry_id: str) ->
     node = engine.store.get(entry_id)
     if node is None or node.file_name != path.name:
         raise ValueError(f"entry {entry_id} not found in {path.name}")
-
-    was_active = node.status is MemoryStatus.ACTIVE
     ts = entries_mod._now_iso_minute()
     with files_mod.file_lock(path):
+        current = engine.store.get(entry_id)
+        if current is None or current.file_name != path.name:
+            raise ValueError(f"entry {entry_id} not found in {path.name}")
+        was_active = current.status is MemoryStatus.ACTIVE
         engine.commit_retire(entry_id, valid_until=ts)
-        retired = engine.store.get(entry_id)
-        if retired is not None:
-            from ..store import projector
+        try:
+            retired = engine.store.get(entry_id)
+            if retired is not None:
+                from ..store import projector
 
-            file_nodes = _load_file_nodes(conn, path.name)
-            ts_by_id = {n.node_id: projector._heading_ts(n) for n in file_nodes}
-            rendered_tags = projector._render_tags(
-                retired,
-                prefix=prefix,
-                ts_by_id=ts_by_id,
-            )
-            conn.execute(
-                "UPDATE entries SET tags=? WHERE id=?",
-                (" ".join(rendered_tags), entry_id),
-            )
-        entries_mod.derived_retire_rows(conn, entry_id=entry_id, ts=ts)
-        if was_active:
-            # Repeated retirement is idempotent and does not rewrite the file.
-            _finish_file_write(conn, path=path, prefix=prefix)
+                file_nodes = _load_file_nodes(conn, path.name)
+                ts_by_id = {n.node_id: projector._heading_ts(n) for n in file_nodes}
+                rendered_tags = projector._render_tags(
+                    retired,
+                    prefix=prefix,
+                    ts_by_id=ts_by_id,
+                )
+                conn.execute(
+                    "UPDATE entries SET tags=? WHERE id=?",
+                    (" ".join(rendered_tags), entry_id),
+                )
+            entries_mod.derived_retire_rows(conn, entry_id=entry_id, ts=ts)
+            if was_active:
+                # Repeated retirement is idempotent and does not rewrite the file.
+                _finish_file_write(
+                    conn,
+                    path=path,
+                    prefix=prefix,
+                    strict_projection=True,
+                )
+        except Exception as exc:
+            raise entries_mod.SourceAuthorityCommittedError(
+                authority="evomem",
+                operation="retire",
+                name=path.name,
+                old_entry_id=entry_id,
+                successor_id=None,
+                cause=exc,
+            ) from exc
 
 
 def set_file_status(conn: sqlite3.Connection, *, name: str, status: str) -> None:
@@ -532,6 +606,18 @@ def reproject_file(conn: sqlite3.Connection, path_name: str) -> None:
         return
     nodes = _load_file_nodes(conn, path.name)
     _project(conn, path=path, nodes=nodes, file_row=row)
+
+
+def repair_markdown_projection(conn: sqlite3.Connection, path_name: str) -> None:
+    """Strictly converge one evomem-authoritative human-readable projection."""
+
+    path = files_mod.memory_path(path_name)
+    with files_mod.file_lock(path):
+        row = _file_row(conn, path.name)
+        if row is None:
+            raise RuntimeError(f"missing files projection for {path.name}")
+        nodes = _load_file_nodes(conn, path.name)
+        _project(conn, path=path, nodes=nodes, file_row=row, strict=True)
 
 
 # Manual-edit detection and import

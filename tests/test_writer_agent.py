@@ -363,7 +363,7 @@ def test_active_model_does_not_advance_watermark_on_apply_result_errors(
             timeline_store.TimelineBlock(
                 start_time=start,
                 end_time=end,
-                entries=["[Feishu] 和张三确认了评审结论"],
+                entries=["[Feishu] confirmed the review result with Alex"],
                 apps_used=["Feishu"],
                 capture_count=1,
             ),

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import fcntl
+import hashlib
 import os
 import re
 import tempfile
@@ -95,10 +97,10 @@ VALID_SUBDIRS: frozenset[str] = frozenset({"skills"})
 # write wins. The FTS index, written outside the file, ends up holding
 # rows for entries that don't exist on disk.
 #
-# The fix is in-process (the daemon is single-process; CLI commands
-# don't write memory files), per-path (so unrelated files don't
-# serialize), and bounded (one Lock per memory file ≈ a few hundred
-# entries lifetime, dozens of bytes each).
+# The thread mutex is paired with a per-path owner-only ``flock`` below. This
+# matters because explicit correction and recovery CLIs can overlap a running
+# daemon. Unrelated files retain independent locks; the in-memory registry is
+# bounded to roughly one small Lock per memory file over the process lifetime.
 _lock_registry_lock = threading.Lock()
 _path_locks: dict[str, threading.Lock] = {}
 
@@ -122,9 +124,17 @@ def _lock_for(path: Path) -> threading.Lock:
 
 @contextlib.contextmanager
 def file_lock(path: Path) -> Iterator[None]:
-    """Serialize concurrent writers on a single memory-file path."""
-    with _lock_for(path):
-        yield
+    """Serialize same-file writers across daemon threads and CLI processes."""
+
+    canonical = path.resolve(strict=False)
+    digest = hashlib.sha256(str(canonical).encode("utf-8")).hexdigest()
+    process_lock_path = paths.root() / ".memory-write-locks" / f"{digest}.lock"
+    with _lock_for(path), paths.open_private_lock_file(process_lock_path) as process_lock:
+        fcntl.flock(process_lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(process_lock.fileno(), fcntl.LOCK_UN)
 
 
 ENTRY_HEADING_RE = re.compile(
