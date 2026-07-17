@@ -109,7 +109,10 @@ observation target under `BEGIN IMMEDIATE`; retry uses `MAX(target)`, so an
 interruption between model writes and the final status update cannot
 double-count attention or co-occurrence evidence. A closed and later reopened
 edge starts a new generation at one rather than inheriting the old interval's
-strength.
+strength. A delta's first receipt permanently owns its original generation. If
+that delta remains failed while later work closes and reopens the edge, retry
+reuses the old receipt as a safe no-op and cannot add the same evidence to the
+new generation.
 Terminal finalization processes only the remaining tail. Session timestamps
 are capture instants while timeline blocks are closed, minute-aligned windows.
 A complete minute keeps its compact normalized TimelineBlock. A minute that

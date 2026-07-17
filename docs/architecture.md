@@ -113,7 +113,9 @@ additive attention-floor or co-occurrence
 reinforcement, a durable delta/edge-generation receipt freezes its absolute
 observation target; retry applies `MAX(target)` instead of another increment.
 A crash after model mutations but before `apply_status=applied` is therefore
-safe to resume.
+safe to resume. The first receipt binds the delta to that validity generation;
+if a later delta closes and reopens the edge before retry, the old retry is a
+safe no-op rather than counting its evidence in the new interval.
 `delta_end` advances after successful active apply; the session receives
 `modeled_at` only after all terminal stages finish. A kernel
 `session-model.lock` coordinates daemon, retry, CLI, and model-build callers.

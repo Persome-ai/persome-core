@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from persome.evomem.engine import EvoMemory
 from persome.store import fts
 from persome.store import memory_deltas as deltas_store
@@ -380,7 +382,7 @@ def test_receipt_targets_survive_interleaved_deltas_before_first_mutation(ac_roo
 
         # A freezes 6, then crashes before touching the edge. B must observe A's
         # durable reservation and freeze 7 even though the live edge is still 5.
-        target_a, found_a = deltas_store.reserve_additive_target(
+        target_a, found_a, apply_a = deltas_store.reserve_additive_target(
             conn,
             delta_id=delta_a,
             effect_key=effect_key,
@@ -388,7 +390,7 @@ def test_receipt_targets_survive_interleaved_deltas_before_first_mutation(ac_roo
             dst_identity="\u674e\u56db",
             predicate="knows",
         )
-        target_b, found_b = deltas_store.reserve_additive_target(
+        target_b, found_b, apply_b = deltas_store.reserve_additive_target(
             conn,
             delta_id=delta_b,
             effect_key=effect_key,
@@ -399,6 +401,7 @@ def test_receipt_targets_survive_interleaved_deltas_before_first_mutation(ac_roo
 
         assert (target_a, found_a) == (6, edge_id)
         assert (target_b, found_b) == (7, edge_id)
+        assert apply_a and apply_b
 
         # B mutates first; delayed/retried A uses MAX(6), so it cannot erase or
         # duplicate either observation.
@@ -444,7 +447,7 @@ def test_additive_receipt_target_resets_for_reopened_edge_generation(ac_root):
             status="active",
         )
         first_delta = deltas_store.insert(conn, session_id="before-close", payload={})
-        first_target, _ = deltas_store.reserve_additive_target(
+        first_target, _, apply_first = deltas_store.reserve_additive_target(
             conn,
             delta_id=first_delta,
             effect_key=effect_key,
@@ -452,7 +455,7 @@ def test_additive_receipt_target_resets_for_reopened_edge_generation(ac_root):
             dst_identity="Project A",
             predicate="engaged_with",
         )
-        assert first_target == 5
+        assert first_target == 5 and apply_first
         edges_store.reinforce_edge(
             conn,
             edge_id=first_edge,
@@ -462,7 +465,7 @@ def test_additive_receipt_target_resets_for_reopened_edge_generation(ac_root):
         assert edges_store.close_edge(conn, edge_id=first_edge)
 
         reopened_delta = deltas_store.insert(conn, session_id="after-close", payload={})
-        reopened_target, open_edge = deltas_store.reserve_additive_target(
+        reopened_target, open_edge, apply_reopened = deltas_store.reserve_additive_target(
             conn,
             delta_id=reopened_delta,
             effect_key=effect_key,
@@ -479,8 +482,111 @@ def test_additive_receipt_target_resets_for_reopened_edge_generation(ac_root):
             )
         ]
 
-    assert reopened_target == 1 and open_edge is None
+    assert reopened_target == 1 and open_edge is None and apply_reopened
     assert targets == [5, 1]
+
+
+@pytest.mark.parametrize("mutated_before_close", [False, True])
+def test_failed_delta_receipt_never_rebinds_to_reopened_generation(
+    ac_root,
+    mutated_before_close,
+):
+    clean = {
+        "entities": [
+            {
+                "ref": "Project A",
+                "kind": "project",
+                "ended": False,
+                "quote": "reviewed Project A",
+            }
+        ],
+        "relations": [],
+        "events": [],
+        "assertions": [],
+    }
+    effect_key = delta_apply._additive_effect_key(  # noqa: SLF001
+        "self",
+        "Project A",
+        edges_store.Predicate.ENGAGED_WITH,
+    )
+    with fts.cursor() as conn:
+        old_edge = edges_store.add_edge(
+            conn,
+            src_identity="self",
+            dst_identity="Project A",
+            predicate="engaged_with",
+            src_kind="self",
+            dst_kind="project",
+            provenance="inferred",
+            confidence=1.0,
+            observations=5,
+            status="active",
+        )
+        failed_delta = deltas_store.insert(conn, session_id="failed-old-generation", payload=clean)
+        old_target, found_old, should_apply = deltas_store.reserve_additive_target(
+            conn,
+            delta_id=failed_delta,
+            effect_key=effect_key,
+            src_identity="self",
+            dst_identity="Project A",
+            predicate="engaged_with",
+        )
+        assert (old_target, found_old, should_apply) == (6, old_edge, True)
+        if mutated_before_close:
+            edges_store.reinforce_edge(
+                conn,
+                edge_id=old_edge,
+                observations=old_target,
+                additive=False,
+            )
+        assert edges_store.close_edge(conn, edge_id=old_edge)
+
+        # A later delta legitimately creates the next validity generation.
+        reopened_delta = deltas_store.insert(
+            conn,
+            session_id="later-reopen",
+            payload=clean,
+        )
+        delta_apply.apply_delta(
+            conn,
+            None,
+            clean,
+            memory=EvoMemory(),
+            delta_id=reopened_delta,
+        )
+        reopened_edge = conn.execute(
+            "SELECT edge_id, observations FROM relation_edges"
+            " WHERE src_identity='self' AND dst_identity='Project A'"
+            " AND predicate='engaged_with' AND valid_to IS NULL"
+        ).fetchone()
+        assert reopened_edge is not None and reopened_edge[1] == 1
+
+        # Retrying the old failed delta must consume its original receipt as a
+        # safe no-op. It may not mint a second receipt or touch generation G2.
+        retry = delta_apply.apply_delta(
+            conn,
+            None,
+            clean,
+            memory=EvoMemory(),
+            delta_id=failed_delta,
+        )
+        reopened_after = conn.execute(
+            "SELECT observations FROM relation_edges WHERE edge_id=?",
+            (reopened_edge[0],),
+        ).fetchone()[0]
+        closed_observations = conn.execute(
+            "SELECT observations FROM relation_edges WHERE edge_id=?",
+            (old_edge,),
+        ).fetchone()[0]
+        failed_receipts = conn.execute(
+            "SELECT COUNT(*) FROM memory_delta_apply_receipts WHERE delta_id=?",
+            (failed_delta,),
+        ).fetchone()[0]
+
+    assert retry.floor_edges == 0
+    assert reopened_after == 1
+    assert closed_observations == (6 if mutated_before_close else 5)
+    assert failed_receipts == 1
 
 
 def test_org_nesting_part_of(ac_root):

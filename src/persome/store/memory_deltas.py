@@ -29,7 +29,9 @@ crash-idempotent. Before an attention-floor or co-occurrence edge mutates, its
 ``(delta_id, effect_key)`` receipt durably freezes the next absolute
 ``observations`` target within one edge validity generation. Retrying the same
 delta uses ``MAX(target)`` rather than another increment, while a different
-delta reserves the next target.
+delta reserves the next target. The first receipt also permanently binds that
+delta/effect to its original generation; a retry after close/reopen is a safe
+no-op instead of rebinding old evidence to the new interval.
 """
 
 from __future__ import annotations
@@ -445,7 +447,7 @@ def reserve_additive_target(
     src_identity: str,
     dst_identity: str,
     predicate: str,
-) -> tuple[int, str | None]:
+) -> tuple[int, str | None, bool]:
     """Durably reserve one additive edge's absolute observation target.
 
     Allocation holds ``BEGIN IMMEDIATE`` while reading both the live edge and
@@ -455,9 +457,14 @@ def reserve_additive_target(
     at one. The receipt commits before the caller applies ``MAX(target)``, so
     every interruption point is retryable without another additive increment.
 
-    Returns ``(target_observations, current_edge_id)``. The edge id is refreshed
-    under the same write lock so a retry does not rely on a stale pre-receipt
-    edge scan.
+    One delta may own only one receipt for a base logical effect across all
+    validity generations. If a failed delta retries after that edge was closed
+    and reopened, its original receipt is returned with ``should_apply=False``:
+    old evidence must not be counted again in the new interval.
+
+    Returns ``(target_observations, current_edge_id, should_apply)``. The edge
+    id is refreshed under the same write lock so a same-generation retry does
+    not rely on a stale pre-receipt edge scan.
     """
     ensure_schema(conn)
     from . import relation_edges as edges_store
@@ -517,13 +524,22 @@ def reserve_additive_target(
         generation = str(previous_generation[0]) if previous_generation is not None else "initial"
         scoped_effect = f"{effect}:generation:{generation}"
 
+        # The first receipt permanently binds this delta/effect to one validity
+        # generation. A later retry must find it before considering the current
+        # generation, otherwise close+reopen can make one delta count twice.
+        prefix = f"{effect}:generation:"
         existing = conn.execute(
-            "SELECT target_observations FROM memory_delta_apply_receipts"
-            " WHERE delta_id=? AND effect_key=?",
-            (delta_id, scoped_effect),
+            "SELECT effect_key, target_observations"
+            " FROM memory_delta_apply_receipts"
+            " WHERE delta_id=?"
+            " AND (effect_key=? OR substr(effect_key, 1, ?)=?)"
+            " ORDER BY created_at ASC, effect_key ASC LIMIT 1",
+            (delta_id, effect, len(prefix), prefix),
         ).fetchone()
         if existing is not None:
-            target = int(existing[0])
+            existing_effect = str(existing[0])
+            target = int(existing[1])
+            should_apply = existing_effect == scoped_effect
         else:
             receipt_max = conn.execute(
                 "SELECT COALESCE(MAX(target_observations), 0)"
@@ -543,8 +559,9 @@ def reserve_additive_target(
                     datetime.now().astimezone().isoformat(),
                 ),
             )
+            should_apply = True
         conn.commit()
-        return target, edge_id
+        return target, edge_id if should_apply else None, should_apply
     except Exception:
         conn.rollback()
         raise

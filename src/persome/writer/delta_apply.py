@@ -199,14 +199,14 @@ def _upsert_receipted_additive(
     dst_kind: str,
     polarity: str = "0",
     status: str = "shadow",
-) -> None:
+) -> bool:
     """Apply one additive edge exactly once for a persisted memory delta.
 
     The receipt store first freezes and commits an absolute observation target.
     Mutation then uses ordinary MAX semantics. A retry after any crash therefore
     converges on the same value instead of executing another ``+= 1``.
     """
-    target, current_edge_id = deltas_store.reserve_additive_target(
+    target, current_edge_id, should_apply = deltas_store.reserve_additive_target(
         conn,
         delta_id=delta_id,
         effect_key=_additive_effect_key(src, dst, predicate),
@@ -214,6 +214,8 @@ def _upsert_receipted_additive(
         dst_identity=dst,
         predicate=predicate.value,
     )
+    if not should_apply:
+        return False
     key = rex._edge_key(src, dst, predicate.value)  # noqa: SLF001
     if current_edge_id is not None:
         seen[key] = current_edge_id
@@ -234,6 +236,7 @@ def _upsert_receipted_additive(
         additive=False,
         status=status,
     )
+    return True
 
 
 def _apply_relations(
@@ -262,7 +265,7 @@ def _apply_relations(
             before = tally.new
             try:
                 if bool(rel.get("cooccurrence")) and delta_id is not None:
-                    _upsert_receipted_additive(
+                    applied = _upsert_receipted_additive(
                         conn,
                         seen,
                         tally,
@@ -277,6 +280,8 @@ def _apply_relations(
                         dst_kind=dst_kind,
                         polarity=_norm_polarity(rel.get("polarity")),
                     )
+                    if not applied:
+                        continue
                 else:
                     rex._upsert_shadow(  # noqa: SLF001
                         conn,
