@@ -45,6 +45,70 @@ _CMUX_TERMINAL_MARKER = "### [cmux terminal]"
 _OCR_PLACEHOLDER_VALUES = "_persome_ocr_placeholder_values"
 
 
+def _without_embedded_nuls(value: Any) -> Any:
+    """Return a copy-on-write JSON value with embedded NUL code points removed.
+
+    Some custom AX implementations (notably iTerm2's terminal text area) expose
+    CJK values with ``\0`` padding.  Keep the persisted/raw AX tree intact for
+    diagnostics, but never let those separators enter the S1 text projection.
+    """
+    if isinstance(value, str):
+        return value if "\0" not in value else value.replace("\0", "")
+    if isinstance(value, list):
+        clean: list[Any] | None = None
+        for index, item in enumerate(value):
+            normalized = _without_embedded_nuls(item)
+            if normalized is item:
+                continue
+            if clean is None:
+                clean = list(value)
+            clean[index] = normalized
+        return value if clean is None else clean
+    if isinstance(value, dict):
+        clean_dict: dict[Any, Any] | None = None
+        for key, item in value.items():
+            normalized = _without_embedded_nuls(item)
+            if normalized is item:
+                continue
+            if clean_dict is None:
+                clean_dict = dict(value)
+            clean_dict[key] = normalized
+        return value if clean_dict is None else clean_dict
+    return value
+
+
+def _sanitize_s1_projection(capture: dict[str, Any]) -> dict[str, Any]:
+    """Remove NULs from stored S1 fields without touching forensic ``ax_tree``."""
+    clean = capture
+    focused = capture.get("focused_element")
+    if isinstance(focused, dict):
+        clean_focused = focused
+        for field in ("role", "title", "value"):
+            value = focused.get(field)
+            normalized = _without_embedded_nuls(value)
+            if normalized is value:
+                continue
+            if clean_focused is focused:
+                clean_focused = dict(focused)
+            clean_focused[field] = normalized
+        if clean_focused is not focused:
+            value = str(clean_focused.get("value") or "").strip()
+            clean_focused["has_value"] = bool(value)
+            clean_focused["value_length"] = len(value)
+            clean = dict(capture)
+            clean["focused_element"] = clean_focused
+
+    for field in ("visible_text", "url"):
+        value = clean.get(field)
+        normalized = _without_embedded_nuls(value)
+        if normalized is value:
+            continue
+        if clean is capture:
+            clean = dict(capture)
+        clean[field] = normalized
+    return clean
+
+
 @dataclass
 class FocusedElement:
     role: str = ""
@@ -71,11 +135,13 @@ def enrich(capture: dict[str, Any]) -> None:
     if not isinstance(ax_tree, dict):
         return
 
-    clean_ax_tree = placeholder.sanitize_ax_tree(ax_tree)
-    original_app = _frontmost_app(ax_tree)
+    projected_ax_tree = _without_embedded_nuls(ax_tree)
+    clean_ax_tree = placeholder.sanitize_ax_tree(projected_ax_tree)
+    original_app = _frontmost_app(projected_ax_tree)
     trigger = capture.get("trigger")
     if isinstance(trigger, dict):
-        clean_trigger = placeholder.sanitize_trigger(original_app or {}, trigger)
+        projected_trigger = _without_embedded_nuls(trigger)
+        clean_trigger = placeholder.sanitize_trigger(original_app or {}, projected_trigger)
         if clean_trigger is not trigger:
             capture["trigger"] = clean_trigger
     app_data = _frontmost_app(clean_ax_tree)
@@ -116,13 +182,21 @@ def sanitize_capture(capture: dict[str, Any], *, replace_ax_tree: bool = False) 
     """
     ax_tree = capture.get("ax_tree")
     ocr_values = ocr_placeholder_values(capture) if replace_ax_tree else ()
-    clean_ax_tree = placeholder.sanitize_ax_tree(ax_tree) if isinstance(ax_tree, dict) else ax_tree
-    original_app = _frontmost_app(ax_tree) if isinstance(ax_tree, dict) else None
+    projected_ax_tree = _without_embedded_nuls(ax_tree) if isinstance(ax_tree, dict) else ax_tree
+    clean_ax_tree = (
+        placeholder.sanitize_ax_tree(projected_ax_tree)
+        if isinstance(projected_ax_tree, dict)
+        else projected_ax_tree
+    )
+    original_app = (
+        _frontmost_app(projected_ax_tree) if isinstance(projected_ax_tree, dict) else None
+    )
     trigger = capture.get("trigger")
+    projected_trigger = _without_embedded_nuls(trigger) if isinstance(trigger, dict) else trigger
     clean_trigger = (
-        placeholder.sanitize_trigger(original_app or {}, trigger)
-        if isinstance(trigger, dict)
-        else trigger
+        placeholder.sanitize_trigger(original_app or {}, projected_trigger)
+        if isinstance(projected_trigger, dict)
+        else projected_trigger
     )
     projection_changed = clean_ax_tree is not ax_tree
     trigger_changed = clean_trigger is not trigger
@@ -130,7 +204,7 @@ def sanitize_capture(capture: dict[str, Any], *, replace_ax_tree: bool = False) 
         replace_ax_tree and bool(ocr_values) and ocr_values != capture.get(_OCR_PLACEHOLDER_VALUES)
     )
     if not projection_changed and not trigger_changed and not cache_changed:
-        return capture
+        return _sanitize_s1_projection(capture)
     clean = dict(capture)
     if replace_ax_tree and projection_changed:
         clean["ax_tree"] = clean_ax_tree
@@ -139,7 +213,7 @@ def sanitize_capture(capture: dict[str, Any], *, replace_ax_tree: bool = False) 
     if trigger_changed:
         clean["trigger"] = clean_trigger
     if not projection_changed:
-        return clean
+        return _sanitize_s1_projection(clean)
     app_data = _frontmost_app(clean_ax_tree)
     if app_data is None:
         clean["focused_element"] = FocusedElement().to_dict()
@@ -147,9 +221,8 @@ def sanitize_capture(capture: dict[str, Any], *, replace_ax_tree: bool = False) 
         clean["url"] = None
         return clean
     clean["focused_element"] = _extract_focused_element(app_data).to_dict()
-    preserve_ocr_sentinel = bool(capture.get("ocr_submitted")) and not str(
-        capture.get("visible_text") or ""
-    )
+    prior_visible = str(_without_embedded_nuls(capture.get("visible_text") or ""))
+    preserve_ocr_sentinel = bool(capture.get("ocr_submitted")) and not prior_visible
     visible_text = (
         ""
         if preserve_ocr_sentinel
@@ -166,7 +239,7 @@ def sanitize_capture(capture: dict[str, Any], *, replace_ax_tree: bool = False) 
             visible_text = f"{visible_text.rstrip()}\n\n{suffix}" if visible_text else suffix
     clean["visible_text"] = visible_text
     clean["url"] = _extract_url(app_data)
-    return clean
+    return _sanitize_s1_projection(clean)
 
 
 def _frontmost_app(ax_tree: dict[str, Any]) -> dict[str, Any] | None:
@@ -328,6 +401,9 @@ def _render_visible_text(app_data: dict[str, Any], bundle: str = "") -> str:
         md = generic_render.resolve_app(app_data)
     if md is None:
         md = ax_app_to_markdown(app_data)
+    # Normalize before applying the S1 budget. Otherwise iTerm2's NUL padding
+    # consumes the limit and can split CJK terms in the downstream FTS index.
+    md = str(_without_embedded_nuls(md))
     if len(md) > _VISIBLE_TEXT_MAX:
         md = md[:_VISIBLE_TEXT_MAX] + "\n...(truncated)"
     return md

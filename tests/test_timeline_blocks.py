@@ -643,6 +643,43 @@ def test_format_events_replays_placeholder_capture_without_authored_text() -> No
     assert loc is None or loc.rung != "editing"
 
 
+def test_format_events_normalizes_iterm_nuls_for_pre_v2_ax_fallback() -> None:
+    ts = datetime(2026, 7, 17, 23, 0, tzinfo=_TZ)
+    malformed = "\u6d4b\0\u8bd5\0\u4e00\0\u4e0b"
+    data = {
+        "timestamp": ts.isoformat(),
+        "window_meta": {
+            "app_name": "iTerm2",
+            "title": "shell",
+            "bundle_id": "com.googlecode.iterm2",
+        },
+        "ax_tree": {
+            "apps": [
+                {
+                    "name": "iTerm2",
+                    "bundle_id": "com.googlecode.iterm2",
+                    "is_frontmost": True,
+                    "windows": [
+                        {
+                            "title": "shell",
+                            "focused": True,
+                            "elements": [{"role": "AXTextArea", "value": malformed}],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    events_text, _apps, _loc = aggregator._format_events(
+        [(Path(f"{_stem(ts)}.json"), data)], locus_enabled=False
+    )
+
+    assert "\u6d4b\u8bd5\u4e00\u4e0b" in events_text
+    assert "\0" not in events_text
+    assert data["ax_tree"]["apps"][0]["windows"][0]["elements"][0]["value"] == malformed
+
+
 def test_produce_block_replays_placeholder_without_focus_evidence(ac_root: Path, fake_llm) -> None:
     phrase = "Ask for follow-up changes"
     start = datetime(2026, 7, 12, 23, 10, tzinfo=_TZ)

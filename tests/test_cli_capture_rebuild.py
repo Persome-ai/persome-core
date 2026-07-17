@@ -280,6 +280,66 @@ def test_rebuild_captures_sanitizes_historical_placeholder_projection(ac_root: P
     assert phrase not in row["visible_text"]
 
 
+def test_rebuild_captures_normalizes_historical_iterm_nuls(ac_root: Path) -> None:
+    malformed = "\0\u6d4b\0\u8bd5\0\u4e00\0\u4e0b\0:persome"
+    target = paths.capture_buffer_dir() / "iterm-nul-old.json"
+    target.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-07-17T15:00:00+00:00",
+                "window_meta": {
+                    "app_name": "iTerm2",
+                    "bundle_id": "com.googlecode.iterm2",
+                    "title": "shell",
+                },
+                "focused_element": {
+                    "role": "AXTextArea",
+                    "value": malformed,
+                    "is_editable": True,
+                    "value_length": len(malformed),
+                },
+                "visible_text": f"[TextArea] {malformed}",
+                "ax_tree": {
+                    "apps": [
+                        {
+                            "name": "iTerm2",
+                            "bundle_id": "com.googlecode.iterm2",
+                            "is_frontmost": True,
+                            "focused_element": {
+                                "role": "AXTextArea",
+                                "value": malformed,
+                                "is_editable": True,
+                            },
+                            "windows": [
+                                {
+                                    "title": "shell",
+                                    "focused": True,
+                                    "elements": [{"role": "AXTextArea", "value": malformed}],
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(cli.app, ["rebuild-captures-index"])
+
+    assert result.exit_code == 0, result.output
+    with fts.cursor() as conn:
+        row = conn.execute(
+            "SELECT focused_value, visible_text FROM captures WHERE id='iterm-nul-old'"
+        ).fetchone()
+        hits = fts.search_captures(conn, query="\u6d4b\u8bd5\u4e00\u4e0b")
+    assert row is not None
+    assert row["focused_value"] == "\u6d4b\u8bd5\u4e00\u4e0b:persome"
+    assert "\u6d4b\u8bd5\u4e00\u4e0b:persome" in row["visible_text"]
+    assert "\0" not in row["visible_text"]
+    assert [hit.id for hit in hits] == ["iterm-nul-old"]
+
+
 def test_rebuild_captures_preserves_db_only_ocr_backfill(ac_root: Path) -> None:
     target = paths.capture_buffer_dir() / "ocr-only.json"
     target.write_text(

@@ -36,8 +36,8 @@ Only closed windows are produced. The current half-formed window sits as "traili
 
 `timeline/aggregator.py` reads each capture's S1 fields (`focused_element`, `visible_text`, `url`, `window_meta`) — **not** the raw AX tree during normal operation. This keeps the prompt tractable:
 
-- `visible_text` is a pre-rendered, length-capped markdown view of the AX tree (capped at 10 KB per capture by S1, then capped at 4 KB per capture by the timeline prompt).
-- `focused_element` carries the user's current cursor / input context (role, title, value, editable flag). Before this boundary, S1 removes standard AX placeholders and locally matched Chromium `.placeholder` descendants. Therefore, when `is_editable=true` and `value_length > 0`, the remaining value is user-authored content and the prompt treats it as the highest-priority signal to preserve verbatim.
+- `visible_text` is a pre-rendered, length-capped markdown view of the AX tree (capped at 10 KB per capture by S1, then capped at 4 KB per capture by the timeline prompt). S1 removes embedded AX NUL code points before applying that budget, preserving contiguous CJK terms for prompts and FTS.
+- `focused_element` carries the user's current cursor / input context (role, title, value, editable flag). Before this boundary, S1 removes embedded AX NULs, standard AX placeholders, and locally matched Chromium `.placeholder` descendants, then calculates `value_length`. Therefore, when `is_editable=true` and `value_length > 0`, the remaining value is user-authored content and the prompt treats it as the highest-priority signal to preserve verbatim.
 - `url` is regex-extracted from visible text when present.
 - When capture JSON has no AX text and `ocr_submitted=true`, the aggregator
   consults the OCR backfill in `captures` FTS before declaring the window empty.

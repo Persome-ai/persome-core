@@ -9,11 +9,70 @@ def _ax_tree(*apps: dict) -> dict:
     return {"apps": list(apps), "timestamp": "2026-04-21T10:00:00+08:00"}
 
 
+def _iterm_capture(value: str, *, helper_focus: bool) -> dict:
+    element = {"role": "AXTextArea", "value": value}
+    app = {
+        "name": "iTerm2",
+        "bundle_id": "com.googlecode.iterm2",
+        "is_frontmost": True,
+        "windows": [
+            {
+                "title": "shell",
+                "focused": True,
+                "elements": [element],
+            }
+        ],
+    }
+    if helper_focus:
+        app["focused_element"] = {
+            "role": "AXTextArea",
+            "value": value,
+            "is_editable": True,
+        }
+    return {"ax_tree": _ax_tree(app)}
+
+
 def test_enrich_noop_without_ax_tree() -> None:
     capture = {"timestamp": "x", "window_meta": {"app_name": "A"}}
     s1_parser.enrich(capture)
     assert "focused_element" not in capture
     assert "visible_text" not in capture
+
+
+def test_enrich_removes_iterm_nuls_from_helper_focus_and_visible_text() -> None:
+    malformed = "\0\0\u6d4b\0\u8bd5\0\u4e00\0\u4e0b\0:persome\0\u7684\0current_context"
+    capture = _iterm_capture(malformed, helper_focus=True)
+    raw_ax = copy.deepcopy(capture["ax_tree"])
+
+    s1_parser.enrich(capture)
+
+    expected = "\u6d4b\u8bd5\u4e00\u4e0b:persome\u7684current_context"
+    assert capture["focused_element"]["value"] == expected
+    assert capture["focused_element"]["value_length"] == len(expected)
+    assert expected in capture["visible_text"]
+    assert "\0" not in capture["visible_text"]
+    assert capture["ax_tree"] == raw_ax
+
+
+def test_enrich_removes_iterm_nuls_from_legacy_focused_window_scan() -> None:
+    malformed = "\u6d4b\0\u8bd5\0\u4e00\0\u4e0b"
+    capture = _iterm_capture(malformed, helper_focus=False)
+
+    s1_parser.enrich(capture)
+
+    assert capture["focused_element"]["value"] == "\u6d4b\u8bd5\u4e00\u4e0b"
+    assert capture["focused_element"]["value_length"] == 4
+    assert "\u6d4b\u8bd5\u4e00\u4e0b" in capture["visible_text"]
+    assert "\0" not in capture["visible_text"]
+
+
+def test_enrich_removes_nuls_before_focused_value_limit() -> None:
+    capture = _iterm_capture("\0\u4e2d" * 2_500, helper_focus=True)
+
+    s1_parser.enrich(capture)
+
+    assert capture["focused_element"]["value"] == "\u4e2d" * 2_000
+    assert capture["focused_element"]["value_length"] == 2_000
 
 
 def test_enrich_picks_frontmost_app() -> None:
@@ -620,6 +679,67 @@ def test_sanitize_capture_repairs_historical_s1_projection() -> None:
     assert clean["focused_element"]["value"] == ""
     assert _COMPOSER_PLACEHOLDER not in clean["visible_text"]
     assert capture["focused_element"]["value"] == _COMPOSER_PLACEHOLDER
+
+
+def test_sanitize_capture_reprojects_historical_iterm_nuls_copy_on_write() -> None:
+    malformed = "\0\u6d4b\0\u8bd5\0\u4e00\0\u4e0b\0"
+    capture = _iterm_capture(malformed, helper_focus=True)
+    capture["focused_element"] = {
+        "role": "AXTextArea",
+        "value": malformed,
+        "is_editable": True,
+        "has_value": True,
+        "value_length": len(malformed),
+    }
+    capture["visible_text"] = f"[TextArea] {malformed}"
+    raw_ax = capture["ax_tree"]
+
+    clean = s1_parser.sanitize_capture(capture)
+
+    assert clean is not capture
+    assert clean["focused_element"]["value"] == "\u6d4b\u8bd5\u4e00\u4e0b"
+    assert clean["focused_element"]["value_length"] == 4
+    assert "\u6d4b\u8bd5\u4e00\u4e0b" in clean["visible_text"]
+    assert "\0" not in clean["visible_text"]
+    assert clean["ax_tree"] is raw_ax
+    assert "\0" in capture["focused_element"]["value"]
+    assert "\0" in raw_ax["apps"][0]["focused_element"]["value"]
+
+
+def test_sanitize_capture_replace_ax_tree_removes_iterm_nuls_for_legacy_replay() -> None:
+    capture = _iterm_capture("\u6d4b\0\u8bd5\0\u4e00\0\u4e0b", helper_focus=False)
+    raw_ax = capture["ax_tree"]
+
+    clean = s1_parser.sanitize_capture(capture, replace_ax_tree=True)
+
+    clean_element = clean["ax_tree"]["apps"][0]["windows"][0]["elements"][0]
+    assert clean_element["value"] == "\u6d4b\u8bd5\u4e00\u4e0b"
+    assert "\0" not in clean["visible_text"]
+    assert clean["focused_element"]["value"] == "\u6d4b\u8bd5\u4e00\u4e0b"
+    assert clean["ax_tree"] is not raw_ax
+    assert raw_ax["apps"][0]["windows"][0]["elements"][0]["value"] == (
+        "\u6d4b\0\u8bd5\0\u4e00\0\u4e0b"
+    )
+
+
+def test_sanitize_capture_removes_nuls_without_ax_tree() -> None:
+    capture = {
+        "focused_element": {
+            "role": "AXTextArea",
+            "value": "\u6d4b\0\u8bd5",
+            "has_value": True,
+            "value_length": 3,
+        },
+        "visible_text": "\u6d4b\0\u8bd5",
+    }
+
+    clean = s1_parser.sanitize_capture(capture)
+
+    assert clean is not capture
+    assert clean["focused_element"]["value"] == "\u6d4b\u8bd5"
+    assert clean["focused_element"]["value_length"] == 2
+    assert clean["visible_text"] == "\u6d4b\u8bd5"
+    assert capture["focused_element"]["value"] == "\u6d4b\0\u8bd5"
 
 
 def test_enrich_filters_matching_placeholder_title_and_description() -> None:

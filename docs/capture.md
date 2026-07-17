@@ -200,6 +200,11 @@ producers. An exact placeholder descendant is removed only inside its owning
 editable subtree and only when its text is locally paired with that control.
 Matching text is then cleared from the parent projection. Ordinary page text
 and broad CSS classes that merely contain the word `placeholder` remain intact.
+The same copy-on-write S1 boundary removes embedded NUL code points from AX
+strings before focused-value and visible-text limits are applied. This repairs
+iTerm2-style NUL padding around CJK text without rewriting the diagnostic raw
+`ax_tree`; `focused_element.value`, its length metadata, and AX-derived
+`visible_text` are projected from the normalized copy.
 Historical timeline, MCP, and classifier chat-drill reads plus
 `rebuild-captures-index` apply the same sanitizer, so replaying an old buffer
 cannot turn input hints into authored text; index rebuilds also preserve DB-only
