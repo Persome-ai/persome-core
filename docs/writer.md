@@ -338,8 +338,12 @@ selected projections and preserve receipts/history.
   eligible; generic semantic-stage errors wait for boot/daily/manual recovery.
 - Semantic-stage errors degrade the model and remain retryable; they do not
   fabricate geometry.
-- Explicit model build records stage failures, model names, prompt hashes,
-  config hash, input window, and commit in `model-build.json`.
+- Explicit model build keeps the existing reproducibility manifest in
+  `model-build.json` and atomically records Core-owned, content-free execution
+  receipts in `model-build-stages.json`. A receipt carries only stable
+  status/error codes, processing timestamps, counters/digests, and hashes;
+  caller-returned stage reports and exception text are never accepted as
+  evidence.
 
 ## Logs and recovery
 

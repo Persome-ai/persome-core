@@ -3713,6 +3713,7 @@ def _clean_memory_locked() -> tuple[int, int, int, int]:
             paths.root() / "projection-md",
             paths.human_file(),
             paths.model_build_manifest(),
+            paths.model_build_stage_receipt(),
             paths.model_build_lock(),
             paths.session_model_lock(),
             paths.integrity_recovery_marker(),
@@ -3725,6 +3726,7 @@ def _clean_memory_locked() -> tuple[int, int, int, int]:
         for path in _private_atomic_crash_artifacts(
             paths.human_file(),
             paths.model_build_manifest(),
+            paths.model_build_stage_receipt(),
             paths.integrity_recovery_marker(),
             paths.integrity_recovery_pending(),
             paths.integrity_config_recovery_pending(),
@@ -3856,6 +3858,7 @@ def clean_all(
             paths.index_db().with_name(f"{paths.index_db().name}-journal"),
             paths.writer_state(),
             paths.model_build_manifest(),
+            paths.model_build_stage_receipt(),
             paths.model_build_lock(),
             paths.session_model_lock(),
             paths.paused_flag(),
@@ -3868,6 +3871,7 @@ def clean_all(
         atomic_crash_data = _private_atomic_crash_artifacts(
             paths.human_file(),
             paths.model_build_manifest(),
+            paths.model_build_stage_receipt(),
             paths.integrity_recovery_marker(),
             paths.integrity_recovery_pending(),
             paths.integrity_config_recovery_pending(),

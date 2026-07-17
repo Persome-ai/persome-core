@@ -123,6 +123,7 @@ def test_corrupt_db_replays_memory_and_invalidates_stale_model_build(ac_root: Pa
         paths.model_build_manifest(),
         json.dumps({"status": "complete", "build_id": "stale-build"}),
     )
+    paths.atomic_write_private_text(paths.model_build_stage_receipt(), '{"status":"stale"}')
     sync_live_human_markdown()
     assert paths.human_file().exists()
     paths.index_db().write_bytes(b"not-a-sqlite-database" * 100)
@@ -131,6 +132,7 @@ def test_corrupt_db_replays_memory_and_invalidates_stale_model_build(ac_root: Pa
 
     assert [item.kind for item in recovered] == ["database"]
     assert not paths.model_build_manifest().exists()
+    assert not paths.model_build_stage_receipt().exists()
     assert not paths.human_file().exists()
     with fts.cursor() as conn:
         row = conn.execute(

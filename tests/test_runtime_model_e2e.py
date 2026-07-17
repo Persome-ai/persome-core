@@ -14,7 +14,7 @@ from persome import paths
 from persome.api import build_api_app
 from persome.api import routes as routes_mod
 from persome.capture import scheduler, screen_state
-from persome.model import export_snapshot, run_model_build
+from persome.model import artifact_matches_manifest, export_snapshot, run_model_build
 from persome.session import store as session_store
 from persome.session.manager import SessionManager
 from persome.store import fts
@@ -234,6 +234,40 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
         "stats": second.stats,
         "stages": second.stages,
     }
+    assert set(second.stages["root_synthesis"]) == {
+        "status",
+        "duration_ms",
+        "reason",
+        "root_id",
+    }
+    assert "roots_written" not in second.stages["root_synthesis"]
+    stage_artifact = json.loads(paths.model_build_stage_receipt().read_text(encoding="utf-8"))
+    assert stage_artifact["pipeline_kind"] == "core"
+    assert [receipt["name"] for receipt in stage_artifact["stages"]] == [
+        "state_formation",
+        "evomem_baseline",
+        "entity_relation_enrichment",
+        "schema_miner",
+        "cross_domain_sweeper",
+        "root_synthesis",
+        "vector_backfill",
+        "model_contract",
+    ]
+    assert all(
+        receipt["status"] in {"complete", "skipped"}
+        and receipt["completed_at"]
+        and isinstance(receipt["outputs"], dict)
+        for receipt in stage_artifact["stages"]
+    )
+    baseline_receipt = next(
+        receipt for receipt in stage_artifact["stages"] if receipt["name"] == "evomem_baseline"
+    )
+    assert baseline_receipt["outputs"] == {"backfilled": 0}
+    root_receipt = next(
+        receipt for receipt in stage_artifact["stages"] if receipt["name"] == "root_synthesis"
+    )
+    assert root_receipt["outputs"] == {"roots_written": 1}
+    assert artifact_matches_manifest(stage_artifact, second.manifest)
 
     output = ac_root / "exports" / "runtime-model.json"
     with fts.cursor() as conn:
@@ -244,6 +278,21 @@ def test_fresh_root_ingest_build_export_contract(ac_root, monkeypatch, fake_llm)
             generated_at="2026-07-10T09:06:00+00:00",
         )
     snapshot = json.loads(exported.read_text(encoding="utf-8"))
+    assert snapshot["build"] == second.manifest
+    contract_outputs = stage_artifact["stages"][-1]["outputs"]
+    assert contract_outputs == {
+        key: snapshot["stats"][key]
+        for key in (
+            "points",
+            "active_points",
+            "evolution_lines",
+            "relation_lines",
+            "faces",
+            "volumes",
+            "roots",
+            "receipts",
+        )
+    }
     assert post_cutoff_secret not in json.dumps(snapshot, ensure_ascii=False)
     assert snapshot["stats"]["points"] >= 8
     assert snapshot["stats"]["evolution_lines"] + snapshot["stats"]["relation_lines"] >= 1

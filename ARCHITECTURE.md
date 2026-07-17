@@ -130,6 +130,7 @@ current build-start time.
 | `memory/*.md` | readable durable memory and schema projections |
 | `index.db` | WAL-mode FTS5, model, provenance, sessions, and vectors |
 | `model-build.json` | last reproducibility manifest |
+| `model-build-stages.json` | Core-owned, content-free stage execution receipts |
 | `HUMAN.md` | raw deterministic model reading view, mode `0600` |
 | `exports/*.json` | redacted model snapshots, mode `0600` |
 | `.runtime-state.json` | owner-only Runtime generation and readiness receipt |

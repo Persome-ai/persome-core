@@ -133,6 +133,7 @@ def test_clean_memory_removes_canonical_model_exports_and_backups(ac_root, monke
     (paths.backup_dir() / "evo.db").write_text("synthetic")
     paths.human_file().write_text("# HUMAN.md\n")
     paths.model_build_manifest().write_text("{}")
+    paths.model_build_stage_receipt().write_text("{}")
 
     real_remove = cli._remove_path
     removed_inside_gate: list[bool] = []
@@ -147,12 +148,13 @@ def test_clean_memory_removes_canonical_model_exports_and_backups(ac_root, monke
     assert files == 1
     assert entries == 1
     assert model_rows >= 2
-    assert artifacts == 4
+    assert artifacts == 5
     assert removed_inside_gate and all(removed_inside_gate)
     assert not paths.exports_dir().exists()
     assert not paths.backup_dir().exists()
     assert not paths.human_file().exists()
     assert not paths.model_build_manifest().exists()
+    assert not paths.model_build_stage_receipt().exists()
     with fts.cursor() as conn:
         assert conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM evo_nodes").fetchone()[0] == 0
@@ -166,6 +168,7 @@ def test_clean_all_keeps_only_install_configuration(ac_root, monkeypatch) -> Non
     paths.config_file().write_text("[capture]\n")
     paths.env_file().write_text("PERSOME_LLM_API_KEY=synthetic\n")
     paths.human_file().write_text("# HUMAN.md\n")
+    paths.model_build_stage_receipt().write_text("{}")
     (paths.root() / "venv").mkdir()
     # Legacy Chat-era data from an older install: a full wipe must still purge it.
     (paths.root() / "chat-history").mkdir()
@@ -194,6 +197,7 @@ def test_clean_all_keeps_only_install_configuration(ac_root, monkeypatch) -> Non
         paths.memory_dir(),
         paths.logs_dir(),
         paths.human_file(),
+        paths.model_build_stage_receipt(),
         paths.root() / "chat-history",
         paths.root() / "skills",
         paths.index_db(),
