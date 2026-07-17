@@ -134,8 +134,18 @@ def _run_stage(
     }
 
 
-def _run_pipeline(cfg: Any, *, stage_clock: datetime | None = None) -> PipelineOutcome:
-    """Run the one-shot structural model stages in dependency order."""
+def _run_pipeline(
+    cfg: Any,
+    *,
+    stage_clock: datetime | None = None,
+    evidence_as_of: datetime | None = None,
+) -> PipelineOutcome:
+    """Run the one-shot structural model stages in dependency order.
+
+    ``stage_clock`` is the processing/transaction clock used by state
+    formation. ``evidence_as_of`` is a separate causal read cutoff for
+    enrichment; a historical cutoff must never backdate durable writes.
+    """
     from .. import vectors_tick
     from ..session.tick import _run_evomem_enrichment_once
     from ..writer import agent as writer_agent
@@ -178,7 +188,11 @@ def _run_pipeline(cfg: Any, *, stage_clock: datetime | None = None) -> PipelineO
     _run_stage(outcome, "evomem_baseline", run_evomem_baseline)
 
     def run_enrichment() -> dict[str, Any]:
-        return _run_evomem_enrichment_once(cfg, raise_on_error=True)
+        return _run_evomem_enrichment_once(
+            cfg,
+            raise_on_error=True,
+            evidence_as_of=evidence_as_of,
+        )
 
     enrichment_enabled = bool(
         getattr(cfg, "person_graph_enabled", False)
@@ -460,9 +474,18 @@ def run_model_build(
     trigger: str = "cli",
     coordinator: ModelBuildCoordinator | None = None,
     pipeline_runner: Callable[[Any], PipelineOutcome] | None = None,
+    evidence_as_of: datetime | None = None,
+    processing_clock: Callable[[], datetime] | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> ModelBuildResult:
-    """Run one idempotent build and persist its reproducibility manifest."""
+    """Run one idempotent build and persist its reproducibility manifest.
+
+    ``evidence_as_of`` bounds cutoff-aware evidence readers without changing
+    transaction or persistence time. ``processing_clock`` owns manifest times,
+    writer retry scheduling, and ``modeled_at``; production defaults to the
+    current UTC wall clock. ``now`` is retained as the compatibility alias for
+    the processing-clock test seam.
+    """
     if (
         paths.integrity_recovery_pending().exists()
         or paths.integrity_config_recovery_pending().exists()
@@ -471,10 +494,17 @@ def run_model_build(
             "database/config recovery is incomplete; repair the reported source and rerun "
             "a stopped-Runtime CLI command before building"
         )
-    clock = now or (lambda: datetime.now(UTC))
+    if processing_clock is not None and now is not None:
+        raise ValueError("pass processing_clock or now, not both")
+    clock = processing_clock or now or (lambda: datetime.now(UTC))
     coordinator = coordinator or ModelBuildCoordinator()
     with coordinator.acquire(wait_seconds=wait_seconds):
         started_dt = clock()
+        if started_dt.tzinfo is None or started_dt.utcoffset() is None:
+            raise ValueError("model build processing clock must be timezone-aware")
+        cutoff = evidence_as_of or started_dt
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            raise ValueError("model build evidence_as_of must be timezone-aware")
         started_monotonic = time.monotonic()
         _write_json_owner_only(
             paths.model_build_manifest(),
@@ -492,7 +522,11 @@ def run_model_build(
         outcome = (
             pipeline_runner(cfg)
             if pipeline_runner is not None
-            else _run_pipeline(cfg, stage_clock=started_dt)
+            else _run_pipeline(
+                cfg,
+                stage_clock=started_dt,
+                evidence_as_of=cutoff,
+            )
         )
 
         with fts.cursor() as conn:
@@ -513,6 +547,8 @@ def run_model_build(
             degraded.append("model_contract")
 
         completed_dt = clock()
+        if completed_dt.tzinfo is None or completed_dt.utcoffset() is None:
+            raise ValueError("model build processing clock must be timezone-aware")
         manifest = create_build_manifest(
             models=_models(cfg),
             config=asdict(cfg),

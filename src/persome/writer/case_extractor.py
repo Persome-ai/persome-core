@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ..evomem.engine import EvoMemory
@@ -217,12 +217,19 @@ def run_case_extraction(
     on_event: llm_mod.OnEventFn | None = None,
     llm_call: LlmCallFn | None = None,
     lookback_hours: int = 24,
+    evidence_as_of: datetime | None = None,
     memory: EvoMemory | None = None,
 ) -> CaseResult:
     """Extract ``{problem, solution}`` cards from the recent timeline → L5 evomem.
 
     Off by default: a no-op (``skipped_reason='disabled'``) unless
     ``cfg.case_extraction_enabled`` is truthy.
+
+    ``evidence_as_of`` owns the causal read boundary. The selected source
+    interval is the preceding ``lookback_hours`` and never includes a timeline
+    block that straddles or follows that cutoff. It defaults to the current
+    aware wall clock for ordinary production calls. It does not change card
+    persistence timestamps: evomem still records the real processing time.
 
     ``llm_call`` / ``memory`` are injectable seams for testing; the live defaults
     use provider-aware ``llm_mod.call_llm`` and a fresh ``EvoMemory`` (its
@@ -241,9 +248,13 @@ def run_case_extraction(
     llm_call = llm_call or _default_llm_call
 
     _emit("progress", {"value": 0.1, "label": "Collecting recent timeline"})
-    since = datetime.now().astimezone() - timedelta(hours=lookback_hours)
+    cutoff = evidence_as_of or datetime.now().astimezone()
+    if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+        raise ValueError("case extraction evidence_as_of must be timezone-aware")
+    cutoff = cutoff.astimezone(UTC)
+    since = cutoff - timedelta(hours=lookback_hours)
     with fts.cursor() as conn:
-        blocks = tl_store.query_since(conn, since)
+        blocks = tl_store.query_since(conn, since, until=cutoff)
 
     candidates = find_candidates(blocks)
     if not candidates:

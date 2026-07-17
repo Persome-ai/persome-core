@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -36,6 +37,22 @@ def test_enrichment_runs_both_when_enabled(ac_root, monkeypatch) -> None:
     cfg = SimpleNamespace(person_graph_enabled=True, case_extraction_enabled=True)
     tick._run_evomem_enrichment_once(cfg)
     assert _CALLS == ["person", "case"]
+
+
+def test_enrichment_forwards_case_evidence_cutoff(ac_root, monkeypatch) -> None:
+    evidence_as_of = datetime(2026, 7, 13, 13, 46, tzinfo=UTC)
+    seen: list[datetime | None] = []
+
+    def _capture_case(cfg, *, evidence_as_of=None, **_kwargs):  # noqa: ANN001
+        seen.append(evidence_as_of)
+        return SimpleNamespace(written_count=0)
+
+    monkeypatch.setattr(case_mod, "run_case_extraction", _capture_case)
+    cfg = SimpleNamespace(person_graph_enabled=False, case_extraction_enabled=True)
+
+    tick._run_evomem_enrichment_once(cfg, evidence_as_of=evidence_as_of)
+
+    assert seen == [evidence_as_of]
 
 
 def test_enrichment_noop_when_both_disabled(ac_root, monkeypatch) -> None:

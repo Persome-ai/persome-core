@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from persome.evomem.engine import EvoMemory
 from persome.evomem.models import MemoryLayer
@@ -29,8 +31,13 @@ def _resp(payload: dict) -> Any:
     )
 
 
-def _insert_block(entries: list[str], *, minutes_ago: int = 30) -> None:
-    start = datetime.now().astimezone() - timedelta(minutes=minutes_ago)
+def _insert_block(
+    entries: list[str],
+    *,
+    minutes_ago: int = 30,
+    start: datetime | None = None,
+) -> tl_store.TimelineBlock:
+    start = start or datetime.now().astimezone() - timedelta(minutes=minutes_ago)
     block = tl_store.TimelineBlock(
         start_time=start,
         end_time=start + timedelta(minutes=1),
@@ -41,6 +48,7 @@ def _insert_block(entries: list[str], *, minutes_ago: int = 30) -> None:
     )
     with fts.cursor() as conn:
         tl_store.insert(conn, block)
+    return block
 
 
 def _scripted_llm(cards: list[dict]):
@@ -141,6 +149,147 @@ def test_extraction_writes_problem_solution_card_to_l5(ac_root) -> None:
     # Re-querying the active heads also surfaces it.
     heads = mem.store.all_latest()
     assert any(h.node_id == result.created_ids[0] for h in heads)
+
+
+def test_historical_evidence_clock_selects_old_source_but_keeps_processing_time(
+    ac_root,
+) -> None:
+    processing_started = datetime.now(UTC)
+    evidence_as_of = processing_started - timedelta(days=7)
+    _insert_block(
+        [
+            "HISTORICAL_SOURCE deploy failed with a missing dependency",
+            "installed the pinned dependency and fixed the deploy",
+        ],
+        start=evidence_as_of - timedelta(minutes=30),
+    )
+    llm = _scripted_llm(
+        [
+            {
+                "problem": "Deployment dependency was missing",
+                "solution": "Install the pinned dependency before deployment",
+            }
+        ]
+    )
+    mem = EvoMemory()
+
+    result = case_extractor.run_case_extraction(
+        _cfg(enabled=True),
+        evidence_as_of=evidence_as_of,
+        llm_call=llm,
+        memory=mem,
+    )
+
+    assert result.committed is True
+    assert result.candidates == 1
+    assert "HISTORICAL_SOURCE" in str(llm.captured[0]["messages"])
+    node = mem.store.get(result.created_ids[0])
+    assert node is not None
+    assert node.memory_at is not None and node.memory_at >= processing_started
+    assert node.gmt_created is not None and node.gmt_created >= processing_started
+
+
+def test_evidence_clock_rejects_blocks_at_or_after_cutoff(ac_root) -> None:
+    evidence_as_of = datetime.now(UTC) - timedelta(days=3)
+    _insert_block(
+        [
+            "PRE_CUTOFF build failed because the cache was stale",
+            "cleared the stale cache and fixed the build",
+        ],
+        start=evidence_as_of - timedelta(minutes=1),
+    )
+    _insert_block(
+        [
+            "POST_CUTOFF deploy failed because of a future change",
+            "reverted the future change and fixed the deploy",
+        ],
+        start=evidence_as_of,
+    )
+    llm = _scripted_llm([{"problem": "Stale cache", "solution": "Clear the cache"}])
+
+    result = case_extractor.run_case_extraction(
+        _cfg(enabled=True),
+        evidence_as_of=evidence_as_of,
+        llm_call=llm,
+        memory=EvoMemory(),
+    )
+
+    assert result.committed is True
+    assert result.candidates == 1
+    prompt = str(llm.captured[0]["messages"])
+    assert "PRE_CUTOFF" in prompt
+    assert "POST_CUTOFF" not in prompt
+
+
+def test_evidence_clock_rejects_block_straddling_lookback_start(ac_root) -> None:
+    evidence_as_of = datetime.now(UTC) - timedelta(days=3)
+    lookback_start = evidence_as_of - timedelta(hours=24)
+    _insert_block(
+        [
+            "PRE_LOOKBACK failed before the bounded source window",
+            "PRE_LOOKBACK was fixed after crossing the lower boundary",
+        ],
+        start=lookback_start - timedelta(seconds=30),
+    )
+    _insert_block(
+        [
+            "IN_LOOKBACK failed inside the bounded source window",
+            "IN_LOOKBACK was fixed inside the bounded source window",
+        ],
+        start=lookback_start + timedelta(minutes=1),
+    )
+    llm = _scripted_llm([{"problem": "Bounded failure", "solution": "Bounded fix"}])
+
+    result = case_extractor.run_case_extraction(
+        _cfg(enabled=True),
+        evidence_as_of=evidence_as_of,
+        llm_call=llm,
+        memory=EvoMemory(),
+    )
+
+    assert result.committed is True
+    assert result.candidates == 1
+    prompt = str(llm.captured[0]["messages"])
+    assert "IN_LOOKBACK" in prompt
+    assert "PRE_LOOKBACK" not in prompt
+
+
+def test_default_evidence_clock_remains_current_wall_time(ac_root) -> None:
+    now = datetime.now().astimezone()
+    _insert_block(
+        [
+            "CURRENT_SOURCE test failed because the service was stopped",
+            "started the service and fixed the test",
+        ],
+        start=now - timedelta(minutes=30),
+    )
+    _insert_block(
+        [
+            "FUTURE_SOURCE test failed after a future change",
+            "reverted the future change and fixed the test",
+        ],
+        start=now + timedelta(minutes=30),
+    )
+    llm = _scripted_llm([{"problem": "Stopped service", "solution": "Start the service"}])
+
+    result = case_extractor.run_case_extraction(
+        _cfg(enabled=True),
+        llm_call=llm,
+        memory=EvoMemory(),
+    )
+
+    assert result.committed is True
+    prompt = str(llm.captured[0]["messages"])
+    assert "CURRENT_SOURCE" in prompt
+    assert "FUTURE_SOURCE" not in prompt
+
+
+def test_evidence_clock_must_be_timezone_aware(ac_root) -> None:
+    with pytest.raises(ValueError, match="evidence_as_of must be timezone-aware"):
+        case_extractor.run_case_extraction(
+            _cfg(enabled=True),
+            evidence_as_of=datetime(2026, 7, 13, 12, 0),
+        )
 
 
 def test_error_without_resolution_produces_no_card(ac_root) -> None:

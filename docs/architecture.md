@@ -144,6 +144,13 @@ Each stage records complete, skipped, or failed. Missing geometry or a failed
 enabled substage makes the build `degraded`. The build never fabricates an
 empty replacement for a previously valid Root.
 
+Historical replay gives the coordinator an explicit `evidence_as_of` cutoff.
+That cutoff flows through the pipeline and enrichment into reusable-case source
+selection, where both sides of the lookback window are enforced. It is separate
+from the processing wall clock: manifests, `modeled_at`, retries, and newly
+created memory retain the time at which the build actually ran. Ordinary daemon
+and CLI builds default the evidence cutoff to their current build-start time.
+
 ## Daemon tasks
 
 The registry in `src/persome/daemon.py` is the authoritative task list.

@@ -113,6 +113,12 @@ written atomically with owner-only permissions. The Runtime then
 deterministically renders the raw snapshot as owner-only `HUMAN.md`; this
 projection makes no additional LLM call and never fabricates a Root.
 
+For historical replay, `evidence_as_of` is a causal read cutoff, not a simulated
+wall clock. It flows into bounded enrichment evidence queries while build
+manifests, session completion, retries, and new memory keep their real
+processing timestamps. Live CLI and daemon builds default the cutoff to the
+current build-start time.
+
 ## Storage
 
 `src/persome/paths.py` is the path authority. The default root is

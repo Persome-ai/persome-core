@@ -655,13 +655,16 @@ def _run_evomem_enrichment_once(
     cfg: Config,
     *,
     raise_on_error: bool = False,
+    evidence_as_of: datetime | None = None,
 ) -> dict[str, object]:
     """One enrichment pass: person-graph ingest, case extraction, attention digest.
 
     Every layer gates INTERNALLY on its own flag and no-ops when off, so this is
     safe to call whenever the tick fires. Person-graph ingest and the attention
     digest are deterministic (no LLM); case extraction makes one LLM pass over
-    the last 24h of timeline blocks.
+    the last 24h of timeline blocks. ``evidence_as_of`` is forwarded only as the
+    case source cutoff; it never replaces the processing wall clock used by
+    durable writes.
     Extracted so the wiring is unit-testable without driving the daily loop. Each
     layer is isolated in its own try so one failure never blocks the others.
     Scheduled callers stay fail-open; the model build passes ``raise_on_error``
@@ -693,7 +696,10 @@ def _run_evomem_enrichment_once(
 
     if getattr(cfg, "case_extraction_enabled", False):
         try:
-            result = case_extractor.run_case_extraction(cfg)
+            result = case_extractor.run_case_extraction(
+                cfg,
+                evidence_as_of=evidence_as_of,
+            )
             report["case_cards"] = getattr(result, "written_count", 0)
             logger.info(
                 "evomem enrichment: case extraction wrote %d card(s)",

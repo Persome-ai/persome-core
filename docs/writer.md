@@ -187,10 +187,16 @@ pattern prompts use each session's own exclusive `session_end` as their logical
 "now", so relative language in an early historical session is not interpreted
 against a later bulk-build time. The classifier receives the transaction clock
 separately only to locate legacy event headings whose write time followed their
-session. The default model-build pipeline forwards its injected build clock, so
-`run_model_build(..., now=...)` freezes state-formation transactions as well as
-the build manifest. These clocks do not make general memory retrieval
-bitemporal.
+session.
+
+Model build keeps two clocks separate. `processing_clock` (with `now` retained
+as its compatibility test alias) controls manifest `started_at`/`completed_at`,
+state-formation transactions, retry scheduling, and `modeled_at`.
+`evidence_as_of` controls only cutoff-aware evidence selection. Production
+defaults both to the current aware wall clock. A historical replay passes only
+`evidence_as_of`; it must not backdate the build manifest, session completion,
+or newly persisted memory to pretend the work ran in the past. These clocks do
+not make general memory retrieval bitemporal.
 
 Classifier and pattern `read_memory` / `search_memory` still read the current
 store rather than an `as_of` snapshot. A benchmark that makes causal cutoff
@@ -226,7 +232,13 @@ The dirty-gated 30-minute refresh, `persome model build`, and the unconditional
 
 `case_extractor` deterministically finds error-to-resolution windows, then asks
 the LLM to distill supported problem/solution cards. Unresolved errors are not
-minted. Cards enter the public deterministic evomem write entrance.
+minted. Its source interval is bounded by
+`[evidence_as_of - lookback, evidence_as_of)`: persisted blocks ending exactly
+at the cutoff are safe because their wall interval is half-open, while a block
+that straddles or follows the cutoff is rejected. This lets a replay performed
+days later recover the intended historical 24-hour source window without
+reading future evidence. Cards enter the public deterministic evomem write
+entrance at their real processing time.
 
 ### Attention digest
 

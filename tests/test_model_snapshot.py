@@ -6,6 +6,7 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -388,10 +389,15 @@ def test_model_build_propagates_frozen_clock_to_default_state_formation(
 ) -> None:
     cfg = config_mod.load(ac_root / "config.toml")
     frozen = datetime(2026, 7, 10, 8, 0, tzinfo=UTC)
-    seen: list[datetime | None] = []
+    seen: list[tuple[datetime | None, datetime | None]] = []
 
-    def fake_pipeline(_cfg, *, stage_clock=None):  # type: ignore[no-untyped-def]
-        seen.append(stage_clock)
+    def fake_pipeline(  # type: ignore[no-untyped-def]
+        _cfg,
+        *,
+        stage_clock=None,
+        evidence_as_of=None,
+    ):
+        seen.append((stage_clock, evidence_as_of))
         return PipelineOutcome()
 
     monkeypatch.setattr(model_build_mod, "_run_pipeline", fake_pipeline)
@@ -401,7 +407,100 @@ def test_model_build_propagates_frozen_clock_to_default_state_formation(
         trigger="test-frozen-state-formation",
     )
 
-    assert seen == [frozen]
+    assert seen == [(frozen, frozen)]
+
+
+def test_model_build_separates_historical_evidence_from_processing_clock(
+    ac_root,
+    monkeypatch,
+) -> None:
+    cfg = config_mod.load(ac_root / "config.toml")
+    evidence_as_of = datetime(2026, 7, 13, 13, 46, tzinfo=UTC)
+    processing_started = datetime(2026, 7, 17, 9, 0, tzinfo=UTC)
+    processing_completed = processing_started + timedelta(seconds=2)
+    moments = iter([processing_started, processing_completed])
+    seen: list[tuple[datetime | None, datetime | None]] = []
+
+    def fake_pipeline(  # type: ignore[no-untyped-def]
+        _cfg,
+        *,
+        stage_clock=None,
+        evidence_as_of=None,
+    ):
+        seen.append((stage_clock, evidence_as_of))
+        return PipelineOutcome()
+
+    monkeypatch.setattr(model_build_mod, "_run_pipeline", fake_pipeline)
+    result = run_model_build(
+        cfg,
+        evidence_as_of=evidence_as_of,
+        processing_clock=lambda: next(moments),
+        trigger="test-historical-evidence-clock",
+    )
+
+    assert seen == [(processing_started, evidence_as_of)]
+    assert result.manifest["started_at"] == processing_started.isoformat()
+    assert result.manifest["completed_at"] == processing_completed.isoformat()
+
+
+def test_default_pipeline_forwards_evidence_clock_to_enrichment(
+    ac_root,
+    monkeypatch,
+) -> None:
+    import persome.session.tick as tick_mod
+    import persome.vectors_tick as vectors_tick_mod
+    import persome.writer.agent as writer_agent_mod
+
+    cfg = config_mod.load(ac_root / "config.toml")
+    cfg.reducer.enabled = True
+    cfg.schema.enabled = False
+    cfg.person_graph_enabled = False
+    cfg.case_extraction_enabled = True
+    cfg.attention_digest_enabled = False
+    cfg.relation_extraction_enabled = False
+    evidence_as_of = datetime(2026, 7, 13, 13, 46, tzinfo=UTC)
+    processing_clock = datetime(2026, 7, 17, 9, 0, tzinfo=UTC)
+    seen: list[tuple[bool, datetime | None]] = []
+    writer_clocks: list[datetime | None] = []
+
+    def fake_enrichment(  # type: ignore[no-untyped-def]
+        _cfg,
+        *,
+        raise_on_error=False,
+        evidence_as_of=None,
+    ):
+        seen.append((raise_on_error, evidence_as_of))
+        return {}
+
+    def fake_writer(_cfg, *, stage_clock=None):  # type: ignore[no-untyped-def]
+        writer_clocks.append(stage_clock)
+        return SimpleNamespace(reduced=0, classified=0, written_ids=[])
+
+    monkeypatch.setattr(tick_mod, "_run_evomem_enrichment_once", fake_enrichment)
+    monkeypatch.setattr(writer_agent_mod, "run", fake_writer)
+    monkeypatch.setattr(vectors_tick_mod, "backfill", lambda _cfg: 0)
+
+    outcome = model_build_mod._run_pipeline(
+        cfg,
+        stage_clock=processing_clock,
+        evidence_as_of=evidence_as_of,
+    )
+
+    assert outcome.stages["entity_relation_enrichment"]["status"] == "complete"
+    assert writer_clocks == [processing_clock]
+    assert seen == [(True, evidence_as_of)]
+
+
+def test_model_build_rejects_ambiguous_processing_clock_aliases(ac_root) -> None:
+    cfg = config_mod.load(ac_root / "config.toml")
+    clock = lambda: datetime(2026, 7, 17, 9, 0, tzinfo=UTC)  # noqa: E731
+
+    with pytest.raises(ValueError, match="processing_clock or now"):
+        run_model_build(
+            cfg,
+            processing_clock=clock,
+            now=clock,
+        )
 
 
 def test_model_build_preserves_unknown_human_and_reports_no_projection(ac_root) -> None:

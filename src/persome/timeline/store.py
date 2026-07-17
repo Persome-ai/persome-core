@@ -409,13 +409,35 @@ def query_recent(conn: sqlite3.Connection, *, limit: int = 12) -> list[TimelineB
     return blocks
 
 
-def query_since(conn: sqlite3.Connection, since: datetime) -> list[TimelineBlock]:
-    """All blocks with end_time > ``since``, chronological order."""
+def query_since(
+    conn: sqlite3.Connection,
+    since: datetime,
+    *,
+    until: datetime | None = None,
+) -> list[TimelineBlock]:
+    """All blocks after ``since`` and, when bounded, before ``until``.
+
+    With no ``until``, preserve the legacy overlapping-lower-bound behavior:
+    every block whose end is after ``since`` is returned chronologically. With
+    ``until``, both evidence bounds are strict: only whole blocks with
+    ``start_time >= since`` and ``end_time <= until`` are returned. A block
+    whose half-open wall window ends exactly at ``until`` is safe because all
+    of its evidence occurred before that instant.
+    """
+    if until is None:
+        rows = conn.execute(
+            "SELECT * FROM timeline_blocks "
+            "WHERE persome_epoch(end_time) > persome_epoch(?) "
+            "ORDER BY persome_epoch(start_time) ASC",
+            (since.isoformat(),),
+        ).fetchall()
+        return [_row_to_block(r) for r in rows]
     rows = conn.execute(
         "SELECT * FROM timeline_blocks "
-        "WHERE persome_epoch(end_time) > persome_epoch(?) "
+        "WHERE persome_epoch(start_time) >= persome_epoch(?) "
+        "AND persome_epoch(end_time) <= persome_epoch(?) "
         "ORDER BY persome_epoch(start_time) ASC",
-        (since.isoformat(),),
+        (since.isoformat(), until.isoformat()),
     ).fetchall()
     return [_row_to_block(r) for r in rows]
 
