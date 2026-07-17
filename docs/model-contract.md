@@ -40,6 +40,14 @@ holds `model-build.lock`; once the lock is free, a leftover marker is exposed as
 as the previous success. Missing Points, Lines, Faces, Volumes, or Root is recorded as degraded.
 `model status` also requires a valid completed/degraded manifest before reporting `ready`.
 
+Before each canonical stage starts, Core atomically appends a `running` stage
+receipt to the separate owner-only `model-build-stages.json` artifact. It
+atomically replaces that receipt with `complete`, `skipped`, `failed`, or
+`interrupted` afterward. Thus a normal exception has a fixed failure receipt
+and a process crash preserves the last atomic state (`running` when it exited
+inside a stage); neither can reuse an older success. This sidecar does not
+change the public snapshot or `model-build.json` schema.
+
 ## Geometry
 
 The contract exposes:
@@ -62,6 +70,21 @@ from package releases.
 Every `build` object records the core commit, stage model names, prompt hashes, a config hash, input
 window, mock/real mode, timing, and degraded stages. Configuration values themselves are not copied
 into the manifest. Fixed inputs and timestamps produce the same `build_id`.
+
+The execution sidecar binds its final result to that unchanged manifest through
+`build_id`, a safe `core_commit` label plus digest, `config_hash`, a full
+canonical manifest digest, and a trigger digest. It contains only fixed status/error codes, processing
+timestamps, non-negative counters or explicit SHA-256 digests. Prompt/response
+text, exception messages, paths, and arbitrary personal strings are invalid.
+The callback test seam is marked `override`; callback-returned stage
+dictionaries are ignored, so a caller cannot self-report a canonical success.
+The canonical Core order is `state_formation`, `evomem_baseline`,
+`entity_relation_enrichment`, `schema_miner`, `cross_domain_sweeper`,
+`root_synthesis`, `vector_backfill`, and `model_contract`. Complete receipts
+have an exact stage-specific output-counter set; the final `model_contract`
+counters match the persisted geometry and are the independent attestor's
+recomputation surface. Sidecar digests use canonical compact, key-sorted UTF-8
+JSON and full SHA-256.
 The live HTTP, MCP, and CLI-export projections preserve that persisted manifest
 exactly. The manifest `build_id` must match the stable hash of every other manifest field, and
 `complete`/`degraded` must agree with an empty/non-empty `degraded_stages` list. If there is no valid

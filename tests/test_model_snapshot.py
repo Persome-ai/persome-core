@@ -20,14 +20,20 @@ from persome.model import (
     ModelContractError,
     ModelRecoveryIncomplete,
     PipelineOutcome,
+    artifact_matches_manifest,
     build_snapshot,
     create_build_manifest,
     export_snapshot,
+    is_valid_build_stage_artifact,
     load_last_manifest,
     load_live_manifest,
     model_status,
     run_model_build,
     sync_live_human_markdown,
+)
+from persome.model.stage_receipt import (
+    content_digest,
+    create_build_stage_artifact,
 )
 from persome.store import fts, schema_faces
 from persome.store import relation_edges as edges
@@ -40,6 +46,10 @@ def _rehash_manifest(manifest: dict) -> None:
     unsigned = {key: value for key, value in manifest.items() if key != "build_id"}
     payload = json.dumps(unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     manifest["build_id"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+
+def _load_stage_artifact() -> dict:
+    return json.loads(paths.model_build_stage_receipt().read_text(encoding="utf-8"))
 
 
 def _seed_model(monkeypatch: pytest.MonkeyPatch) -> dict:
@@ -346,8 +356,17 @@ def test_model_build_persists_complete_owner_only_manifest(ac_root, monkeypatch)
     assert result.status == "complete"
     assert result.manifest["degraded_stages"] == []
     assert result.stats["roots"] == 1
+    assert set(result.manifest) == set(json.loads(GOLDEN.read_text())["build"])
     assert result.stages == pipeline.stages
     assert load_last_manifest() == result.manifest
+    artifact = _load_stage_artifact()
+    assert artifact["pipeline_kind"] == "override"
+    assert [stage["name"] for stage in artifact["stages"]] == [
+        "pipeline_override",
+        "model_contract",
+    ]
+    assert artifact_matches_manifest(artifact, result.manifest)
+    assert paths.model_build_stage_receipt().stat().st_mode & 0o777 == 0o600
     assert result.manifest_path.stat().st_mode & 0o777 == 0o600
     human_path = paths.human_file()
     assert result.human_path == human_path
@@ -357,6 +376,176 @@ def test_model_build_persists_complete_owner_only_manifest(ac_root, monkeypatch)
     assert f'root_id: "{seeded["root_id"]}"' in human
     assert "# HUMAN.md" in human
     assert "Persome has not formed a verified Root yet" not in human
+
+
+def test_pipeline_callback_cannot_self_report_stage_receipts(ac_root, monkeypatch) -> None:
+    _seed_model(monkeypatch)
+    cfg = config_mod.load(ac_root / "config.toml")
+    sensitive = "PRIVATE PROMPT: choose the acquisition and email Alice"
+
+    def malicious_report(_cfg):  # type: ignore[no-untyped-def]
+        return PipelineOutcome(
+            stages={
+                "root_synthesis": {
+                    "status": "complete",
+                    "prompt": sensitive,
+                    "response": sensitive,
+                }
+            },
+            degraded_stages=["caller_claimed_failure"],
+        )
+
+    result = run_model_build(
+        cfg,
+        pipeline_runner=malicious_report,
+        now=lambda: datetime(2026, 7, 10, 8, 0, tzinfo=UTC),
+        trigger="untrusted-callback",
+    )
+
+    manifest_text = paths.model_build_manifest().read_text(encoding="utf-8")
+    artifact_text = paths.model_build_stage_receipt().read_text(encoding="utf-8")
+    assert sensitive not in manifest_text
+    assert sensitive not in artifact_text
+    assert "caller_claimed_failure" in manifest_text
+    assert "caller_claimed_failure" not in artifact_text
+    assert result.manifest["degraded_stages"] == ["caller_claimed_failure"]
+    assert result.stages == malicious_report(cfg).stages
+    artifact = _load_stage_artifact()
+    assert [receipt["name"] for receipt in artifact["stages"]] == [
+        "pipeline_override",
+        "model_contract",
+    ]
+    assert artifact["pipeline_kind"] == "override"
+    assert artifact["status"] == "complete"
+    assert artifact_matches_manifest(artifact, result.manifest)
+
+
+def test_stage_artifact_hashes_unsafe_trigger_text(ac_root, monkeypatch) -> None:
+    _seed_model(monkeypatch)
+    cfg = config_mod.load(ac_root / "config.toml")
+    sensitive_trigger = "PRIVATE: email Alice about the acquisition"
+    sensitive_commit = "PRIVATE commit note about Alice"
+    monkeypatch.setenv("PERSOME_CORE_COMMIT", sensitive_commit)
+
+    result = run_model_build(
+        cfg,
+        pipeline_runner=lambda _cfg: PipelineOutcome(),
+        now=lambda: datetime(2026, 7, 10, 8, 0, tzinfo=UTC),
+        trigger=sensitive_trigger,
+    )
+
+    artifact_text = paths.model_build_stage_receipt().read_text(encoding="utf-8")
+    artifact = json.loads(artifact_text)
+    assert sensitive_trigger not in artifact_text
+    assert sensitive_commit not in artifact_text
+    assert artifact["trigger_label"] == "other"
+    assert artifact["trigger_digest"].startswith("sha256:")
+    assert artifact["core_commit"] == "other"
+    assert artifact["core_commit_digest"].startswith("sha256:")
+    assert artifact_matches_manifest(artifact, result.manifest)
+
+
+def test_running_stage_is_atomically_visible_before_callback_returns(
+    ac_root,
+    monkeypatch,
+) -> None:
+    _seed_model(monkeypatch)
+    cfg = config_mod.load(ac_root / "config.toml")
+    observed: dict = {}
+
+    def inspect_running_marker(_cfg):  # type: ignore[no-untyped-def]
+        observed.update(_load_stage_artifact())
+        return PipelineOutcome()
+
+    run_model_build(
+        cfg,
+        pipeline_runner=inspect_running_marker,
+        now=lambda: datetime(2026, 7, 10, 8, 0, tzinfo=UTC),
+        trigger="inspect-running",
+    )
+
+    assert observed["status"] == "building"
+    assert observed["pipeline_kind"] == "override"
+    assert observed["stages"][0]["status"] == "running"
+    assert observed["stages"][0]["completed_at"] is None
+    assert set(load_last_manifest()) == set(json.loads(GOLDEN.read_text())["build"])
+
+
+def test_stage_artifact_updates_use_atomic_owner_only_writer(
+    ac_root,
+    monkeypatch,
+) -> None:
+    _seed_model(monkeypatch)
+    cfg = config_mod.load(ac_root / "config.toml")
+    real_atomic_write = paths.atomic_write_private_text
+    stage_writes: list[dict] = []
+
+    def track_atomic_write(path, content):  # type: ignore[no-untyped-def]
+        if path == paths.model_build_stage_receipt():
+            stage_writes.append(json.loads(content))
+        return real_atomic_write(path, content)
+
+    monkeypatch.setattr(paths, "atomic_write_private_text", track_atomic_write)
+    run_model_build(
+        cfg,
+        pipeline_runner=lambda _cfg: PipelineOutcome(),
+        now=lambda: datetime(2026, 7, 10, 8, 0, tzinfo=UTC),
+        trigger="atomic-receipt",
+    )
+
+    assert len(stage_writes) >= 5
+    assert stage_writes[0]["stages"] == []
+    assert any(
+        write["stages"] and write["stages"][-1]["status"] == "running" for write in stage_writes
+    )
+    assert stage_writes[-1]["status"] == "complete"
+    assert paths.model_build_stage_receipt().stat().st_mode & 0o777 == 0o600
+
+
+def test_stage_recorder_preserves_legacy_failure_and_skip_result_shape(ac_root) -> None:
+    sensitive = "PRIVATE model response about Alice"
+    artifact = create_build_stage_artifact(
+        trigger="shape-test",
+        pipeline_kind="core",
+        started_at=datetime.now(UTC).isoformat(),
+    )
+    recorder = model_build_mod._StageReceiptRecorder(artifact)
+    outcome = PipelineOutcome()
+
+    def fail_state_formation() -> dict:
+        raise RuntimeError(sensitive)
+
+    model_build_mod._run_stage(
+        outcome,
+        recorder,
+        "state_formation",
+        fail_state_formation,
+    )
+    model_build_mod._run_stage(
+        outcome,
+        recorder,
+        "evomem_baseline",
+        lambda: {"backfilled": 0},
+        enabled=False,
+    )
+
+    assert set(outcome.stages["state_formation"]) == {
+        "status",
+        "reason",
+        "duration_ms",
+    }
+    assert outcome.stages["state_formation"]["status"] == "failed"
+    assert sensitive in outcome.stages["state_formation"]["reason"]
+    assert outcome.stages["evomem_baseline"] == {
+        "status": "skipped",
+        "reason": "disabled",
+        "duration_ms": 0,
+    }
+    persisted = paths.model_build_stage_receipt().read_text(encoding="utf-8")
+    assert sensitive not in persisted
+    receipts = json.loads(persisted)["stages"]
+    assert receipts[0]["error_code"] == "stage_failed"
+    assert receipts[1]["error_code"] == "disabled_by_config"
 
 
 def test_empty_model_build_is_degraded_not_success(ac_root) -> None:
@@ -370,6 +559,14 @@ def test_empty_model_build_is_degraded_not_success(ac_root) -> None:
     )
     assert result.status == "degraded"
     assert result.manifest["degraded_stages"] == ["model_contract"]
+    artifact = _load_stage_artifact()
+    contract_receipt = artifact["stages"][-1]
+    assert contract_receipt["name"] == "model_contract"
+    assert contract_receipt["status"] == "failed"
+    assert contract_receipt["degraded"] is True
+    assert contract_receipt["error_code"] == "incomplete_geometry"
+    assert contract_receipt["outputs"]["roots"] == 0
+    assert artifact_matches_manifest(artifact, result.manifest)
     assert result.stats["points"] == 0
     assert result.stats["roots"] == 0
     human_path = paths.human_file()
@@ -390,9 +587,22 @@ def test_model_build_propagates_frozen_clock_to_default_state_formation(
     frozen = datetime(2026, 7, 10, 8, 0, tzinfo=UTC)
     seen: list[datetime | None] = []
 
-    def fake_pipeline(_cfg, *, stage_clock=None):  # type: ignore[no-untyped-def]
+    def fake_pipeline(  # type: ignore[no-untyped-def]
+        _cfg,
+        *,
+        recorder,
+        stage_clock=None,
+    ):
         seen.append(stage_clock)
-        return PipelineOutcome()
+        outcome = PipelineOutcome()
+        for name in model_build_mod.CORE_MODEL_BUILD_STAGES[:-1]:
+            recorder.skip(name)
+            outcome.stages[name] = {
+                "status": "skipped",
+                "reason": "test",
+                "duration_ms": 0,
+            }
+        return outcome
 
     monkeypatch.setattr(model_build_mod, "_run_pipeline", fake_pipeline)
     run_model_build(
@@ -402,6 +612,9 @@ def test_model_build_propagates_frozen_clock_to_default_state_formation(
     )
 
     assert seen == [frozen]
+    artifact = _load_stage_artifact()
+    assert artifact["started_at"] != frozen.isoformat()
+    assert all(stage["started_at"] != frozen.isoformat() for stage in artifact["stages"])
 
 
 def test_model_build_preserves_unknown_human_and_reports_no_projection(ac_root) -> None:
@@ -443,7 +656,39 @@ def test_interrupted_model_build_invalidates_previous_completed_manifest(ac_root
         )
 
     assert load_last_manifest()["status"] == "building"
+    artifact = _load_stage_artifact()
+    receipt = artifact["stages"][0]
+    assert receipt["name"] == "pipeline_override"
+    assert receipt["status"] == "failed"
+    assert receipt["error_code"] == "stage_failed"
+    assert artifact["status"] == "failed"
+    assert artifact["failure_code"] == "build_failed"
+    assert "synthetic interruption" not in json.dumps(artifact)
     assert load_live_manifest()["status"] == "not_built"
+
+
+def test_base_exception_persists_interrupted_stage_receipt(ac_root) -> None:
+    cfg = config_mod.load(ac_root / "config.toml")
+
+    def interrupted(_cfg):  # type: ignore[no-untyped-def]
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        run_model_build(
+            cfg,
+            pipeline_runner=interrupted,
+            now=lambda: datetime(2026, 7, 10, 9, 0, tzinfo=UTC),
+            trigger="base-exception",
+        )
+
+    assert load_last_manifest()["status"] == "building"
+    artifact = _load_stage_artifact()
+    receipt = artifact["stages"][0]
+    assert receipt["status"] == "interrupted"
+    assert receipt["degraded"] is True
+    assert receipt["error_code"] == "stage_interrupted"
+    assert artifact["status"] == "interrupted"
+    assert artifact["failure_code"] == "build_interrupted"
 
 
 @pytest.mark.parametrize("pending_kind", ["database", "config"])
@@ -551,6 +796,32 @@ def test_live_manifest_rejects_rehashed_status_stage_contradiction(
     paths.atomic_write_private_text(paths.model_build_manifest(), json.dumps(manifest))
 
     assert load_live_manifest()["status"] == "not_built"
+
+
+def test_stage_artifact_rejects_rehashed_personal_text_without_affecting_snapshot(
+    ac_root,
+    monkeypatch,
+) -> None:
+    _seed_model(monkeypatch)
+    cfg = config_mod.load(ac_root / "config.toml")
+    result = run_model_build(
+        cfg,
+        pipeline_runner=lambda _cfg: PipelineOutcome(),
+        now=lambda: datetime(2026, 7, 10, 8, 0, tzinfo=UTC),
+    )
+    artifact = _load_stage_artifact()
+    receipt = artifact["stages"][0]
+    receipt["outputs"] = {"prompt": "Email Alice about the private acquisition"}
+    receipt["receipt_id"] = content_digest(
+        {key: value for key, value in receipt.items() if key != "receipt_id"}
+    )
+    artifact["artifact_id"] = content_digest(
+        {key: value for key, value in artifact.items() if key != "artifact_id"}
+    )
+
+    assert is_valid_build_stage_artifact(artifact) is False
+    assert artifact_matches_manifest(artifact, result.manifest) is False
+    assert load_live_manifest() == result.manifest
 
 
 def test_model_build_lock_no_wait_reports_busy(ac_root) -> None:

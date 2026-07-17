@@ -178,7 +178,8 @@ ingestion architecture.
 | `memory/*.md` | Human-readable event, fact, schema, and correction history. |
 | `memory/skills/skill-*.md` | Evidence-backed repeated behavior. |
 | `index.db` | WAL-mode sessions, FTS5, evomem, relations, geometry, receipts, vectors, and audit tables. |
-| `model-build.json` | Owner-only build conditions and stage outcomes. |
+| `model-build.json` | Owner-only build conditions and degraded-stage summary. |
+| `model-build-stages.json` | Owner-only, content-free canonical stage outcomes. |
 | `exports/*.json` | Owner-only, redacted-by-default snapshots. |
 | `backup/*.db` | Verified daily SQLite snapshots when enabled. |
 

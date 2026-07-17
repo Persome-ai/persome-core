@@ -114,6 +114,7 @@ labels, ports, and data roots do not belong in core.
 | `model-build.lock` | cross-process build lock |
 | `session-model.lock` | cross-process terminal-session finalization lock |
 | `model-build.json` | last build manifest |
+| `model-build-stages.json` | Core-owned, content-free stage execution receipt |
 | `HUMAN.md` | Persome-managed raw model reading view; owner-only mode `0600` |
 | `.integrity-recovery.pending.json` | resumable full-database recovery phase journal |
 | `.integrity-config-recovery.pending.json` | pre-quarantine config intent and authority guard |

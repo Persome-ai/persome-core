@@ -121,13 +121,79 @@ No API keys or full configuration values are copied into the manifest.
 `build_id` is the stable hash of every other manifest field; `complete` requires
 an empty `degraded_stages`, while `degraded` requires at least one stage.
 
+### Model-build execution sidecar
+
+`<PERSOME_ROOT>/model-build-stages.json` is a separate owner-only execution
+artifact; it does not add fields to `model-build.json` or change snapshot
+schema 1. Canonical Core builds contain exactly this ordered stage set:
+
+```json
+{
+  "schema_version": 1,
+  "artifact_id": "sha256:...",
+  "status": "complete",
+  "pipeline_kind": "core",
+  "build_id": "...",
+  "core_commit": "...",
+  "core_commit_digest": "sha256:...",
+  "config_hash": "...",
+  "manifest_digest": "sha256:...",
+  "trigger_label": "cli",
+  "trigger_digest": "sha256:...",
+  "started_at": "...",
+  "completed_at": "...",
+  "failure_code": null,
+  "degraded_stages": [],
+  "stages": []
+}
+```
+
+| Stage | Complete-stage output counters |
+|---|---|
+| `state_formation` | `reduced`, `classified`, `written` |
+| `evomem_baseline` | `backfilled` |
+| `entity_relation_enrichment` | `person_updates`, `case_cards`, `relation_edges`, `attention_digest`, `relation_promoted` |
+| `schema_miner` | `written`, `skipped_small`, `skipped_empty` |
+| `cross_domain_sweeper` | `written`, `pairs_considered`, `eligible_pairs`, `pairs_probed`, `probe_limit`, `pairs_deferred`, `collisions` |
+| `root_synthesis` | `roots_written` |
+| `vector_backfill` | `enqueued`, `embedded`, `queued` |
+| `model_contract` | `points`, `active_points`, `evolution_lines`, `relation_lines`, `faces`, `volumes`, `roots`, `receipts` |
+
+The final `model_contract` counters are independently recomputable from the
+persisted database or an unredacted snapshot. In sidecar schema 1, `inputs` is
+reserved and must be `{}`. A complete stage has exactly its listed
+non-negative integer outputs; a skipped stage has none; a failed stage may
+retain a safe subset. The fixed error codes are `disabled_by_config`,
+`stage_failed`, `model_contract_failed`, `incomplete_geometry`, and
+`stage_interrupted`.
+
+The final sidecar is bound to the exact manifest by `build_id`, a safe
+`core_commit` label plus its digest, `config_hash`, a full canonical
+`manifest_digest`, and a digest of `trigger`.
+The callback test seam is labeled `pipeline_kind: override`; callback-returned
+stage dictionaries are ignored, so they cannot impersonate the canonical Core
+stage list. Its manifest digest still binds the callback-driven legacy manifest,
+while sidecar status/degradation describes only the Core wrapper and contract
+check. Prompt text, model responses, exception messages, paths, and arbitrary
+personal strings are invalid artifact values.
+
+`receipt_id`, `artifact_id`, trigger binding, and manifest binding use full
+`sha256:<64 lowercase hex>` digests over UTF-8 JSON with recursively sorted
+keys, no insignificant whitespace, and non-ASCII characters preserved.
+Processing timestamps are timezone-aware ISO 8601 wall-clock times and are
+separate from replay/event time.
+
 Live HTTP, MCP, and CLI-export snapshots use the last persisted completed or
 degraded build record. If no valid build record exists, they report `status: not_built`,
 `trigger: no_completed_build`, and a null `build_id`; inspecting the current
 database projection never fabricates a successful build. A raw
 `model-build.json` with `status: building` is exposed as `building` only while
 the process still holds `model-build.lock`. If that lock is free, the marker is
-an interrupted-build remnant and public surfaces report `not_built`.
+an interrupted-build remnant and public surfaces report `not_built`. In
+parallel, Core atomically writes a `running` record to the separate execution
+sidecar before entering each stage and replaces it after completion or a caught
+failure/interruption. A hard crash preserves the last atomic state, including a
+`running` stage when the process exited inside that stage.
 
 ## Stats
 

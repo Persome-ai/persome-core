@@ -41,9 +41,20 @@ from .snapshot import (
     model_status,
     validate_snapshot,
 )
+from .stage_receipt import (
+    CORE_MODEL_BUILD_STAGES,
+    MODEL_BUILD_STAGE_OUTPUT_KEYS,
+    STAGE_RECEIPT_SCHEMA_VERSION,
+    artifact_matches_manifest,
+    is_valid_build_stage_artifact,
+    is_valid_stage_receipt,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
+    "STAGE_RECEIPT_SCHEMA_VERSION",
+    "CORE_MODEL_BUILD_STAGES",
+    "MODEL_BUILD_STAGE_OUTPUT_KEYS",
     "ACTIVITY_PREFIX",
     "DEFAULT_WAIT_SECONDS",
     "ModelBuildBusy",
@@ -69,6 +80,9 @@ __all__ = [
     "load_live_manifest",
     "is_activity_identity",
     "is_valid_build_manifest",
+    "is_valid_build_stage_artifact",
+    "is_valid_stage_receipt",
+    "artifact_matches_manifest",
     "materialize_human_markdown",
     "model_status",
     "normalize_activity_identity",

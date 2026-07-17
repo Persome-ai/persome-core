@@ -74,6 +74,7 @@ and old helper path.
 | `backup/` | SQLite safety snapshots containing personal model state |
 | `logs/` | daemon and launchd logs; may contain operational context |
 | `model-build.json` | latest build manifest and degraded-stage report |
+| `model-build-stages.json` | content-free build execution receipt bound to the latest manifest |
 | `HUMAN.md` | raw deterministic reading view of the current model; owner-only mode `0600` |
 | `.integrity-recovery.pending.json` | crash-resumable full-database quarantine/replay journal |
 | `.integrity-config-recovery.pending.json` | config-quarantine intent retained until database authority is reconciled |

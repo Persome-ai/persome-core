@@ -64,6 +64,11 @@ def model_build_manifest() -> Path:
     return root() / "model-build.json"
 
 
+def model_build_stage_receipt() -> Path:
+    """Owner-only, content-free execution receipt for the latest model build."""
+    return root() / "model-build-stages.json"
+
+
 def onboarding_state_file() -> Path:
     """Owner-only progress receipt for resumable unified onboarding."""
     return root() / ".onboarding-state.json"

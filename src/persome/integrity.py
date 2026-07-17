@@ -1439,16 +1439,19 @@ def _reconcile_resolved_write_authority(authority: str) -> dict[str, object]:
 
 def _invalidate_model_manifest() -> bool:
     """Remove derived model views that belong to the quarantined database."""
-    manifest = paths.model_build_manifest()
     manifest_invalidated = True
-    try:
-        manifest.unlink(missing_ok=True)
-    except OSError as exc:
-        manifest_invalidated = False
-        _log.warning(
-            "integrity: failed to invalidate stale model build manifest",
-            extra={"path": str(manifest), "error": str(exc)},
-        )
+    for artifact in (
+        paths.model_build_manifest(),
+        paths.model_build_stage_receipt(),
+    ):
+        try:
+            artifact.unlink(missing_ok=True)
+        except OSError as exc:
+            manifest_invalidated = False
+            _log.warning(
+                "integrity: failed to invalidate stale model build artifact",
+                extra={"path": str(artifact), "error": str(exc)},
+            )
     try:
         from .model.human import HumanMarkdownConflict, remove_managed_human_markdown
 
