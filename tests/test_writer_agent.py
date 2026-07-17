@@ -226,6 +226,73 @@ def test_retry_pending_modeling_never_hammers_stage_errors(
     assert calls == []
 
 
+def test_finalizer_aggregates_classifier_closing_block_wait_for_minute_retry(
+    ac_root: Path,
+    monkeypatch,
+) -> None:
+    start = datetime(2026, 7, 10, 8, 0, tzinfo=_TZ)
+    end = start + timedelta(minutes=1)
+    with fts.cursor() as conn:
+        session_store.insert(
+            conn,
+            session_store.SessionRow(
+                id="sess-classifier-closing-wait",
+                start_time=start,
+                end_time=end,
+                status="reduced",
+            ),
+        )
+
+    observed_clocks: dict[str, datetime] = {}
+    transaction_clock = end + timedelta(days=30)
+
+    def fake_classify(*_args, **kwargs):  # type: ignore[no-untyped-def]
+        observed_clocks["classifier_logical"] = kwargs["stage_clock"]
+        observed_clocks["classifier_processing"] = kwargs["processing_clock"]
+        return SimpleNamespace(
+            committed=False,
+            retryable=True,
+            skipped_reason="awaiting_closing_block",
+        )
+
+    def fake_pattern(*_args, **kwargs):  # type: ignore[no-untyped-def]
+        observed_clocks["pattern_logical"] = kwargs["stage_clock"]
+        return SimpleNamespace(
+            committed=False,
+            retryable=False,
+            skipped_reason="pattern detector disabled",
+        )
+
+    monkeypatch.setattr(agent.classifier_mod, "classify_after_reduce", fake_classify)
+    monkeypatch.setattr(agent.pattern_detector_mod, "detect_after_classify", fake_pattern)
+    monkeypatch.setattr(
+        agent,
+        "_model_delta_range",
+        lambda *_args, **_kwargs: (
+            SimpleNamespace(skipped_reason="no_blocks"),
+            "",
+        ),
+    )
+
+    result = agent.finalize_session(
+        config_mod.load(ac_root / "config.toml"),
+        session_id="sess-classifier-closing-wait",
+        stage_clock=transaction_clock,
+    )
+
+    assert not result.completed
+    assert result.errors == ["classifier: awaiting_closing_block"]
+    with fts.cursor() as conn:
+        row = session_store.get_by_id(conn, "sess-classifier-closing-wait")
+    assert row is not None
+    assert row.model_retry_reason == "awaiting_closing_block"
+    assert observed_clocks == {
+        "classifier_logical": end,
+        "classifier_processing": transaction_clock,
+        "pattern_logical": end,
+    }
+
+
 def test_terminal_finalizer_applies_default_person_model(
     ac_root: Path,
     fake_llm,

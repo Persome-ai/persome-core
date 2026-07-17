@@ -51,7 +51,10 @@ marked as untrusted data rather than instructions.
 Malformed output enters the persisted reducer retry queue. After five attempts,
 the deterministic heuristic writes one coarse subtask per observed app, tagged
 `heuristic`. Event files are reducer-owned; other writers may read but cannot
-write them.
+write them. Every reducer-owned event entry records the reduced window start as
+`occurred_at`; its Markdown heading remains the processing/write time.
+Historical pattern scans use occurrence time first and fall back to the heading
+only for legacy entries.
 
 ## Windowed memory delta
 
@@ -146,10 +149,41 @@ The bounded tool loop in `writer/classifier.py` can read/search memory and use
 `event-*`. Under default delta apply it returns the deliberate skip
 `classifier retired (delta apply)` and the periodic classifier task is not
 started. The code remains reachable for old stores that explicitly disable
-delta apply. Terminal focus entries may be written after the nominal session
-end, so their read bound can extend to the current wall clock, but timeline
-evidence remains separately capped at the exact session end. The active tick
-only advances its bookmark through a closed wall boundary.
+delta apply. Terminal focus entries use `occurred_at` when present. Legacy
+entries may have been written after the nominal session end, so their heading
+read bound can extend to the current stage clock, but timeline evidence remains
+separately capped at the exact session end. A terminal call whose
+`classified_end` already reaches `session_end` returns before opening an LLM
+loop.
+
+`drill_chat_captures` is caller-bounded. The classifier owns one aware,
+half-open evidence interval `[start, end)`; a model-requested drill interval is
+intersected with it, a disjoint request is rejected, and the capture query uses
+an exclusive end. The tool result reports both requested and applied bounds so
+the clipping is auditable. The active tick only advances its bookmark through a
+closed wall boundary.
+
+### Historical replay clock and isolation
+
+`writer.agent.run(..., stage_clock=...)` treats that aware value as the
+transaction clock for reducer retry scheduling and `modeled_at`. Classifier and
+pattern prompts use each session's own exclusive `session_end` as their logical
+"now", so relative language in an early historical session is not interpreted
+against a later bulk-build time. The classifier receives the transaction clock
+separately only to locate legacy event headings whose write time followed their
+session. The default model-build pipeline forwards its injected build clock, so
+`run_model_build(..., now=...)` freezes state-formation transactions as well as
+the build manifest. These clocks do not make general memory retrieval
+bitemporal.
+
+Classifier and pattern `read_memory` / `search_memory` still read the current
+store rather than an `as_of` snapshot. A benchmark that makes causal cutoff
+claims must therefore start from a new isolated `PERSOME_ROOT`, ingest and model
+events strictly in chronological prefix order, and never preload later memory
+or reuse a root across arms or cutoffs. The clean prefix-only root is the
+isolation boundary until the read/search tools gain an explicit bitemporal
+contract. Bulk catch-up over a store that already contains later sessions is
+diagnostic only.
 
 ## Behavioral memory
 
@@ -163,7 +197,8 @@ the resident Root and Faces. The stage models a person's recurring behavior; it
 does not propose scripts, grant permission, or execute automation.
 Both structured and raw modes use the same cutoff-safe timeline slice. The
 structured frequency scan retains the full configured lookback; only raw prompt
-mode keeps its 200-block token cap.
+mode keeps its 200-block token cap. Durable event candidates are windowed and
+ordered by `occurred_at` when available, with legacy write time as the fallback.
 
 ## Higher-level build
 

@@ -171,6 +171,7 @@ def finalize_session(
     session_id: str,
     event_daily_path: str = "",
     just_written_entry_id: str = "",
+    stage_clock: datetime | None = None,
 ) -> SessionModelResult:
     """Run terminal model stages once for a reduced session.
 
@@ -180,6 +181,9 @@ def finalize_session(
     retryable without repeating a successful memory-delta LLM call.
     """
     result = SessionModelResult(session_id=session_id)
+    clock = _resolve_stage_clock(stage_clock)
+    retry_reasons: list[str] = []
+    hard_error = False
     lock_path = paths.session_model_lock()
     with paths.open_private_lock_file(lock_path) as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
@@ -204,6 +208,8 @@ def finalize_session(
                     session_start=row.start_time,
                     session_end=row.end_time,
                     window_start=row.classified_end,
+                    stage_clock=row.end_time,
+                    processing_clock=clock,
                 )
                 classify_ok = bool(
                     not getattr(result.classifier, "retryable", False)
@@ -213,12 +219,17 @@ def finalize_session(
                     with fts.cursor() as conn:
                         session_store.set_classified_end(conn, session_id, row.end_time)
                 elif getattr(result.classifier, "retryable", False):
+                    retry_reasons.append(
+                        str(result.classifier.skipped_reason or "evidence unavailable")
+                    )
                     result.errors.append(
                         f"classifier: {result.classifier.skipped_reason or 'evidence unavailable'}"
                     )
                 else:
+                    hard_error = True
                     result.errors.append("classifier ended without commit")
             except Exception as exc:  # noqa: BLE001
+                hard_error = True
                 result.errors.append(f"classifier: {type(exc).__name__}: {exc}")
                 logger.warning("classifier %s crashed: %s", session_id, exc, exc_info=True)
 
@@ -229,6 +240,7 @@ def finalize_session(
                     event_daily_path=path,
                     session_start=row.start_time,
                     session_end=row.end_time,
+                    stage_clock=row.end_time,
                 )
                 pattern_ok = bool(
                     not getattr(result.pattern, "retryable", False)
@@ -238,13 +250,18 @@ def finalize_session(
                     with fts.cursor() as conn:
                         session_store.set_pattern_detected_end(conn, session_id, row.end_time)
                 elif getattr(result.pattern, "retryable", False):
+                    retry_reasons.append(
+                        str(result.pattern.skipped_reason or "evidence unavailable")
+                    )
                     result.errors.append(
                         "pattern_detector: "
                         f"{result.pattern.skipped_reason or 'evidence unavailable'}"
                     )
                 else:
+                    hard_error = True
                     result.errors.append("pattern detector ended without commit")
             except Exception as exc:  # noqa: BLE001
+                hard_error = True
                 result.errors.append(f"pattern_detector: {type(exc).__name__}: {exc}")
                 logger.warning("pattern_detector %s crashed: %s", session_id, exc, exc_info=True)
 
@@ -258,20 +275,25 @@ def finalize_session(
                 )
                 if error:
                     result.errors.append(error)
+                    retry_reasons.append(
+                        str(getattr(result.delta, "skipped_reason", "") or "memory_delta_failed")
+                    )
             except Exception as exc:  # noqa: BLE001
+                hard_error = True
                 result.errors.append(f"memory_delta: {type(exc).__name__}: {exc}")
                 logger.warning("memory_delta %s crashed: %s", session_id, exc, exc_info=True)
 
             if not result.errors:
                 with fts.cursor() as conn:
-                    session_store.mark_modeled(conn, session_id, datetime.now().astimezone())
+                    session_store.mark_modeled(conn, session_id, clock)
                 result.completed = True
             else:
-                delta_reason = str(getattr(result.delta, "skipped_reason", "") or "")
-                exact_delta_error = bool(delta_reason) and all(
-                    error.endswith(f": {delta_reason}") for error in result.errors
+                unique_retry_reasons = set(retry_reasons)
+                retry_reason = (
+                    next(iter(unique_retry_reasons))
+                    if not hard_error and len(unique_retry_reasons) == 1
+                    else "stage_error"
                 )
-                retry_reason = delta_reason if exact_delta_error else "stage_error"
                 with fts.cursor() as conn:
                     session_store.set_model_retry_reason(conn, session_id, retry_reason)
             return result
@@ -279,7 +301,12 @@ def finalize_session(
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
-def run(cfg: Config, *, limit: int | None = None) -> WriterRunResult:
+def run(
+    cfg: Config,
+    *,
+    limit: int | None = None,
+    stage_clock: datetime | None = None,
+) -> WriterRunResult:
     """Reduce pending sessions, then finish every unmodeled reduced session."""
     result = WriterRunResult()
     if not cfg.reducer.enabled:
@@ -295,7 +322,15 @@ def run(cfg: Config, *, limit: int | None = None) -> WriterRunResult:
             already_pending = session_store.list_pending_modeling(conn)
         reduction_limit = max(0, limit - len(already_pending[:limit]))
 
-    reduce_results = session_reducer.reduce_all_pending(cfg, limit=reduction_limit)
+    clock = _resolve_stage_clock(stage_clock)
+    if stage_clock is None:
+        reduce_results = session_reducer.reduce_all_pending(cfg, limit=reduction_limit)
+    else:
+        reduce_results = session_reducer.reduce_all_pending(
+            cfg,
+            limit=reduction_limit,
+            stage_clock=clock,
+        )
     result.reduced = sum(1 for rr in reduce_results if rr.succeeded)
 
     with fts.cursor() as conn:
@@ -310,6 +345,7 @@ def run(cfg: Config, *, limit: int | None = None) -> WriterRunResult:
             session_id=row.id,
             event_daily_path=rr.path if rr else "",
             just_written_entry_id=rr.entry_id if rr else "",
+            stage_clock=clock,
         )
         if modeled.completed:
             result.modeled += 1
@@ -322,7 +358,12 @@ def run(cfg: Config, *, limit: int | None = None) -> WriterRunResult:
     return result
 
 
-def retry_pending_modeling(cfg: Config, *, limit: int | None = None) -> list[SessionModelResult]:
+def retry_pending_modeling(
+    cfg: Config,
+    *,
+    limit: int | None = None,
+    stage_clock: datetime | None = None,
+) -> list[SessionModelResult]:
     """Retry only closing-block waits that became newly eligible.
 
     Generic classifier, pattern, store, and LLM errors are deliberately left to
@@ -345,4 +386,12 @@ def retry_pending_modeling(cfg: Config, *, limit: int | None = None) -> list[Ses
                 eligible.append(row)
     if limit is not None:
         eligible = eligible[: max(0, limit)]
-    return [finalize_session(cfg, session_id=row.id) for row in eligible]
+    clock = _resolve_stage_clock(stage_clock)
+    return [finalize_session(cfg, session_id=row.id, stage_clock=clock) for row in eligible]
+
+
+def _resolve_stage_clock(value: datetime | None) -> datetime:
+    clock = value or datetime.now().astimezone()
+    if clock.tzinfo is None:
+        raise ValueError("writer stage_clock must be timezone-aware")
+    return clock

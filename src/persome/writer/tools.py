@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from ..evomem import inversion as evo_inversion
@@ -23,6 +24,20 @@ class CommitState:
     written_ids: list[str] = field(default_factory=list)
     created_paths: list[str] = field(default_factory=list)
     flagged_compact: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CaptureEvidenceBounds:
+    """Caller-owned half-open capture window for classifier drill-down."""
+
+    start: datetime
+    end: datetime
+
+    def __post_init__(self) -> None:
+        if self.start.tzinfo is None or self.end.tzinfo is None:
+            raise ValueError("capture evidence bounds must be timezone-aware")
+        if self.start >= self.end:
+            raise ValueError("capture evidence bounds must be non-empty")
 
 
 def tool_read_memory(conn: sqlite3.Connection, *, path: str, tail_n: int = 10) -> dict[str, Any]:
@@ -391,6 +406,7 @@ def dispatch(
     conn: sqlite3.Connection,
     soft_limit_tokens: int,
     state: CommitState,
+    capture_evidence_bounds: CaptureEvidenceBounds | None = None,
 ) -> dict[str, Any]:
     err = _validate_tool_args(name, args)
     if err is not None:
@@ -445,14 +461,66 @@ def dispatch(
     if name == "commit":
         return tool_commit(state, summary=args.get("summary", ""))
     if name == "drill_chat_captures":
+        requested_start = str(args.get("start_ts") or "")
+        requested_end = str(args.get("end_ts") or "")
+        bounded = _bounded_capture_window(
+            requested_start,
+            requested_end,
+            allowed=capture_evidence_bounds,
+        )
+        if isinstance(bounded, dict):
+            return bounded
+        start_ts, end_ts, clipped = bounded
         return tool_drill_chat_captures(
             conn,
             app_name=str(args.get("app_name") or ""),
-            start_ts=str(args.get("start_ts") or ""),
-            end_ts=str(args.get("end_ts") or ""),
+            start_ts=start_ts,
+            end_ts=end_ts,
             max_bytes=int(args.get("max_bytes", 12_000) or 12_000),
+            requested_start_ts=requested_start,
+            requested_end_ts=requested_end,
+            bounds_clipped=clipped,
         )
     return {"error": f"unknown tool: {name}"}
+
+
+def _bounded_capture_window(
+    start_ts: str,
+    end_ts: str,
+    *,
+    allowed: CaptureEvidenceBounds | None,
+) -> tuple[str, str, bool] | dict[str, Any]:
+    """Validate and intersect one requested half-open drill window."""
+    try:
+        requested_start = datetime.fromisoformat(start_ts)
+        requested_end = datetime.fromisoformat(end_ts)
+    except (TypeError, ValueError):
+        return {"error": "capture drill timestamps must be valid ISO-8601 values"}
+    if requested_start.tzinfo is None or requested_end.tzinfo is None:
+        return {"error": "capture drill timestamps must include a timezone offset"}
+    if requested_start >= requested_end:
+        return {"error": "capture drill window must be non-empty and half-open [start, end)"}
+    if allowed is None:
+        return start_ts, end_ts, False
+
+    requested_start_utc = requested_start.astimezone(UTC)
+    requested_end_utc = requested_end.astimezone(UTC)
+    allowed_start_utc = allowed.start.astimezone(UTC)
+    allowed_end_utc = allowed.end.astimezone(UTC)
+    bounded_start = max(requested_start_utc, allowed_start_utc)
+    bounded_end = min(requested_end_utc, allowed_end_utc)
+    if bounded_start >= bounded_end:
+        return {
+            "error": "capture drill window falls outside the caller-owned evidence bounds",
+            "requested_window": {"start": start_ts, "end": end_ts},
+            "allowed_window": {
+                "start": allowed.start.isoformat(),
+                "end": allowed.end.isoformat(),
+            },
+            "window_semantics": "[start, end)",
+        }
+    clipped = bounded_start != requested_start_utc or bounded_end != requested_end_utc
+    return bounded_start.isoformat(), bounded_end.isoformat(), clipped
 
 
 def tool_drill_chat_captures(
@@ -462,6 +530,9 @@ def tool_drill_chat_captures(
     start_ts: str,
     end_ts: str,
     max_bytes: int = 12_000,
+    requested_start_ts: str | None = None,
+    requested_end_ts: str | None = None,
+    bounds_clipped: bool = False,
 ) -> dict[str, Any]:
     """Reconstruct a chat conversation from captures for a given app and time range.
 
@@ -471,26 +542,28 @@ def tool_drill_chat_captures(
     text, snapshot_count, gap_count = extract_chat_messages(
         conn, app_name, start_ts, end_ts, max_bytes
     )
-    if not text:
-        return {
-            "ok": False,
-            "app_name": app_name,
-            "start_ts": start_ts,
-            "end_ts": end_ts,
-            "snapshot_count": 0,
-            "gap_count": 0,
-            "content": "",
-            "message": "no captures found for this app/time range",
-        }
-    return {
-        "ok": True,
+    result: dict[str, Any] = {
         "app_name": app_name,
         "start_ts": start_ts,
         "end_ts": end_ts,
+        "requested_start_ts": requested_start_ts or start_ts,
+        "requested_end_ts": requested_end_ts or end_ts,
+        "bounds_clipped": bounds_clipped,
+        "window_semantics": "[start, end)",
         "snapshot_count": snapshot_count,
         "gap_count": gap_count,
         "content": text,
     }
+    if not text:
+        result.update(
+            {
+                "ok": False,
+                "message": "no captures found for this app/time range",
+            }
+        )
+        return result
+    result["ok"] = True
+    return result
 
 
 # Classifier drill used to reconstruct chat content from screen captures.
@@ -520,7 +593,7 @@ _CLASSIFIER_DRILL_SCHEMAS: list[dict[str, Any]] = [
                     },
                     "end_ts": {
                         "type": "string",
-                        "description": "ISO-8601 end timestamp (inclusive)",
+                        "description": "ISO-8601 end timestamp (exclusive)",
                     },
                     "max_bytes": {
                         "type": "integer",

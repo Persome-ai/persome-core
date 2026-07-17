@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import persome.model.build as model_build_mod
 from persome import config as config_mod
 from persome import paths
 from persome.evomem.models import MemoryLayer, MemoryNode, MemoryStatus
@@ -379,6 +380,28 @@ def test_empty_model_build_is_degraded_not_success(ac_root) -> None:
     assert "Persome has not formed a verified Root yet" in human
     assert "## Stable patterns" not in human
     assert "## Cross-domain patterns" not in human
+
+
+def test_model_build_propagates_frozen_clock_to_default_state_formation(
+    ac_root,
+    monkeypatch,
+) -> None:
+    cfg = config_mod.load(ac_root / "config.toml")
+    frozen = datetime(2026, 7, 10, 8, 0, tzinfo=UTC)
+    seen: list[datetime | None] = []
+
+    def fake_pipeline(_cfg, *, stage_clock=None):  # type: ignore[no-untyped-def]
+        seen.append(stage_clock)
+        return PipelineOutcome()
+
+    monkeypatch.setattr(model_build_mod, "_run_pipeline", fake_pipeline)
+    run_model_build(
+        cfg,
+        now=lambda: frozen,
+        trigger="test-frozen-state-formation",
+    )
+
+    assert seen == [frozen]
 
 
 def test_model_build_preserves_unknown_human_and_reports_no_projection(ac_root) -> None:

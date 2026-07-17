@@ -112,6 +112,13 @@ long session may already be fully represented by flush entries. It also runs
 after heuristic reducer exhaustion. Only a complete/benign result from every
 enabled stage sets `modeled_at`.
 
+Retryable terminal stages contribute their persisted wait reasons together.
+When every incomplete stage reports the same reason, that reason is retained;
+in particular, a classifier-only `awaiting_closing_block` is eligible for the
+same minute retry as a pattern/delta closing-block wait. Mixed reasons or any
+hard stage error collapse to `stage_error`, so the minute loop cannot hammer an
+unrelated failure.
+
 Each window's memory-delta audit row is the retry boundary. A later active or
 terminal pass reuses its post-gate payload and retries only deterministic apply;
 it does not pay for a second LLM extraction or reinforce successful edges twice.

@@ -79,7 +79,7 @@ def extract_chat_messages(
         "SELECT id, timestamp, visible_text FROM captures "
         " WHERE app_name = ? "
         "   AND persome_epoch(timestamp) >= persome_epoch(?) "
-        "   AND persome_epoch(timestamp) <= persome_epoch(?) "
+        "   AND persome_epoch(timestamp) < persome_epoch(?) "
         " ORDER BY persome_epoch(timestamp) ASC",
         (app_name, start_ts, end_ts),
     ).fetchall()

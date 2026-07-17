@@ -298,11 +298,14 @@ def test_pattern_detector_raw_mode_creates_workflow(ac_root: Path, monkeypatch) 
         ),
     ]
 
+    frozen_clock = datetime(2026, 5, 11, 9, 30, tzinfo=_TZ)
+
     def fake_call_llm(cfg, stage, *, messages, tools=None, json_mode=False):
         assert stage == "pattern_detector"
         # Verify raw mode: user message (index 1) should contain raw blocks
         assert "Timeline blocks" in messages[1]["content"]
         assert "Captures" in messages[1]["content"]
+        assert f"# Frozen stage clock\n\n{frozen_clock.isoformat()}" in messages[1]["content"]
         return script.pop(0)
 
     monkeypatch.setattr(llm_mod, "call_llm", fake_call_llm)
@@ -315,6 +318,7 @@ def test_pattern_detector_raw_mode_creates_workflow(ac_root: Path, monkeypatch) 
         event_daily_path="event-2026-05-11.md",
         session_start=datetime(2026, 5, 11, 9, 0, tzinfo=_TZ),
         session_end=datetime(2026, 5, 11, 9, 30, tzinfo=_TZ),
+        stage_clock=frozen_clock,
     )
 
     assert result.committed is True
@@ -377,6 +381,34 @@ def test_collect_candidates_uses_durable_event_memory_not_intents(ac_root: Path)
     assert "intents" not in candidates
     assert candidates["event_memory"][0]["id"] == entry_id
     assert candidates["event_memory"][0]["receipt"] == (f"⟨{entry_id}:event-2026-05-11.md⟩")
+
+
+def test_collect_event_memory_uses_occurrence_time_for_historical_replay(
+    ac_root: Path,
+) -> None:
+    occurred_at = datetime(2026, 5, 11, 9, 5, tzinfo=_TZ)
+    with fts.cursor() as conn:
+        entries_store.create_file(
+            conn,
+            name="event-2026-05-11.md",
+            description="Historical replay activity",
+            tags=["event"],
+        )
+        entry_id = entries_store.append_entry(
+            conn,
+            name="event-2026-05-11.md",
+            content="Made a historical replay decision.",
+            tags=["work"],
+            occurred_at=occurred_at.isoformat(),
+        )
+        events = pd_mod._collect_event_memory(
+            conn,
+            lookback_start=occurred_at - timedelta(minutes=1),
+            window_end=occurred_at + timedelta(minutes=1),
+        )
+
+    assert [event["id"] for event in events] == [entry_id]
+    assert events[0]["timestamp"] == occurred_at.isoformat()
 
 
 def test_pattern_detector_renders_durable_event_memory(ac_root: Path) -> None:

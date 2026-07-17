@@ -77,6 +77,7 @@ def reduce_session(
     session_id: str,
     start_time: datetime,
     end_time: datetime,
+    stage_clock: datetime | None = None,
 ) -> ReduceResult:
     """Terminal reduce for a session that has already ended.
 
@@ -106,6 +107,7 @@ def reduce_session(
             window_start=window_start,
             window_end=end_time,
             is_final=True,
+            stage_clock=_resolve_stage_clock(stage_clock),
         )
 
 
@@ -155,6 +157,7 @@ def flush_active_session(
             window_start=window_start,
             window_end=now,
             is_final=False,
+            stage_clock=_resolve_stage_clock(now),
         )
         return result if result.written else None
 
@@ -169,6 +172,7 @@ def _reduce_window_locked(
     window_start: datetime,
     window_end: datetime,
     is_final: bool,
+    stage_clock: datetime,
 ) -> ReduceResult:
     existing = session_store.get_by_id(conn, session_id)
     if existing is None and is_final and session_end is not None:
@@ -208,7 +212,7 @@ def _reduce_window_locked(
                 conn,
                 session_id,
                 reason=timeline_slice.skipped_reason,
-                next_retry_at=datetime.now().astimezone() + timedelta(minutes=delay_minutes),
+                next_retry_at=stage_clock + timedelta(minutes=delay_minutes),
             )
         logger.warning(
             "session %s: cutoff-safe timeline unavailable (%s)",
@@ -285,9 +289,7 @@ def _reduce_window_locked(
             payload = _heuristic_payload(blocks)
             succeeded = False
         else:
-            next_retry_at = datetime.now().astimezone() + timedelta(
-                minutes=_RETRY_BACKOFF_MINUTES[retry_count]
-            )
+            next_retry_at = stage_clock + timedelta(minutes=_RETRY_BACKOFF_MINUTES[retry_count])
             session_store.mark_failed(
                 conn,
                 session_id,
@@ -365,6 +367,7 @@ def reduce_session_async(
     session_id: str,
     start_time: datetime,
     end_time: datetime,
+    stage_clock: datetime | None = None,
     on_done: callable | None = None,  # type: ignore[valid-type]
 ) -> threading.Thread:
     """Spawn a daemon thread that reduces the session. Fire-and-forget."""
@@ -376,6 +379,7 @@ def reduce_session_async(
                 session_id=session_id,
                 start_time=start_time,
                 end_time=end_time,
+                stage_clock=stage_clock,
             )
             if on_done is not None:
                 try:
@@ -390,9 +394,9 @@ def reduce_session_async(
     return t
 
 
-def retry_due(cfg: Config) -> list[ReduceResult]:
+def retry_due(cfg: Config, *, stage_clock: datetime | None = None) -> list[ReduceResult]:
     """Pick up any ``failed`` session rows whose ``next_retry_at`` has elapsed."""
-    now = datetime.now().astimezone()
+    now = _resolve_stage_clock(stage_clock)
     results: list[ReduceResult] = []
     with fts.cursor() as conn:
         due = session_store.list_due_for_retry(conn, now=now)
@@ -406,12 +410,18 @@ def retry_due(cfg: Config) -> list[ReduceResult]:
                 session_id=row.id,
                 start_time=row.start_time,
                 end_time=row.end_time,
+                stage_clock=now,
             )
         )
     return results
 
 
-def reduce_all_pending(cfg: Config, *, limit: int | None = None) -> list[ReduceResult]:
+def reduce_all_pending(
+    cfg: Config,
+    *,
+    limit: int | None = None,
+    stage_clock: datetime | None = None,
+) -> list[ReduceResult]:
     """Unconditional catch-up: reduce every non-reduced ended/failed session.
 
     Called from the daily 23:55 safety-net. Covers ``ended`` rows
@@ -432,6 +442,7 @@ def reduce_all_pending(cfg: Config, *, limit: int | None = None) -> list[ReduceR
                 session_id=row.id,
                 start_time=row.start_time,
                 end_time=row.end_time,
+                stage_clock=stage_clock,
             )
         )
     return out
@@ -521,6 +532,13 @@ def _format_attention_trajectory(blocks: list[timeline_store.TimelineBlock]) -> 
 
 def _format_time(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def _resolve_stage_clock(value: datetime | None) -> datetime:
+    clock = value or datetime.now().astimezone()
+    if clock.tzinfo is None:
+        raise ValueError("reducer stage_clock must be timezone-aware")
+    return clock
 
 
 # Pattern that matches the canonical sub_task prefix the reducer prompt asks
@@ -686,5 +704,6 @@ def _append_event_entry(
         name=name,
         content=body,
         tags=tags,
+        occurred_at=start_time.isoformat(),
     )
     return entry_id, name

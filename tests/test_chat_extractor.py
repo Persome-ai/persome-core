@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from persome import paths
 from persome.store import fts
 from persome.writer.chat_extractor import extract_chat_messages
-from persome.writer.tools import tool_drill_chat_captures
+from persome.writer.tools import (
+    CaptureEvidenceBounds,
+    CommitState,
+    dispatch,
+    tool_drill_chat_captures,
+)
 
 _PHRASE = "Ask for follow-up changes"
 _START = "2026-07-12T22:59:00+08:00"
 _END = "2026-07-12T23:01:00+08:00"
+_TZ = timezone(timedelta(hours=8))
 
 
 def _legacy_placeholder_capture(*, ocr_submitted: bool = False) -> dict[str, Any]:
@@ -164,3 +171,68 @@ def test_missing_or_unproven_raw_capture_fails_open_to_indexed_text(ac_root: Pat
     assert count == 1
     assert "DB text remains authoritative" in text
     assert "raw projection without AX proof" not in text
+
+
+def test_dispatch_intersects_classifier_drill_with_half_open_evidence_bounds(
+    ac_root: Path,
+) -> None:
+    allowed_start = datetime(2026, 7, 12, 23, 0, tzinfo=_TZ)
+    allowed_end = allowed_start + timedelta(minutes=1)
+    with fts.cursor() as conn:
+        for capture_id, moment, text in (
+            ("before", allowed_start - timedelta(seconds=1), "BEFORE_BOUND_SECRET"),
+            ("inside", allowed_start + timedelta(seconds=30), "INSIDE_BOUND_SAFE"),
+            ("at-end", allowed_end, "AT_EXCLUSIVE_END_SECRET"),
+        ):
+            fts.insert_capture(
+                conn,
+                id=capture_id,
+                timestamp=moment.isoformat(),
+                app_name="Chat",
+                bundle_id="com.example.chat",
+                window_title="Conversation",
+                focused_role="AXStaticText",
+                focused_value=text,
+                visible_text=text,
+                url="",
+            )
+        result = dispatch(
+            "drill_chat_captures",
+            {
+                "app_name": "Chat",
+                "start_ts": (allowed_start - timedelta(minutes=1)).isoformat(),
+                "end_ts": (allowed_end + timedelta(minutes=1)).isoformat(),
+            },
+            conn=conn,
+            soft_limit_tokens=100,
+            state=CommitState(),
+            capture_evidence_bounds=CaptureEvidenceBounds(
+                start=allowed_start,
+                end=allowed_end,
+            ),
+        )
+        rejected = dispatch(
+            "drill_chat_captures",
+            {
+                "app_name": "Chat",
+                "start_ts": (allowed_end + timedelta(minutes=1)).isoformat(),
+                "end_ts": (allowed_end + timedelta(minutes=2)).isoformat(),
+            },
+            conn=conn,
+            soft_limit_tokens=100,
+            state=CommitState(),
+            capture_evidence_bounds=CaptureEvidenceBounds(
+                start=allowed_start,
+                end=allowed_end,
+            ),
+        )
+
+    assert result["ok"] is True
+    assert result["bounds_clipped"] is True
+    assert result["window_semantics"] == "[start, end)"
+    assert result["start_ts"] == allowed_start.astimezone(UTC).isoformat()
+    assert result["end_ts"] == allowed_end.astimezone(UTC).isoformat()
+    assert "INSIDE_BOUND_SAFE" in result["content"]
+    assert "BEFORE_BOUND_SECRET" not in result["content"]
+    assert "AT_EXCLUSIVE_END_SECRET" not in result["content"]
+    assert "outside the caller-owned evidence bounds" in rejected["error"]

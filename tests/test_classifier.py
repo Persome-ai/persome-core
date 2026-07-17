@@ -200,6 +200,129 @@ def test_terminal_classifier_uses_session_end_for_timeline_evidence(
     assert safe in sent and secret not in sent
 
 
+def test_classifier_drill_is_bounded_to_frozen_half_open_session_evidence(
+    ac_root: Path,
+    fake_llm,
+) -> None:
+    start = datetime(2026, 4, 21, 12, 0, tzinfo=_TZ)
+    end = start + timedelta(minutes=1)
+    safe = "SAFE_CHAT_INSIDE_SESSION"
+    before = "SECRET_CHAT_BEFORE_SESSION"
+    at_end = "SECRET_CHAT_AT_EXCLUSIVE_END"
+    with fts.cursor() as conn:
+        timeline_store.insert(
+            conn,
+            timeline_store.TimelineBlock(
+                start_time=start,
+                end_time=end,
+                entries=["[Chat] reviewed the bounded conversation"],
+                apps_used=["Chat"],
+                capture_count=1,
+            ),
+        )
+        entries_mod.create_file(
+            conn,
+            name="event-2026-04-21.md",
+            description="Bounded classifier drill fixture",
+            tags=["event", "session"],
+        )
+        entry_id = entries_mod.append_entry(
+            conn,
+            name="event-2026-04-21.md",
+            content="**Session sess-bounded-drill**\n\nReviewed a chat.",
+            tags=["session", "sid:sess-bounded-drill"],
+            occurred_at=start.isoformat(),
+        )
+        for capture_id, moment, text in (
+            ("chat-before", start - timedelta(seconds=1), before),
+            ("chat-inside", start + timedelta(seconds=20), safe),
+            ("chat-end", end, at_end),
+        ):
+            fts.insert_capture(
+                conn,
+                id=capture_id,
+                timestamp=moment.isoformat(),
+                app_name="Chat",
+                bundle_id="com.example.chat",
+                window_title="Conversation",
+                focused_role="AXStaticText",
+                focused_value=text,
+                visible_text=text,
+                url="",
+            )
+
+    fake_llm.add_script(
+        "classifier",
+        [
+            _response(
+                [
+                    _tool_call(
+                        "drill_chat_captures",
+                        {
+                            "app_name": "Chat",
+                            "start_ts": (start - timedelta(hours=1)).isoformat(),
+                            "end_ts": (end + timedelta(hours=1)).isoformat(),
+                        },
+                        cid="drill",
+                    )
+                ]
+            ),
+            _response([_tool_call("commit", {"summary": "bounded"}, cid="commit")]),
+        ],
+    )
+    cfg = config_mod.load(ac_root / "config.toml")
+    cfg.memory_delta.apply_enabled = False
+
+    result = classifier_mod.classify_after_reduce(
+        cfg,
+        session_id="sess-bounded-drill",
+        event_daily_path="event-2026-04-21.md",
+        just_written_entry_id=entry_id,
+        session_start=start,
+        session_end=end,
+        processing_clock=end + timedelta(days=10),
+    )
+
+    assert result.committed
+    sent = json.dumps(fake_llm.calls, ensure_ascii=False, default=str)
+    assert safe in sent
+    assert before not in sent
+    assert at_end not in sent
+    tool_messages = [
+        message
+        for message in fake_llm.calls[-1]["messages"]
+        if message.get("role") == "tool" and message.get("name") == "drill_chat_captures"
+    ]
+    assert tool_messages
+    assert json.loads(tool_messages[-1]["content"])["bounds_clipped"] is True
+    assert "# Current date/time" in sent
+    assert "2026-04-21 12:01 Tuesday (+0800)" in sent
+
+
+def test_terminal_classifier_guard_does_not_reopen_completed_window(
+    ac_root: Path,
+    fake_llm,
+) -> None:
+    start = datetime(2026, 4, 21, 13, 0, tzinfo=_TZ)
+    end = start + timedelta(minutes=1)
+    cfg = config_mod.load(ac_root / "config.toml")
+    cfg.memory_delta.apply_enabled = False
+
+    result = classifier_mod.classify_after_reduce(
+        cfg,
+        session_id="sess-already-classified",
+        event_daily_path="event-2026-04-21.md",
+        session_start=start,
+        session_end=end,
+        window_start=end,
+        stage_clock=end + timedelta(days=10),
+    )
+
+    assert not result.committed
+    assert result.skipped_reason == "terminal window empty (already classified)"
+    assert fake_llm.calls == []
+
+
 def test_classifier_rejects_event_write(ac_root: Path, fake_llm) -> None:
     day = "2026-04-22"
     name, entry_id = _seed_event_daily(day)

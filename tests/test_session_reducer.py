@@ -130,8 +130,13 @@ def test_reducer_happy_path_writes_event_daily(ac_root: Path, fake_llm) -> None:
 
     with fts.cursor() as conn:
         row = session_store.get_by_id(conn, _SID)
+        metadata = conn.execute(
+            "SELECT occurred_at FROM entry_metadata WHERE entry_id=?",
+            (result.entry_id,),
+        ).fetchone()
     assert row is not None
     assert row.status == "reduced"
+    assert metadata is not None and metadata["occurred_at"] == start.isoformat()
 
 
 def test_reducer_clips_straddling_block_before_prompt_and_event_memory(
@@ -341,6 +346,7 @@ def test_reducer_llm_failure_schedules_retry(ac_root: Path, fake_llm) -> None:
 
     # Non-JSON output → json.JSONDecodeError in _call_reducer_llm → None → retry.
     fake_llm.set_default("reducer", "not json at all")
+    frozen_clock = datetime(2026, 4, 22, 8, 0, tzinfo=_TZ)
 
     cfg = config_mod.load(ac_root / "config.toml")
     result = session_reducer.reduce_session(
@@ -348,6 +354,7 @@ def test_reducer_llm_failure_schedules_retry(ac_root: Path, fake_llm) -> None:
         session_id="sess_failing",
         start_time=start,
         end_time=end,
+        stage_clock=frozen_clock,
     )
 
     assert result.succeeded is False
@@ -358,7 +365,7 @@ def test_reducer_llm_failure_schedules_retry(ac_root: Path, fake_llm) -> None:
     assert row is not None
     assert row.status == "failed"
     assert row.retry_count == 1
-    assert row.next_retry_at is not None
+    assert row.next_retry_at == frozen_clock + timedelta(minutes=5)
 
 
 def test_reducer_exhausted_retries_writes_heuristic(ac_root: Path, fake_llm) -> None:

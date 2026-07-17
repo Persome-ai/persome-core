@@ -66,6 +66,7 @@ def classify_window(
     evidence_end: datetime | None = None,
     require_closing_block: bool = False,
     include_prior_day: bool = False,
+    stage_clock: datetime | None = None,
     on_event: llm_mod.OnEventFn | None = None,
 ) -> ClassifyResult:
     """Classify event-daily entries for ``session_id`` within ``[start, end)``.
@@ -132,6 +133,11 @@ def classify_window(
             session_id=session_id,
             event_daily_path=event_daily_path,
             context=context,
+            stage_clock=stage_clock,
+            capture_evidence_bounds=tools_mod.CaptureEvidenceBounds(
+                start=start,
+                end=evidence_end or end,
+            ),
             on_event=on_event,
         )
 
@@ -145,6 +151,8 @@ def classify_after_reduce(
     session_start: datetime | None = None,
     session_end: datetime | None = None,
     window_start: datetime | None = None,
+    stage_clock: datetime | None = None,
+    processing_clock: datetime | None = None,
     on_event: llm_mod.OnEventFn | None = None,
 ) -> ClassifyResult:
     """Terminal-reduce classifier entry point.
@@ -170,6 +178,7 @@ def classify_after_reduce(
             session_id=session_id,
             event_daily_path=event_daily_path,
             just_written_entry_id=just_written_entry_id,
+            stage_clock=stage_clock,
             on_event=on_event,
         )
         if result.committed:
@@ -177,17 +186,17 @@ def classify_after_reduce(
         return result
 
     effective_start = window_start or session_start
-    # Event-daily entries are appended with wall-clock "now" timestamps
-    # (not the session's nominal start/end), so the focus-entry filter
-    # must end at the current moment — especially on the catch-up path
-    # where the reducer runs long after session_end.
-    now = datetime.now().astimezone()
-    window_end = max(session_end, now)
-    if effective_start >= window_end:
+    if effective_start >= session_end:
         return ClassifyResult(
             session_id=session_id,
             skipped_reason="terminal window empty (already classified)",
         )
+    # The session end is the logical "now" for relative language in its
+    # evidence. Keep the independent processing clock only for locating legacy
+    # event headings that were appended long after the session happened.
+    logical_clock = _resolve_stage_clock(stage_clock or session_end)
+    transaction_clock = _resolve_stage_clock(processing_clock)
+    window_end = max(session_end, transaction_clock)
     result = classify_window(
         cfg,
         session_id=session_id,
@@ -197,6 +206,7 @@ def classify_after_reduce(
         evidence_end=session_end,
         require_closing_block=True,
         include_prior_day=True,
+        stage_clock=logical_clock,
         on_event=on_event,
     )
     if result.committed:
@@ -210,6 +220,7 @@ def _classify_untimed(
     session_id: str,
     event_daily_path: str,
     just_written_entry_id: str,
+    stage_clock: datetime | None = None,
     on_event: llm_mod.OnEventFn | None = None,
 ) -> ClassifyResult:
     with fts.cursor() as conn:
@@ -236,6 +247,8 @@ def _classify_untimed(
             session_id=session_id,
             event_daily_path=event_daily_path,
             context=context,
+            stage_clock=stage_clock,
+            capture_evidence_bounds=None,
             on_event=on_event,
         )
 
@@ -259,7 +272,7 @@ def _focus_entries_in_range(
     for e in parsed.entries:
         if sid_tag not in e.tags:
             continue
-        ts = _parse_entry_ts(e.timestamp)
+        ts = _parse_entry_ts(e.occurred_at or e.timestamp)
         if ts is None:
             # Timestamp unparseable — keep it so the classifier sees it
             # rather than silently dropping a tagged entry.
@@ -293,6 +306,13 @@ def _parse_entry_ts(text: str) -> datetime | None:
         return datetime.fromisoformat(text)
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_stage_clock(value: datetime | None) -> datetime:
+    clock = value or datetime.now().astimezone()
+    if clock.tzinfo is None:
+        raise ValueError("classifier stage_clock must be timezone-aware")
+    return clock
 
 
 def _focus_entries(
@@ -445,6 +465,8 @@ def _run_tool_loop(
     session_id: str,
     event_daily_path: str,
     context: str,
+    stage_clock: datetime | None,
+    capture_evidence_bounds: tools_mod.CaptureEvidenceBounds | None,
     on_event: llm_mod.OnEventFn | None = None,
 ) -> ClassifyResult:
     system = load_prompt("classifier.md")
@@ -477,7 +499,7 @@ def _run_tool_loop(
     # earlier event — a wrong ``occurred_at`` then poisons the cross-domain
     # sweeper's ±25min behavior signature. Giving the model "today" lets it
     # resolve relative expressions to a correct ISO ``occurred_at``.
-    now_anchor = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %A (%z)")
+    now_anchor = _resolve_stage_clock(stage_clock).strftime("%Y-%m-%d %H:%M %A (%z)")
     user_msg = (
         f"# Current date/time\n\n"
         f'Now: {now_anchor}. Resolve any relative time phrase such as "last Friday "\n'
@@ -527,6 +549,7 @@ def _run_tool_loop(
             conn=conn,
             soft_limit_tokens=cfg.writer.soft_limit_tokens,
             state=state,
+            capture_evidence_bounds=capture_evidence_bounds,
         ),
         valid_tool_names=tools_mod.CLASSIFIER_TOOL_NAMES,
         state=state,

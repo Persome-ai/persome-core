@@ -51,6 +51,7 @@ def detect_after_classify(
     event_daily_path: str,
     session_start: datetime | None = None,
     session_end: datetime | None = None,
+    stage_clock: datetime | None = None,
 ) -> DetectResult:
     """Pattern detection entry point for terminal session finalization."""
     if not cfg.pattern_detector.enabled:
@@ -63,7 +64,8 @@ def detect_after_classify(
         if row and row.pattern_detected_end:
             window_start = row.pattern_detected_end
 
-    window_end = session_end or datetime.now().astimezone()
+    clock = _resolve_stage_clock(stage_clock or session_end)
+    window_end = session_end or clock
     if window_start and window_start >= window_end:
         return DetectResult(session_id=session_id, skipped_reason="pattern window empty")
 
@@ -126,6 +128,7 @@ def detect_after_classify(
             conn,
             session_id=session_id,
             context=context,
+            stage_clock=clock,
         )
 
         if result.committed and session_end is not None:
@@ -190,16 +193,32 @@ def _collect_event_memory(
     conn: sqlite3.Connection, lookback_start: datetime, window_end: datetime
 ) -> list[dict[str, str]]:
     rows = conn.execute(
-        "SELECT id, path, timestamp, content FROM entries "
-        "WHERE prefix = 'event' AND superseded = 0 AND timestamp >= ? AND timestamp < ? "
-        "ORDER BY timestamp DESC LIMIT 20",
+        """
+        SELECT e.id,
+               e.path,
+               e.timestamp,
+               e.content,
+               COALESCE(NULLIF(m.occurred_at, ''), e.timestamp) AS occurrence_time
+          FROM entries AS e
+          LEFT JOIN entry_metadata AS m ON m.entry_id = e.id
+         WHERE e.prefix = 'event'
+           AND e.superseded = 0
+           AND persome_epoch(COALESCE(NULLIF(m.occurred_at, ''), e.timestamp))
+               >= persome_epoch(?)
+           AND persome_epoch(COALESCE(NULLIF(m.occurred_at, ''), e.timestamp))
+               < persome_epoch(?)
+         ORDER BY persome_epoch(
+                    COALESCE(NULLIF(m.occurred_at, ''), e.timestamp)
+                  ) DESC
+         LIMIT 20
+        """,
         (lookback_start.isoformat(), window_end.isoformat()),
     ).fetchall()
     return [
         {
             "id": str(row["id"]),
             "path": str(row["path"]),
-            "timestamp": str(row["timestamp"]),
+            "timestamp": str(row["occurrence_time"]),
             "summary": str(row["content"] or "")[:300],
             "receipt": f"⟨{row['id']}:{row['path']}⟩",
         }
@@ -511,12 +530,14 @@ def _run_validation_loop(
     *,
     session_id: str,
     context: str,
+    stage_clock: datetime,
 ) -> DetectResult:
     system = load_prompt("pattern_detector.md")
     schema = load_prompt("schema.md")
     index = _render_index(conn)
 
     user_msg = (
+        f"# Frozen stage clock\n\n{stage_clock.isoformat()}\n\n"
         f"# Schema\n\n{schema}\n\n"
         f"# Memory index\n\n{index}\n\n"
         f"# Pattern candidates\n\n{context}\n\n"
@@ -553,6 +574,13 @@ def _run_validation_loop(
         created_paths=list(state.created_paths),
         iterations=iters,
     )
+
+
+def _resolve_stage_clock(value: datetime | None) -> datetime:
+    clock = value or datetime.now().astimezone()
+    if clock.tzinfo is None:
+        raise ValueError("pattern detector stage_clock must be timezone-aware")
+    return clock
 
 
 def _render_index(conn: sqlite3.Connection) -> str:

@@ -134,7 +134,7 @@ def _run_stage(
     }
 
 
-def _run_pipeline(cfg: Any) -> PipelineOutcome:
+def _run_pipeline(cfg: Any, *, stage_clock: datetime | None = None) -> PipelineOutcome:
     """Run the one-shot structural model stages in dependency order."""
     from .. import vectors_tick
     from ..session.tick import _run_evomem_enrichment_once
@@ -144,7 +144,7 @@ def _run_pipeline(cfg: Any) -> PipelineOutcome:
     outcome = PipelineOutcome()
 
     def run_writer() -> dict[str, Any]:
-        result = writer_agent.run(cfg)
+        result = writer_agent.run(cfg, stage_clock=stage_clock)
         return {
             "reduced": result.reduced,
             "classified": result.classified,
@@ -459,7 +459,7 @@ def run_model_build(
     wait_seconds: float = DEFAULT_WAIT_SECONDS,
     trigger: str = "cli",
     coordinator: ModelBuildCoordinator | None = None,
-    pipeline_runner: Callable[[Any], PipelineOutcome] = _run_pipeline,
+    pipeline_runner: Callable[[Any], PipelineOutcome] | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> ModelBuildResult:
     """Run one idempotent build and persist its reproducibility manifest."""
@@ -489,7 +489,11 @@ def run_model_build(
             },
         )
         NodeStore()  # ensure the Point store exists even on a completely fresh root
-        outcome = pipeline_runner(cfg)
+        outcome = (
+            pipeline_runner(cfg)
+            if pipeline_runner is not None
+            else _run_pipeline(cfg, stage_clock=started_dt)
+        )
 
         with fts.cursor() as conn:
             provisional = build_snapshot(
