@@ -1,5 +1,9 @@
 # Persome: Build your Personal Model
 
+<p align="center">
+  <a href="https://github.com/Intuition-Lab/personal-model/releases/download/v0.3.2/demo.mp4"><strong>▶ Watch the Personal Model demo</strong></a>
+</p>
+
 <!-- mcp-name: io.github.Intuition-Lab/personal-model -->
 
 **The open-source Personal Model that makes every AI yours.**
