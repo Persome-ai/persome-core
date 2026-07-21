@@ -2746,6 +2746,51 @@ def _cursor_agent_config_path() -> Path:
     return Path.home() / ".cursor" / "mcp.json"
 
 
+def _cursor_config_path(scope: str) -> Path:
+    normalized = scope.strip().lower()
+    if normalized == "project":
+        return Path.cwd() / ".cursor" / "mcp.json"
+    if normalized == "user":
+        return Path.home() / ".cursor" / "mcp.json"
+    console.print("[red]Cursor scope must be `project` or `user`.[/red]")
+    raise typer.Exit(1)
+
+
+@install_app.command("cursor")
+def install_cursor(
+    name: str = typer.Option("persome", help="MCP server name shown to the client."),
+    scope: str = typer.Option(
+        "project", help="Cursor config scope: project (.cursor) | user (~/.cursor)."
+    ),
+) -> None:
+    """Add Persome to Cursor's project or user MCP config.
+
+    Project scope is the default because Cursor gives project configuration
+    precedence over a user entry with the same server name.
+    """
+    _init()
+    cfg_path = _cursor_config_path(scope)
+    data = _load_claude_desktop_config(cfg_path)
+    servers = data.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        console.print(f"[red]`mcpServers` in {cfg_path} is not an object.[/red]")
+        raise typer.Exit(1)
+
+    stdio_command = _stdio_mcp_command()
+    replaced = name in servers
+    servers[name] = {"command": stdio_command[0], "args": stdio_command[1:]}
+    try:
+        _write_private_json(cfg_path, data)
+    except (OSError, RuntimeError) as exc:
+        console.print(f"[red]Could not write {cfg_path}:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    verb = "Updated" if replaced else "Registered"
+    console.print(f"[green]{verb} {name!r} in Cursor ({scope} scope).[/green]")
+    console.print(f"  file: {cfg_path}")
+    console.print(f"  command: {' '.join(stdio_command)}")
+
+
 @install_app.command("cursor-agent")
 def install_cursor_agent(
     name: str = typer.Option("persome", help="MCP server name shown to the client."),
@@ -3011,6 +3056,35 @@ def uninstall_codex(
 
     console.print(f"[red]codex mcp remove failed:[/red]\n{result.stderr or result.stdout}")
     raise typer.Exit(result.returncode)
+
+
+@uninstall_app.command("cursor")
+def uninstall_cursor(
+    name: str = typer.Option("persome", help="MCP server name to remove."),
+    scope: str = typer.Option(
+        "project", help="Cursor config scope: project (.cursor) | user (~/.cursor)."
+    ),
+) -> None:
+    """Remove Persome from Cursor without changing unrelated configuration."""
+    cfg_path = _cursor_config_path(scope)
+    if not cfg_path.exists():
+        console.print(f"[yellow]No Cursor config at {cfg_path} — nothing to remove.[/yellow]")
+        return
+
+    data = _load_claude_desktop_config(cfg_path)
+    servers = data.get("mcpServers")
+    if not isinstance(servers, dict) or name not in servers:
+        console.print(f"[yellow]No {name!r} entry in Cursor config — nothing to remove.[/yellow]")
+        return
+
+    del servers[name]
+    try:
+        _write_private_json(cfg_path, data)
+    except (OSError, RuntimeError) as exc:
+        console.print(f"[red]Could not write {cfg_path}:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"[green]Removed {name!r} from Cursor ({scope} scope).[/green]")
 
 
 @uninstall_app.command("opencode")

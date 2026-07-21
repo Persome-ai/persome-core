@@ -76,7 +76,21 @@ The installer writes a local entry with `type: "local"` and command
 writes new JSON configs with owner-only permissions. Remove it with `persome
 uninstall opencode`.
 
-## Cursor and generic clients
+## Cursor
+
+Register Persome in the current project by default:
+
+```bash
+persome install cursor
+```
+
+This writes `.cursor/mcp.json`. Use `--scope user` to write `~/.cursor/mcp.json` instead. Cursor's
+project configuration takes precedence when both scopes define the same server name, so install in
+only one scope unless an intentional project override is needed. Both modes preserve unrelated
+keys and MCP servers and write an absolute Persome executable path. Remove the matching entry with
+`persome uninstall cursor` or `persome uninstall cursor --scope user`.
+
+## Generic clients
 
 Generate a config without touching an existing file:
 

@@ -323,6 +323,8 @@ Remove MCP client entries while the CLI still exists:
 ```bash
 persome uninstall claude-code
 persome uninstall codex
+persome uninstall cursor                 # project .cursor/mcp.json
+persome uninstall cursor --scope user    # ~/.cursor/mcp.json
 persome uninstall claude-desktop
 persome uninstall opencode
 ```

@@ -473,6 +473,68 @@ def test_opencode_installer_writes_private_local_stdio_config(
     assert _mode(config_path) == 0o600
 
 
+def test_cursor_installer_defaults_to_project_and_preserves_config(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / ".cursor" / "mcp.json"
+    config_path.parent.mkdir()
+    config_path.write_text(
+        json.dumps({"theme": "dark", "mcpServers": {"keep": {"command": "keep"}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "_stdio_mcp_command", lambda: ["/opt/persome", "mcp"])
+
+    first = CliRunner().invoke(cli.app, ["install", "cursor"])
+    second = CliRunner().invoke(cli.app, ["install", "cursor"])
+
+    assert first.exit_code == 0, first.output
+    assert second.exit_code == 0, second.output
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert data["theme"] == "dark"
+    assert data["mcpServers"]["keep"] == {"command": "keep"}
+    assert data["mcpServers"]["persome"] == {"command": "/opt/persome", "args": ["mcp"]}
+    assert "Updated" in second.output
+    assert _mode(config_path) == 0o600
+
+
+def test_cursor_user_scope_and_uninstall_are_isolated(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(cli, "_stdio_mcp_command", lambda: ["/opt/persome", "mcp"])
+
+    installed = CliRunner().invoke(cli.app, ["install", "cursor", "--scope", "user"])
+    removed = CliRunner().invoke(cli.app, ["uninstall", "cursor", "--scope", "user"])
+    removed_again = CliRunner().invoke(cli.app, ["uninstall", "cursor", "--scope", "user"])
+
+    assert installed.exit_code == 0, installed.output
+    assert removed.exit_code == 0, removed.output
+    assert removed_again.exit_code == 0, removed_again.output
+    user_config = home / ".cursor" / "mcp.json"
+    assert "persome" not in json.loads(user_config.read_text(encoding="utf-8"))["mcpServers"]
+    assert not (project / ".cursor" / "mcp.json").exists()
+
+
+def test_cursor_installer_does_not_replace_malformed_config(
+    ac_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / ".cursor" / "mcp.json"
+    config_path.parent.mkdir()
+    config_path.write_text("{not-json", encoding="utf-8")
+
+    result = CliRunner().invoke(cli.app, ["install", "cursor"])
+
+    assert result.exit_code == 1
+    assert config_path.read_text(encoding="utf-8") == "{not-json"
+
+
 def test_http_mcp_json_is_authenticated_private_and_warned(
     ac_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
